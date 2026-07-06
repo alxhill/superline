@@ -1,9 +1,9 @@
 use crate::colors::Color;
 use crate::colors::*;
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ExitCodeScheme, GitScheme, HostScheme,
+    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme, SdkmanScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 
@@ -29,6 +29,26 @@ impl SdkmanScheme for RainbowTheme {
 
     fn sdkman_bg() -> Color {
         white()
+    }
+}
+
+impl ErrorMessageScheme for RainbowTheme {
+    fn error_message_fg() -> Color {
+        white()
+    }
+
+    fn error_message_bg() -> Color {
+        warning_red()
+    }
+}
+
+impl UnknownScheme for RainbowTheme {
+    fn unknown_fg() -> Color {
+        white()
+    }
+
+    fn unknown_bg() -> Color {
+        warning_red()
     }
 }
 

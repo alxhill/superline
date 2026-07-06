@@ -1,12 +1,12 @@
-pub use custom::CustomTheme;
+pub use custom::{CustomTheme, CustomThemeError};
 pub use rainbow::RainbowTheme;
 pub use simple::SimpleTheme;
 
 use crate::colors::Color;
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ExitCodeScheme, GitScheme, HostScheme,
+    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme, SdkmanScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
 };
 
 mod custom;
@@ -52,5 +52,7 @@ pub trait CompleteTheme:
     + TimeScheme
     + NvmScheme
     + SdkmanScheme
+    + ErrorMessageScheme
+    + UnknownScheme
 {
 }

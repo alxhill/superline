@@ -1,6 +1,5 @@
 extern crate superline;
 
-use std::error::Error;
 use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,10 +10,10 @@ use std::{env, io};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
-use superline::config::{Config, TerminalRuntimeMetadata};
+use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
 use superline::modules::refresh_pr;
 use superline::terminal::{Shell, SHELL};
-use superline::themes::{CustomTheme, RainbowTheme, SimpleTheme};
+use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
 use superline::Powerline;
 
 const FISH_CONF: &str = r#"
@@ -408,85 +407,51 @@ fn print_shell_conf(shell: ShellSubcommand) {
 }
 
 fn show(args: ShowArgs, right_only: bool) {
-    match load_config(args.config.clone()) {
-        Ok((conf, conf_root)) => {
-            match args.shell {
-                ShellArg::Bash => SHELL.set(Shell::Bash),
-                ShellArg::Zsh => SHELL.set(Shell::Zsh),
-                ShellArg::Fish => SHELL.set(Shell::Bare),
-                // PowerShell's PSReadLine handles raw ANSI escapes itself, so it
-                // uses the same bare escapes as fish (no non-printing markers).
-                ShellArg::Pwsh => SHELL.set(Shell::Bare),
-            }
-            .expect("failed to set shell");
+    match args.shell {
+        ShellArg::Bash => SHELL.set(Shell::Bash),
+        ShellArg::Zsh => SHELL.set(Shell::Zsh),
+        ShellArg::Fish => SHELL.set(Shell::Bare),
+        // PowerShell's PSReadLine handles raw ANSI escapes itself, so it
+        // uses the same bare escapes as fish (no non-printing markers).
+        ShellArg::Pwsh => SHELL.set(Shell::Bare),
+    }
+    .expect("failed to set shell");
 
-            if right_only {
-                show_right(&args, conf, conf_root);
-            } else {
-                show_normal(&args, conf, conf_root);
+    match load_config(args.config.clone()) {
+        Ok((mut conf, conf_root)) => match load_theme(&conf, &conf_root) {
+            Ok(theme) => render_prompt(&args, conf, theme, right_only),
+            Err(error @ PowerlineError::InvalidTheme(_)) => {
+                prepend_error_module(&mut conf, fallback_message(&error));
+                render_prompt(&args, conf, LoadedTheme::Rainbow, right_only);
             }
-        }
+            Err(error) => show_fallback(&args, &error, right_only),
+        },
         Err(e) => {
-            eprintln!("superline error: {}", e);
-            if let Some(source) = e.source() {
-                eprintln!("source:\n\t{}", source);
-            }
+            show_fallback(&args, &e, right_only);
         }
     }
 }
 
-fn show_right(args: &ShowArgs, conf: Config, conf_root: PathBuf) {
+fn render_prompt(args: &ShowArgs, conf: Config, theme: LoadedTheme, right_only: bool) {
+    if right_only {
+        render_right(args, conf, theme);
+    } else {
+        render_normal(args, conf, theme);
+    }
+}
+
+fn render_right(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
     if let Some(prompt) = conf.rows.last() {
-        // todo: refactor to avoid repeating the theme loading code
-        let powerline = match conf.theme.as_str() {
-            "rainbow" => Powerline::from_conf::<RainbowTheme>(prompt, args),
-            "simple" => Powerline::from_conf::<SimpleTheme>(prompt, args),
-            theme_path => {
-                let path = match theme_path.as_bytes() {
-                    [b'/', ..] => PathBuf::from(theme_path),
-                    _ => conf_root.join(theme_path),
-                };
-
-                if CustomTheme::load(path.clone()) {
-                    Powerline::from_conf::<CustomTheme>(prompt, args)
-                } else {
-                    eprintln!(
-                        "Powerline could not load custom theme {}, falling back to default",
-                        path.display()
-                    );
-                    Powerline::from_conf::<RainbowTheme>(prompt, args)
-                }
-            }
-        };
-
+        let powerline = powerline_from_conf(prompt, args, theme);
         powerline.print_right();
     }
 }
 
-fn show_normal(args: &ShowArgs, conf: Config, conf_root: PathBuf) {
+fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
     let mut powerlines = conf
         .rows
         .into_iter()
-        .map(|prompt| match conf.theme.as_str() {
-            "rainbow" => Powerline::from_conf::<RainbowTheme>(&prompt, args),
-            "simple" => Powerline::from_conf::<SimpleTheme>(&prompt, args),
-            theme_path => {
-                let path = match theme_path.as_bytes() {
-                    [b'/', ..] => PathBuf::from(theme_path),
-                    _ => conf_root.join(theme_path),
-                };
-
-                if CustomTheme::load(path.clone()) {
-                    Powerline::from_conf::<CustomTheme>(&prompt, args)
-                } else {
-                    eprintln!(
-                        "Powerline could not load custom theme {}, falling back to default",
-                        path.display()
-                    );
-                    Powerline::from_conf::<RainbowTheme>(&prompt, args)
-                }
-            }
-        })
+        .map(|prompt| powerline_from_conf(&prompt, args, theme))
         .collect::<Vec<Powerline>>();
 
     if let Some((last, all_bar_last)) = powerlines.split_last_mut() {
@@ -502,6 +467,67 @@ fn show_normal(args: &ShowArgs, conf: Config, conf_root: PathBuf) {
     }
 }
 
+#[derive(Clone, Copy)]
+enum LoadedTheme {
+    Rainbow,
+    Simple,
+    Custom,
+}
+
+fn load_theme(conf: &Config, conf_root: &Path) -> Result<LoadedTheme, PowerlineError> {
+    match conf.theme.as_str() {
+        "rainbow" => Ok(LoadedTheme::Rainbow),
+        "simple" => Ok(LoadedTheme::Simple),
+        theme_path => {
+            let path = match theme_path.as_bytes() {
+                [b'/', ..] => PathBuf::from(theme_path),
+                _ => conf_root.join(theme_path),
+            };
+            CustomTheme::load(&path)?;
+            Ok(LoadedTheme::Custom)
+        }
+    }
+}
+
+fn powerline_from_conf(prompt: &CommandLine, args: &ShowArgs, theme: LoadedTheme) -> Powerline {
+    match theme {
+        LoadedTheme::Rainbow => Powerline::from_conf::<RainbowTheme>(prompt, args),
+        LoadedTheme::Simple => Powerline::from_conf::<SimpleTheme>(prompt, args),
+        LoadedTheme::Custom => Powerline::from_conf::<CustomTheme>(prompt, args),
+    }
+}
+
+fn show_fallback(args: &ShowArgs, error: &PowerlineError, right_only: bool) {
+    let conf = fallback_config(error);
+    render_prompt(args, conf, LoadedTheme::Rainbow, right_only);
+}
+
+fn fallback_config(error: &PowerlineError) -> Config {
+    let mut conf = Config::default();
+    prepend_error_module(&mut conf, fallback_message(error));
+    conf
+}
+
+fn prepend_error_module(conf: &mut Config, message: String) {
+    if let Some(first_row) = conf.rows.first_mut() {
+        first_row.left.insert(0, LineSegment::Error { message });
+        first_row.left.insert(1, LineSegment::Padding(1));
+    }
+}
+
+fn fallback_message(error: &PowerlineError) -> String {
+    match error {
+        PowerlineError::HomeDirNotFound => "home directory not found".to_string(),
+        PowerlineError::IoError(_) => "config file not read".to_string(),
+        PowerlineError::InvalidConfig(_) => "config file not parsed".to_string(),
+        PowerlineError::InvalidTheme(theme_error) => match theme_error {
+            CustomThemeError::Open { .. } => "theme file not loaded".to_string(),
+            CustomThemeError::Parse { .. } => "theme file not parsed".to_string(),
+            CustomThemeError::Invalid { .. } => "theme file invalid".to_string(),
+        },
+    }
+}
+
 #[derive(Error, Debug)]
 enum PowerlineError {
     #[error("could not determine home directory")]
@@ -510,13 +536,21 @@ enum PowerlineError {
     IoError(#[from] io::Error),
     #[error("config file could not be parsed")]
     InvalidConfig(#[from] serde_json::Error),
+    #[error(transparent)]
+    InvalidTheme(#[from] CustomThemeError),
 }
 
 fn load_config(conf_file: Option<PathBuf>) -> Result<(Config, PathBuf), PowerlineError> {
-    let conf_path = conf_file.unwrap_or_else(|| get_or_create_conf_file().unwrap());
+    let conf_path = match conf_file {
+        Some(path) => path,
+        None => get_or_create_conf_file()?,
+    };
     let conf_file = File::open(&conf_path)?;
     let conf: Config = serde_json::from_reader(conf_file)?;
-    Ok((conf, conf_path.parent().unwrap().into()))
+    Ok((
+        conf,
+        conf_path.parent().unwrap_or_else(|| Path::new(".")).into(),
+    ))
 }
 
 fn get_or_create_conf_file() -> Result<PathBuf, PowerlineError> {

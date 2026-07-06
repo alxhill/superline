@@ -1,17 +1,18 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::fs::File;
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use serde::Deserialize;
 use serde_json::Value;
+use thiserror::Error;
 
 use crate::colors::Color;
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ExitCodeScheme, GitScheme, HostScheme,
+    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme, SdkmanScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 
@@ -20,23 +21,29 @@ pub struct CustomTheme;
 
 static THEME: OnceLock<CustomThemeImpl> = OnceLock::new();
 
+#[derive(Debug, Error)]
+pub enum CustomThemeError {
+    #[error("could not open theme file {}", path.display())]
+    Open {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error("theme file {} could not be parsed", path.display())]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("theme file {} has invalid values: {details}", path.display())]
+    Invalid { path: PathBuf, details: String },
+}
+
 #[derive(Deserialize, Clone)]
 #[serde(untagged)]
 enum ColorsJson {
     Named(String),
     Code(u8),
-}
-
-impl From<&ColorsJson> for Color {
-    fn from(value: &ColorsJson) -> Self {
-        match value {
-            ColorsJson::Named(col_name) => {
-                let c = col_name.as_str();
-                Color::from_name(c).expect("unknown color")
-            }
-            ColorsJson::Code(col_code) => Color(*col_code),
-        }
-    }
 }
 
 #[derive(Deserialize)]
@@ -57,25 +64,49 @@ impl CustomThemeImpl {
             .get(module)
             .and_then(|module| module.get(property))
     }
-}
 
-impl CustomTheme {
-    pub fn load(path: PathBuf) -> bool {
-        if let Ok(file) = File::open(path) {
-            match serde_json::from_reader(file) {
-                Ok(theme) => {
-                    let _ = THEME.set(theme);
-                    return true;
-                }
-                Err(e) => {
-                    eprintln!("Failed to read theme.json: {}", e);
-                    if let Some(source) = e.source() {
-                        eprintln!("{}", source);
-                    }
+    fn validate(&self) -> Result<(), String> {
+        validate_color_json("defaults.fg", &self.defaults.fg)?;
+        validate_color_json("defaults.bg", &self.defaults.bg)?;
+
+        for (module, properties) in &self.modules {
+            for (property, value) in properties {
+                let path = format!("modules.{module}.{property}");
+                match infer_theme_property_kind(property) {
+                    Some(ThemePropertyKind::Color) => validate_color_value(&path, value)?,
+                    Some(ThemePropertyKind::ColorList) => validate_color_list(&path, value)?,
+                    Some(ThemePropertyKind::String) => validate_string(&path, value)?,
+                    None => {}
                 }
             }
         }
-        false
+
+        Ok(())
+    }
+}
+
+impl CustomTheme {
+    pub fn load(path: impl AsRef<Path>) -> Result<(), CustomThemeError> {
+        let path = path.as_ref();
+        let file = File::open(path).map_err(|source| CustomThemeError::Open {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let theme: CustomThemeImpl =
+            serde_json::from_reader(file).map_err(|source| CustomThemeError::Parse {
+                path: path.to_path_buf(),
+                source,
+            })?;
+
+        theme
+            .validate()
+            .map_err(|details| CustomThemeError::Invalid {
+                path: path.to_path_buf(),
+                details,
+            })?;
+
+        let _ = THEME.set(theme);
+        Ok(())
 
         // todo: figure out why this is being set twice...
         // match THEME.set(theme) {
@@ -90,30 +121,17 @@ impl CustomTheme {
 
     pub fn get_color(module: &str, color: &str) -> Option<Color> {
         let theme = THEME.get().expect("custom theme not set");
-        theme
-            .get_property(module, color)
-            .map(|value| {
-                serde_json::from_value::<ColorsJson>(value.to_owned())
-                    .expect("property was not a color")
-            })
-            .map(|col_json| (&col_json).into())
+        theme.get_property(module, color).and_then(color_from_value)
     }
 
     pub fn get_colors(module: &str, property: &str) -> Option<Vec<Color>> {
         let theme = THEME.get().expect("custom theme not set");
         let value = theme.get_property(module, property);
 
-        value.map(|value| {
+        value.and_then(|value| {
             value
                 .as_array()
-                .expect("property is not an array")
-                .iter()
-                .map(|val| {
-                    serde_json::from_value::<ColorsJson>(val.to_owned())
-                        .expect("could not read value as color")
-                })
-                .map(|color_json| (&color_json).into())
-                .collect()
+                .and_then(|array| array.iter().map(color_from_value).collect())
         })
     }
 
@@ -129,12 +147,12 @@ impl CustomTheme {
 impl DefaultColors for CustomTheme {
     fn default_bg() -> Color {
         let theme = THEME.get().expect("custom theme not set");
-        (&theme.defaults.bg).into()
+        color_from_json(&theme.defaults.bg).unwrap_or(Color(0))
     }
 
     fn default_fg() -> Color {
         let theme = THEME.get().expect("custom theme not set");
-        (&theme.defaults.fg).into()
+        color_from_json(&theme.defaults.fg).unwrap_or(Color(15))
     }
 }
 
@@ -163,6 +181,16 @@ impl NvmScheme for CustomTheme {
 impl CargoScheme for CustomTheme {
     color_from_json!(cargo_fg, cargo, fg, default_fg);
     color_from_json!(cargo_bg, cargo, bg, default_bg);
+}
+
+impl ErrorMessageScheme for CustomTheme {
+    color_from_json!(error_message_fg, error, fg, alert_fg);
+    color_from_json!(error_message_bg, error, bg, alert_bg);
+}
+
+impl UnknownScheme for CustomTheme {
+    color_from_json!(unknown_fg, unknown, fg, alert_fg);
+    color_from_json!(unknown_bg, unknown, bg, alert_bg);
 }
 
 impl CmdScheme for CustomTheme {
@@ -283,4 +311,107 @@ impl UserScheme for CustomTheme {
 impl TimeScheme for CustomTheme {
     color_from_json!(time_bg, time, bg, default_bg);
     color_from_json!(time_fg, time, fg, default_fg);
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ThemePropertyKind {
+    Color,
+    ColorList,
+    String,
+}
+
+fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
+    if property == "bg_colors" || property.ends_with("_colors") {
+        Some(ThemePropertyKind::ColorList)
+    } else if property == "icon" || property.ends_with("_icon") || property.ends_with("_symbol") {
+        Some(ThemePropertyKind::String)
+    } else if property == "fg"
+        || property == "bg"
+        || property.ends_with("_fg")
+        || property.ends_with("_bg")
+    {
+        Some(ThemePropertyKind::Color)
+    } else {
+        None
+    }
+}
+
+fn validate_color_value(path: &str, value: &Value) -> Result<(), String> {
+    let color = serde_json::from_value::<ColorsJson>(value.to_owned())
+        .map_err(|_| format!("expected color name or 0-255 color code at {path}"))?;
+    validate_color_json(path, &color)
+}
+
+fn validate_color_list(path: &str, value: &Value) -> Result<(), String> {
+    let colors = value
+        .as_array()
+        .ok_or_else(|| format!("expected an array of colors at {path}"))?;
+
+    if colors.is_empty() {
+        return Err(format!("expected at least one color at {path}"));
+    }
+
+    for (idx, color) in colors.iter().enumerate() {
+        validate_color_value(&format!("{path}[{idx}]"), color)?;
+    }
+
+    Ok(())
+}
+
+fn validate_color_json(path: &str, color: &ColorsJson) -> Result<(), String> {
+    match color {
+        ColorsJson::Named(name) if Color::from_name(name).is_none() => {
+            Err(format!("unknown color '{name}' at {path}"))
+        }
+        ColorsJson::Named(_) | ColorsJson::Code(_) => Ok(()),
+    }
+}
+
+fn validate_string(path: &str, value: &Value) -> Result<(), String> {
+    value
+        .as_str()
+        .map(|_| ())
+        .ok_or_else(|| format!("expected string at {path}"))
+}
+
+fn color_from_value(value: &Value) -> Option<Color> {
+    let color = serde_json::from_value::<ColorsJson>(value.to_owned()).ok()?;
+    color_from_json(&color)
+}
+
+fn color_from_json(color: &ColorsJson) -> Option<Color> {
+    match color {
+        ColorsJson::Named(name) => Color::from_name(name),
+        ColorsJson::Code(code) => Some(Color(*code)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn infers_theme_property_kind_from_property_name() {
+        assert_eq!(
+            infer_theme_property_kind("remote_bg"),
+            Some(ThemePropertyKind::Color)
+        );
+        assert_eq!(
+            infer_theme_property_kind("status_success_fg"),
+            Some(ThemePropertyKind::Color)
+        );
+        assert_eq!(
+            infer_theme_property_kind("bg_colors"),
+            Some(ThemePropertyKind::ColorList)
+        );
+        assert_eq!(
+            infer_theme_property_kind("status_icon"),
+            Some(ThemePropertyKind::String)
+        );
+        assert_eq!(
+            infer_theme_property_kind("user_symbol"),
+            Some(ThemePropertyKind::String)
+        );
+        assert_eq!(infer_theme_property_kind("display_name"), None);
+    }
 }
