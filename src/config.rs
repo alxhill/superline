@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 
 pub trait TerminalRuntimeMetadata {
     fn shell_name(&self) -> String;
@@ -22,7 +23,7 @@ pub struct CommandLine {
     pub right: Option<Vec<LineSegment>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum LineSegment {
     SmallSpacer,
@@ -57,13 +58,143 @@ pub enum LineSegment {
         min_run_time: u64, // milliseconds
     },
     Padding(usize),
+    Unknown {
+        name: String,
+    },
 }
 
 fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum KnownLineSegment {
+    SmallSpacer,
+    LargeSpacer,
+    Separator(SeparatorStyle),
+    Cwd {
+        max_length: usize,
+        wanted_seg_num: usize,
+        #[serde(default)]
+        resolve_symlinks: bool,
+    },
+    ReadOnly,
+    Git,
+    Pr {
+        #[serde(default = "default_true")]
+        status: bool,
+    },
+    PythonEnv,
+    Nvm,
+    Sdkman,
+    Cargo,
+    Host,
+    Shell,
+    Time {
+        format: Option<String>,
+    },
+    User,
+    Cmd,
+    LastCmdDuration {
+        min_run_time: u64,
+    },
+    Padding(usize),
+    Unknown {
+        name: String,
+    },
+}
+
+impl From<KnownLineSegment> for LineSegment {
+    fn from(segment: KnownLineSegment) -> Self {
+        match segment {
+            KnownLineSegment::SmallSpacer => LineSegment::SmallSpacer,
+            KnownLineSegment::LargeSpacer => LineSegment::LargeSpacer,
+            KnownLineSegment::Separator(style) => LineSegment::Separator(style),
+            KnownLineSegment::Cwd {
+                max_length,
+                wanted_seg_num,
+                resolve_symlinks,
+            } => LineSegment::Cwd {
+                max_length,
+                wanted_seg_num,
+                resolve_symlinks,
+            },
+            KnownLineSegment::ReadOnly => LineSegment::ReadOnly,
+            KnownLineSegment::Git => LineSegment::Git,
+            KnownLineSegment::Pr { status } => LineSegment::Pr { status },
+            KnownLineSegment::PythonEnv => LineSegment::PythonEnv,
+            KnownLineSegment::Nvm => LineSegment::Nvm,
+            KnownLineSegment::Sdkman => LineSegment::Sdkman,
+            KnownLineSegment::Cargo => LineSegment::Cargo,
+            KnownLineSegment::Host => LineSegment::Host,
+            KnownLineSegment::Shell => LineSegment::Shell,
+            KnownLineSegment::Time { format } => LineSegment::Time { format },
+            KnownLineSegment::User => LineSegment::User,
+            KnownLineSegment::Cmd => LineSegment::Cmd,
+            KnownLineSegment::LastCmdDuration { min_run_time } => {
+                LineSegment::LastCmdDuration { min_run_time }
+            }
+            KnownLineSegment::Padding(size) => LineSegment::Padding(size),
+            KnownLineSegment::Unknown { name } => LineSegment::Unknown { name },
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LineSegment {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+
+        match serde_json::from_value::<KnownLineSegment>(value.clone()) {
+            Ok(segment) => Ok(segment.into()),
+            Err(err) => match segment_name(&value) {
+                Some(name) if !is_known_segment_name(&name) => Ok(LineSegment::Unknown { name }),
+                Some(name) if name == "unknown" && value.is_string() => {
+                    Ok(LineSegment::Unknown { name })
+                }
+                _ => Err(de::Error::custom(err)),
+            },
+        }
+    }
+}
+
+fn segment_name(value: &Value) -> Option<String> {
+    match value {
+        Value::String(name) => Some(name.clone()),
+        Value::Object(map) if map.len() == 1 => map.keys().next().cloned(),
+        _ => None,
+    }
+}
+
+fn is_known_segment_name(name: &str) -> bool {
+    matches!(
+        name,
+        "small_spacer"
+            | "large_spacer"
+            | "separator"
+            | "cwd"
+            | "read_only"
+            | "git"
+            | "pr"
+            | "python_env"
+            | "nvm"
+            | "sdkman"
+            | "cargo"
+            | "host"
+            | "shell"
+            | "time"
+            | "user"
+            | "cmd"
+            | "last_cmd_duration"
+            | "padding"
+            | "unknown"
+    )
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SeparatorStyle {
     Chevron,
@@ -135,5 +266,42 @@ mod tests {
         let reserialized = serde_json::to_string_pretty(&parsed)
             .expect("reparsed config should serialize to JSON");
         assert_eq!(json, reserialized);
+    }
+
+    #[test]
+    fn unknown_string_segment_deserializes_as_unknown_module() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""future_module""#).expect("unknown module should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Unknown {
+                name: "future_module".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn unknown_object_segment_deserializes_as_unknown_module() {
+        let parsed: LineSegment = serde_json::from_str(r#"{"future_module":{"enabled":true}}"#)
+            .expect("unknown module with future config should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Unknown {
+                name: "future_module".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn invalid_known_segment_still_fails_to_parse() {
+        let err = serde_json::from_str::<LineSegment>(r#"{"padding":"wide"}"#)
+            .expect_err("bad known module config should remain invalid");
+
+        assert!(
+            err.to_string().contains("invalid type"),
+            "unexpected error: {err}",
+        );
     }
 }

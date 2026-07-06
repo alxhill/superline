@@ -2,7 +2,7 @@ use crate::colors::{black, dark_grey, grey, light_grey, Color};
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ExitCodeScheme, GitScheme, HostScheme,
     LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme, SdkmanScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 
@@ -24,6 +24,16 @@ impl CompleteTheme for SimpleTheme {}
 impl ShellScheme for SimpleTheme {}
 
 impl SdkmanScheme for SimpleTheme {}
+
+impl UnknownScheme for SimpleTheme {
+    fn unknown_fg() -> Color {
+        Color(15)
+    }
+
+    fn unknown_bg() -> Color {
+        Color(161)
+    }
+}
 
 impl NvmScheme for SimpleTheme {}
 

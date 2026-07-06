@@ -7,7 +7,7 @@ use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::modules::{
     Cargo, Cmd, Cwd, Git, Host, LastCmdDuration, Module, Nvm, Pr, PythonEnv, ReadOnly, SdkmanJava,
-    ShellName, Spacer, Time, User,
+    ShellName, Spacer, Time, Unknown, User,
 };
 use crate::terminal::*;
 use crate::themes::CompleteTheme;
@@ -376,6 +376,7 @@ impl Powerline {
                 )),
                 LineSegment::Nvm => self.add_module(Nvm::<T>::new()),
                 LineSegment::Sdkman => self.add_module(SdkmanJava::<T>::new()),
+                LineSegment::Unknown { name } => self.add_module(Unknown::<T>::new(name.clone())),
             };
         }
     }
