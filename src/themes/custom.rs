@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use crate::colors::Color;
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ExitCodeScheme, GitScheme, HostScheme,
+    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme, SdkmanScheme,
     ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
 };
@@ -183,6 +183,11 @@ impl CargoScheme for CustomTheme {
     color_from_json!(cargo_bg, cargo, bg, default_bg);
 }
 
+impl ErrorMessageScheme for CustomTheme {
+    color_from_json!(error_message_fg, error, fg, alert_fg);
+    color_from_json!(error_message_bg, error, bg, alert_bg);
+}
+
 impl UnknownScheme for CustomTheme {
     color_from_json!(unknown_fg, unknown, fg, alert_fg);
     color_from_json!(unknown_bg, unknown, bg, alert_bg);
@@ -323,7 +328,7 @@ fn theme_property_kind(module: &str, property: &str) -> Option<ThemePropertyKind
         | ("pr", "status_icon") => Some(ThemePropertyKind::String),
         ("cwd", "bg_colors") => Some(ThemePropertyKind::ColorList),
         (
-            "cargo" | "exit_code" | "readonly" | "sdkman" | "spacer" | "time" | "unknown",
+            "cargo" | "error" | "exit_code" | "readonly" | "sdkman" | "spacer" | "time" | "unknown",
             "fg" | "bg",
         )
         | ("nvm", "fg" | "bg" | "inactive_bg")

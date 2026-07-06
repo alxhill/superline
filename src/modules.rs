@@ -2,6 +2,7 @@ use crate::powerline::Powerline;
 
 mod cmd;
 mod cwd;
+mod error_message;
 mod exit_code;
 mod git;
 mod host;
@@ -23,6 +24,7 @@ pub use cargo::{Cargo, CargoScheme};
 pub use cmd::{Cmd, CmdScheme};
 pub use cmd_duration::{LastCmdDuration, LastCmdDurationScheme};
 pub use cwd::{Cwd, CwdScheme};
+pub use error_message::{ErrorMessage, ErrorMessageScheme};
 pub use exit_code::{ExitCode, ExitCodeScheme};
 pub use git::{Git, GitScheme};
 pub use host::{Host, HostScheme};

@@ -58,6 +58,9 @@ pub enum LineSegment {
         min_run_time: u64, // milliseconds
     },
     Padding(usize),
+    Error {
+        message: String,
+    },
     Unknown {
         name: String,
     },
@@ -100,6 +103,9 @@ enum KnownLineSegment {
         min_run_time: u64,
     },
     Padding(usize),
+    Error {
+        message: String,
+    },
     Unknown {
         name: String,
     },
@@ -136,6 +142,7 @@ impl From<KnownLineSegment> for LineSegment {
                 LineSegment::LastCmdDuration { min_run_time }
             }
             KnownLineSegment::Padding(size) => LineSegment::Padding(size),
+            KnownLineSegment::Error { message } => LineSegment::Error { message },
             KnownLineSegment::Unknown { name } => LineSegment::Unknown { name },
         }
     }
@@ -190,6 +197,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "cmd"
             | "last_cmd_duration"
             | "padding"
+            | "error"
             | "unknown"
     )
 }

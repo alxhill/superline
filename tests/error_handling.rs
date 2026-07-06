@@ -72,8 +72,20 @@ fn invalid_config_renders_fallback_with_error() {
         "show exited with failure: {stderr}"
     );
     assert!(
-        stdout.contains("superline fallback") && stdout.contains("config file could not be parsed"),
-        "fallback should include config parse error\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        stdout.contains("config file not parsed"),
+        "fallback should include short config parse error\nstdout:\n{stdout}\nstderr:\n{stderr}",
+    );
+    assert!(
+        !stdout.contains("expected `:`"),
+        "fallback should not include low-level parser details\nstdout:\n{stdout}",
+    );
+    assert!(
+        stdout.contains("superline"),
+        "fallback should still render the default cwd prompt\nstdout:\n{stdout}\nstderr:\n{stderr}",
+    );
+    assert!(
+        !stderr.contains("superline error"),
+        "fallback should not also print a stderr error\nstderr:\n{stderr}",
     );
 }
 
@@ -89,7 +101,7 @@ fn invalid_custom_theme_renders_fallback_with_error() {
             "theme": "bad_theme.json",
             "rows": [
                 {
-                    "left": ["cmd"],
+                    "left": ["future_module", "cmd"],
                     "right": []
                 }
             ]
@@ -118,9 +130,19 @@ fn invalid_custom_theme_renders_fallback_with_error() {
         "show exited with failure: {stderr}"
     );
     assert!(
-        stdout.contains("superline fallback")
-            && stdout.contains("theme file")
-            && stdout.contains("unknown color 'not_a_color'"),
-        "fallback should include theme validation error\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        stdout.contains("theme file invalid"),
+        "fallback should include short theme validation error\nstdout:\n{stdout}\nstderr:\n{stderr}",
+    );
+    assert!(
+        !stdout.contains("not_a_color"),
+        "fallback should not include low-level theme details\nstdout:\n{stdout}",
+    );
+    assert!(
+        stdout.contains("unknown module: future_module"),
+        "theme fallback should keep the configured prompt modules\nstdout:\n{stdout}",
+    );
+    assert!(
+        !stderr.contains("superline error"),
+        "fallback should not also print a stderr error\nstderr:\n{stderr}",
     );
 }

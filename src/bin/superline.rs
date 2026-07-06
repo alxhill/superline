@@ -1,6 +1,5 @@
 extern crate superline;
 
-use std::error::Error;
 use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,12 +10,11 @@ use std::{env, io};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
-use superline::colors::{warning_red, white};
-use superline::config::{CommandLine, Config, TerminalRuntimeMetadata};
+use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
 use superline::modules::refresh_pr;
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
-use superline::{Powerline, Style};
+use superline::Powerline;
 
 const FISH_CONF: &str = r#"
 set -gx SUPERLINE_FISH 1
@@ -420,37 +418,36 @@ fn show(args: ShowArgs, right_only: bool) {
     .expect("failed to set shell");
 
     match load_config(args.config.clone()) {
-        Ok((conf, conf_root)) => {
-            let result = if right_only {
-                show_right(&args, conf, conf_root)
-            } else {
-                show_normal(&args, conf, conf_root)
-            };
-
-            if let Err(e) = result {
-                report_error(&e);
-                show_fallback(&e, right_only);
-            };
-        }
+        Ok((mut conf, conf_root)) => match load_theme(&conf, &conf_root) {
+            Ok(theme) => render_prompt(&args, conf, theme, right_only),
+            Err(error @ PowerlineError::InvalidTheme(_)) => {
+                prepend_error_module(&mut conf, fallback_message(&error));
+                render_prompt(&args, conf, LoadedTheme::Rainbow, right_only);
+            }
+            Err(error) => show_fallback(&args, &error, right_only),
+        },
         Err(e) => {
-            report_error(&e);
-            show_fallback(&e, right_only);
+            show_fallback(&args, &e, right_only);
         }
     }
 }
 
-fn show_right(args: &ShowArgs, conf: Config, conf_root: PathBuf) -> Result<(), PowerlineError> {
+fn render_prompt(args: &ShowArgs, conf: Config, theme: LoadedTheme, right_only: bool) {
+    if right_only {
+        render_right(args, conf, theme);
+    } else {
+        render_normal(args, conf, theme);
+    }
+}
+
+fn render_right(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
     if let Some(prompt) = conf.rows.last() {
-        let theme = load_theme(&conf, &conf_root)?;
         let powerline = powerline_from_conf(prompt, args, theme);
         powerline.print_right();
     }
-
-    Ok(())
 }
 
-fn show_normal(args: &ShowArgs, conf: Config, conf_root: PathBuf) -> Result<(), PowerlineError> {
-    let theme = load_theme(&conf, &conf_root)?;
+fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
     let mut powerlines = conf
         .rows
         .into_iter()
@@ -468,8 +465,6 @@ fn show_normal(args: &ShowArgs, conf: Config, conf_root: PathBuf) -> Result<(), 
         last.print_left();
         println!();
     }
-
-    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -502,40 +497,34 @@ fn powerline_from_conf(prompt: &CommandLine, args: &ShowArgs, theme: LoadedTheme
     }
 }
 
-fn report_error(error: &PowerlineError) {
-    eprintln!("superline error: {error}");
-    let mut source = error.source();
-    while let Some(err) = source {
-        eprintln!("source:\n\t{err}");
-        source = err.source();
-    }
+fn show_fallback(args: &ShowArgs, error: &PowerlineError, right_only: bool) {
+    let conf = fallback_config(error);
+    render_prompt(args, conf, LoadedTheme::Rainbow, right_only);
 }
 
-fn show_fallback(error: &PowerlineError, right_only: bool) {
-    let mut powerline = Powerline::new();
-    if right_only {
-        powerline.start_right();
-    }
+fn fallback_config(error: &PowerlineError) -> Config {
+    let mut conf = Config::default();
+    prepend_error_module(&mut conf, fallback_message(error));
+    conf
+}
 
-    powerline.add_segment(
-        fallback_message(error),
-        Style::simple(white(), warning_red()),
-    );
-
-    if right_only {
-        powerline.print_right();
-    } else {
-        powerline.print_left();
-        println!();
+fn prepend_error_module(conf: &mut Config, message: String) {
+    if let Some(first_row) = conf.rows.first_mut() {
+        first_row.left.insert(0, LineSegment::Error { message });
+        first_row.left.insert(1, LineSegment::Padding(1));
     }
 }
 
 fn fallback_message(error: &PowerlineError) -> String {
-    match error.source() {
-        Some(source) if source.to_string() != error.to_string() => {
-            format!("superline fallback: {error}: {source}")
-        }
-        _ => format!("superline fallback: {error}"),
+    match error {
+        PowerlineError::HomeDirNotFound => "home directory not found".to_string(),
+        PowerlineError::IoError(_) => "config file not read".to_string(),
+        PowerlineError::InvalidConfig(_) => "config file not parsed".to_string(),
+        PowerlineError::InvalidTheme(theme_error) => match theme_error {
+            CustomThemeError::Open { .. } => "theme file not loaded".to_string(),
+            CustomThemeError::Parse { .. } => "theme file not parsed".to_string(),
+            CustomThemeError::Invalid { .. } => "theme file invalid".to_string(),
+        },
     }
 }
 
