@@ -72,7 +72,7 @@ impl CustomThemeImpl {
         for (module, properties) in &self.modules {
             for (property, value) in properties {
                 let path = format!("modules.{module}.{property}");
-                match theme_property_kind(module, property) {
+                match infer_theme_property_kind(property) {
                     Some(ThemePropertyKind::Color) => validate_color_value(&path, value)?,
                     Some(ThemePropertyKind::ColorList) => validate_color_list(&path, value)?,
                     Some(ThemePropertyKind::String) => validate_string(&path, value)?,
@@ -313,44 +313,26 @@ impl TimeScheme for CustomTheme {
     color_from_json!(time_fg, time, fg, default_fg);
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ThemePropertyKind {
     Color,
     ColorList,
     String,
 }
 
-fn theme_property_kind(module: &str, property: &str) -> Option<ThemePropertyKind> {
-    match (module, property) {
-        ("cmd", "user_symbol")
-        | ("last_cmd_duration", "time_icon")
-        | ("pr", "icon")
-        | ("pr", "status_icon") => Some(ThemePropertyKind::String),
-        ("cwd", "bg_colors") => Some(ThemePropertyKind::ColorList),
-        (
-            "cargo" | "error" | "exit_code" | "readonly" | "sdkman" | "spacer" | "time" | "unknown",
-            "fg" | "bg",
-        )
-        | ("nvm", "fg" | "bg" | "inactive_bg")
-        | ("cmd", "passed_fg" | "passed_bg" | "failed_fg" | "failed_bg")
-        | ("cwd", "path_fg")
-        | ("last_cmd_duration", "fg" | "bg")
-        | (
-            "git",
-            "remote_bg" | "remote_fg" | "staged_bg" | "staged_fg" | "notstaged_bg" | "notstaged_fg"
-            | "untracked_bg" | "untracked_fg" | "conflicted_bg" | "conflicted_fg" | "clean_bg"
-            | "clean_fg" | "dirty_bg" | "dirty_fg",
-        )
-        | (
-            "pr",
-            "draft_bg" | "draft_fg" | "open_bg" | "open_fg" | "merged_bg" | "merged_fg"
-            | "closed_bg" | "closed_fg" | "status_success_fg" | "status_failure_fg"
-            | "status_pending_fg",
-        )
-        | ("py", "env_fg" | "env_bg" | "version_fg" | "version_bg")
-        | ("hostname" | "shell", "fg" | "bg")
-        | ("username", "root_bg" | "bg" | "fg") => Some(ThemePropertyKind::Color),
-        _ => None,
+fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
+    if property == "bg_colors" || property.ends_with("_colors") {
+        Some(ThemePropertyKind::ColorList)
+    } else if property == "icon" || property.ends_with("_icon") || property.ends_with("_symbol") {
+        Some(ThemePropertyKind::String)
+    } else if property == "fg"
+        || property == "bg"
+        || property.ends_with("_fg")
+        || property.ends_with("_bg")
+    {
+        Some(ThemePropertyKind::Color)
+    } else {
+        None
     }
 }
 
@@ -401,5 +383,35 @@ fn color_from_json(color: &ColorsJson) -> Option<Color> {
     match color {
         ColorsJson::Named(name) => Color::from_name(name),
         ColorsJson::Code(code) => Some(Color(*code)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn infers_theme_property_kind_from_property_name() {
+        assert_eq!(
+            infer_theme_property_kind("remote_bg"),
+            Some(ThemePropertyKind::Color)
+        );
+        assert_eq!(
+            infer_theme_property_kind("status_success_fg"),
+            Some(ThemePropertyKind::Color)
+        );
+        assert_eq!(
+            infer_theme_property_kind("bg_colors"),
+            Some(ThemePropertyKind::ColorList)
+        );
+        assert_eq!(
+            infer_theme_property_kind("status_icon"),
+            Some(ThemePropertyKind::String)
+        );
+        assert_eq!(
+            infer_theme_property_kind("user_symbol"),
+            Some(ThemePropertyKind::String)
+        );
+        assert_eq!(infer_theme_property_kind("display_name"), None);
     }
 }
