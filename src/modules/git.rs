@@ -1,11 +1,17 @@
 use std::cmp::Ordering;
+use std::collections::hash_map::DefaultHasher;
 use std::env;
 use std::fmt::Write;
+use std::fs::{self, File};
+use std::hash::{Hash, Hasher};
+use std::io::Write as _;
 use std::marker::PhantomData;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
 
 // Backend selection. At most one of these modules is compiled in; when more
 // than one feature is enabled the precedence is `gitoxide` > `libgit` > the
@@ -100,6 +106,7 @@ impl<S: GitScheme> Git<S> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct GitStats {
     pub untracked: u32,
     pub conflicted: u32,
@@ -152,11 +159,16 @@ const GITHUB_LOGO: &str = "\u{e709}";
 const GIT_ICON: &str = "\u{e0a0}";
 const WORKTREE_ICON: &str = "\u{f1bb}";
 
-const RENDER_TIMEOUT: Duration = Duration::from_secs(5);
+const RENDER_TIMEOUT: Duration = Duration::from_secs(1);
 
-fn run_git_with_timeout<F>(git_dir: PathBuf, timeout: Duration, run_git: F) -> Option<GitStats>
+fn run_git_with_timeout<F>(
+    git_dir: PathBuf,
+    cache_path: Option<PathBuf>,
+    timeout: Duration,
+    run_git: F,
+) -> Option<GitStats>
 where
-    F: FnOnce(&std::path::Path) -> GitStats + Send + 'static,
+    F: FnOnce(&Path) -> GitStats + Send + 'static,
 {
     let (sender, receiver) = mpsc::sync_channel(1);
     thread::spawn(move || {
@@ -164,7 +176,43 @@ where
         let _ = sender.send(stats);
     });
 
-    receiver.recv_timeout(timeout).ok()
+    match receiver.recv_timeout(timeout) {
+        Ok(stats) => {
+            if let Some(path) = cache_path {
+                write_cache(&path, &stats);
+            }
+            Some(stats)
+        }
+        Err(_) => cache_path.as_deref().and_then(read_cache),
+    }
+}
+
+fn cache_path_for(repo_root: &Path) -> Option<PathBuf> {
+    let base = crate::platform::cache_dir()?;
+    let mut hasher = DefaultHasher::new();
+    repo_root.hash(&mut hasher);
+
+    Some(
+        base.join("superline")
+            .join(format!("git-{:016x}.json", hasher.finish())),
+    )
+}
+
+fn read_cache(path: &Path) -> Option<GitStats> {
+    serde_json::from_reader(File::open(path).ok()?).ok()
+}
+
+fn write_cache(path: &Path, stats: &GitStats) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let tmp = path.with_extension("tmp");
+    if let Ok(mut file) = File::create(&tmp) {
+        if serde_json::to_writer(&mut file, stats).is_ok() && file.flush().is_ok() {
+            let _ = fs::rename(&tmp, path);
+        }
+    }
 }
 
 impl<S: GitScheme> Module for Git<S> {
@@ -174,7 +222,10 @@ impl<S: GitScheme> Module for Git<S> {
             _ => return,
         };
 
-        let Some(stats) = run_git_with_timeout(git_dir, RENDER_TIMEOUT, internal::run_git) else {
+        let cache_path = cache_path_for(&git_dir);
+        let Some(stats) =
+            run_git_with_timeout(git_dir, cache_path, RENDER_TIMEOUT, internal::run_git)
+        else {
             return;
         };
 
@@ -251,11 +302,21 @@ impl<S: GitScheme> Module for Git<S> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU32, Ordering};
     use std::thread;
     use std::time::Duration;
 
-    use super::{run_git_with_timeout, GitStats, RENDER_TIMEOUT};
+    use super::{read_cache, run_git_with_timeout, write_cache, GitStats, RENDER_TIMEOUT};
+
+    fn unique_temp_dir() -> PathBuf {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("superline-git-{}-{n}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     fn stats(branch_name: &str) -> GitStats {
         GitStats {
@@ -271,23 +332,55 @@ mod tests {
     }
 
     #[test]
-    fn git_render_timeout_is_five_seconds() {
-        assert_eq!(RENDER_TIMEOUT, Duration::from_secs(5));
+    fn git_render_timeout_is_one_second() {
+        assert_eq!(RENDER_TIMEOUT, Duration::from_secs(1));
     }
 
     #[test]
-    fn git_stats_are_returned_when_rendering_finishes_in_time() {
-        let result =
-            run_git_with_timeout(PathBuf::new(), Duration::from_secs(1), |_| stats("main"));
+    fn fresh_git_stats_are_returned_and_cached() {
+        let dir = unique_temp_dir();
+        let cache = dir.join("git.json");
+        write_cache(&cache, &stats("stale"));
 
-        assert_eq!(result.unwrap().branch_name, "main");
+        let result = run_git_with_timeout(
+            PathBuf::new(),
+            Some(cache.clone()),
+            Duration::from_secs(1),
+            |_| stats("fresh"),
+        );
+
+        assert_eq!(result.unwrap().branch_name, "fresh");
+        assert_eq!(read_cache(&cache).unwrap().branch_name, "fresh");
+
+        fs::remove_dir_all(dir).ok();
     }
 
     #[test]
-    fn git_module_is_skipped_when_rendering_times_out() {
-        let result = run_git_with_timeout(PathBuf::new(), Duration::from_millis(10), |_| {
+    fn cached_git_stats_are_returned_when_rendering_times_out() {
+        let dir = unique_temp_dir();
+        let cache = dir.join("git.json");
+        write_cache(&cache, &stats("cached"));
+
+        let result = run_git_with_timeout(
+            PathBuf::new(),
+            Some(cache),
+            Duration::from_millis(10),
+            |_| {
+                thread::sleep(Duration::from_millis(100));
+                stats("fresh")
+            },
+        );
+
+        assert_eq!(result.unwrap().branch_name, "cached");
+
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn git_module_is_skipped_when_rendering_times_out_without_a_cache() {
+        let result = run_git_with_timeout(PathBuf::new(), None, Duration::from_millis(10), |_| {
             thread::sleep(Duration::from_millis(100));
-            stats("main")
+            stats("fresh")
         });
 
         assert!(result.is_none());
