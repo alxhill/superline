@@ -7,6 +7,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Local builds target the host CPU via .cargo/config.toml. GitHub's target
+  # cache can be restored on a runner with a different CPU, so keep CI artifacts
+  # portable to avoid STATUS_ILLEGAL_INSTRUCTION when loading cached binaries.
+  RUSTFLAGS: ""
 
 jobs:
   build-and-test:
@@ -22,6 +26,8 @@ jobs:
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust-portable
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -60,6 +66,8 @@ jobs:
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust-portable
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings

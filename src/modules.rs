@@ -26,7 +26,7 @@ pub use cmd_duration::{LastCmdDuration, LastCmdDurationScheme};
 pub use cwd::{Cwd, CwdScheme};
 pub use error_message::{ErrorMessage, ErrorMessageScheme};
 pub use exit_code::{ExitCode, ExitCodeScheme};
-pub use git::{Git, GitScheme};
+pub use git::{refresh_git, Git, GitScheme};
 pub use host::{Host, HostScheme};
 pub use nvm::{Nvm, NvmScheme};
 pub use pr::{refresh_pr, Pr, PrScheme};
