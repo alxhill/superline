@@ -3,6 +3,9 @@ use std::env;
 use std::fmt::Write;
 use std::marker::PhantomData;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 // Backend selection. At most one of these modules is compiled in; when more
 // than one feature is enabled the precedence is `gitoxide` > `libgit` > the
@@ -149,6 +152,21 @@ const GITHUB_LOGO: &str = "\u{e709}";
 const GIT_ICON: &str = "\u{e0a0}";
 const WORKTREE_ICON: &str = "\u{f1bb}";
 
+const RENDER_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn run_git_with_timeout<F>(git_dir: PathBuf, timeout: Duration, run_git: F) -> Option<GitStats>
+where
+    F: FnOnce(&std::path::Path) -> GitStats + Send + 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let stats = run_git(&git_dir);
+        let _ = sender.send(stats);
+    });
+
+    receiver.recv_timeout(timeout).ok()
+}
+
 impl<S: GitScheme> Module for Git<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let (git_dir, is_worktree) = match find_git_dir() {
@@ -156,7 +174,9 @@ impl<S: GitScheme> Module for Git<S> {
             _ => return,
         };
 
-        let stats = internal::run_git(&git_dir);
+        let Some(stats) = run_git_with_timeout(git_dir, RENDER_TIMEOUT, internal::run_git) else {
+            return;
+        };
 
         let (branch_fg, branch_bg) = if stats.is_dirty() {
             (S::git_repo_dirty_fg(), S::git_repo_dirty_bg())
@@ -226,5 +246,50 @@ impl<S: GitScheme> Module for Git<S> {
                 Style::simple(S::git_remote_fg(), S::git_remote_bg()),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::thread;
+    use std::time::Duration;
+
+    use super::{run_git_with_timeout, GitStats, RENDER_TIMEOUT};
+
+    fn stats(branch_name: &str) -> GitStats {
+        GitStats {
+            untracked: 0,
+            conflicted: 0,
+            non_staged: 0,
+            ahead: 0,
+            behind: 0,
+            staged: 0,
+            remote: false,
+            branch_name: branch_name.to_owned(),
+        }
+    }
+
+    #[test]
+    fn git_render_timeout_is_five_seconds() {
+        assert_eq!(RENDER_TIMEOUT, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn git_stats_are_returned_when_rendering_finishes_in_time() {
+        let result =
+            run_git_with_timeout(PathBuf::new(), Duration::from_secs(1), |_| stats("main"));
+
+        assert_eq!(result.unwrap().branch_name, "main");
+    }
+
+    #[test]
+    fn git_module_is_skipped_when_rendering_times_out() {
+        let result = run_git_with_timeout(PathBuf::new(), Duration::from_millis(10), |_| {
+            thread::sleep(Duration::from_millis(100));
+            stats("main")
+        });
+
+        assert!(result.is_none());
     }
 }
