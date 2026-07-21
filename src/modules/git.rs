@@ -160,8 +160,14 @@ const GITHUB_LOGO: &str = "\u{e709}";
 const GIT_ICON: &str = "\u{e0a0}";
 const WORKTREE_ICON: &str = "\u{f1bb}";
 
-const RENDER_TIMEOUT: Duration = Duration::from_secs(1);
+const RENDER_TIMEOUT: Duration = Duration::from_millis(100);
 const REFRESH_DEBOUNCE: Duration = Duration::from_secs(20);
+
+enum GitRender {
+    Ready(GitStats),
+    Loading,
+    Unavailable,
+}
 
 fn run_git_with_timeout<F, R>(
     git_dir: PathBuf,
@@ -169,7 +175,7 @@ fn run_git_with_timeout<F, R>(
     timeout: Duration,
     run_git: F,
     refresh: R,
-) -> Option<GitStats>
+) -> GitRender
 where
     F: FnOnce(&Path) -> GitStats + Send + 'static,
     R: FnOnce(&Path, &Path),
@@ -186,15 +192,23 @@ where
             if let Some(path) = cache_path {
                 write_cache(&path, &stats);
             }
-            Some(stats)
+            GitRender::Ready(stats)
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             if let Some(path) = cache_path.as_deref() {
                 refresh(&refresh_dir, path);
             }
-            cache_path.as_deref().and_then(read_cache)
+            cache_path
+                .as_deref()
+                .and_then(read_cache)
+                .map(GitRender::Ready)
+                .unwrap_or(GitRender::Loading)
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => cache_path.as_deref().and_then(read_cache),
+        Err(mpsc::RecvTimeoutError::Disconnected) => cache_path
+            .as_deref()
+            .and_then(read_cache)
+            .map(GitRender::Ready)
+            .unwrap_or(GitRender::Unavailable),
     }
 }
 
@@ -284,14 +298,23 @@ impl<S: GitScheme> Module for Git<S> {
         };
 
         let cache_path = cache_path_for(&git_dir);
-        let Some(stats) = run_git_with_timeout(
+        let icon = if is_worktree { WORKTREE_ICON } else { GIT_ICON };
+        let stats = match run_git_with_timeout(
             git_dir,
             cache_path,
             RENDER_TIMEOUT,
             internal::run_git,
             spawn_refresh,
-        ) else {
-            return;
+        ) {
+            GitRender::Ready(stats) => stats,
+            GitRender::Loading => {
+                powerline.add_segment(
+                    format!("{icon} loading…"),
+                    Style::simple(S::git_repo_clean_fg(), S::git_repo_clean_bg()),
+                );
+                return;
+            }
+            GitRender::Unavailable => return,
         };
 
         let (branch_fg, branch_bg) = if stats.is_dirty() {
@@ -300,7 +323,6 @@ impl<S: GitScheme> Module for Git<S> {
             (S::git_repo_clean_fg(), S::git_repo_clean_bg())
         };
 
-        let icon = if is_worktree { WORKTREE_ICON } else { GIT_ICON };
         powerline.add_segment(
             format!("{} {}", icon, stats.branch_name),
             Style::simple(branch_fg, branch_bg),
@@ -374,7 +396,9 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use super::{read_cache, run_git_with_timeout, write_cache, GitStats, RENDER_TIMEOUT};
+    use super::{
+        read_cache, run_git_with_timeout, write_cache, GitRender, GitStats, RENDER_TIMEOUT,
+    };
 
     fn unique_temp_dir() -> PathBuf {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -398,8 +422,8 @@ mod tests {
     }
 
     #[test]
-    fn git_render_timeout_is_one_second() {
-        assert_eq!(RENDER_TIMEOUT, Duration::from_secs(1));
+    fn git_render_timeout_is_one_hundred_milliseconds() {
+        assert_eq!(RENDER_TIMEOUT, Duration::from_millis(100));
     }
 
     #[test]
@@ -416,7 +440,10 @@ mod tests {
             |_, _| panic!("a fast render must not start a background refresh"),
         );
 
-        assert_eq!(result.unwrap().branch_name, "fresh");
+        let GitRender::Ready(result) = result else {
+            panic!("fresh git stats should render");
+        };
+        assert_eq!(result.branch_name, "fresh");
         assert_eq!(read_cache(&cache).unwrap().branch_name, "fresh");
 
         fs::remove_dir_all(dir).ok();
@@ -443,25 +470,38 @@ mod tests {
             },
         );
 
-        assert_eq!(result.unwrap().branch_name, "cached");
+        let GitRender::Ready(result) = result else {
+            panic!("cached git stats should render");
+        };
+        assert_eq!(result.branch_name, "cached");
         assert!(refresh_started.get());
 
         fs::remove_dir_all(dir).ok();
     }
 
     #[test]
-    fn git_module_is_skipped_when_rendering_times_out_without_a_cache() {
+    fn git_module_shows_loading_while_first_background_refresh_runs() {
+        let dir = unique_temp_dir();
+        let cache = dir.join("git.json");
+        let refresh_started = Cell::new(false);
+
         let result = run_git_with_timeout(
             PathBuf::new(),
-            None,
+            Some(cache.clone()),
             Duration::from_millis(10),
             |_| {
                 thread::sleep(Duration::from_millis(100));
                 stats("fresh")
             },
-            |_, _| panic!("a refresh without a cache destination cannot help"),
+            |_, path| {
+                assert_eq!(path, cache);
+                refresh_started.set(true);
+            },
         );
 
-        assert!(result.is_none());
+        assert!(matches!(result, GitRender::Loading));
+        assert!(refresh_started.get());
+
+        fs::remove_dir_all(dir).ok();
     }
 }
