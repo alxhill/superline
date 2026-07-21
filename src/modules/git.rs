@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::io::Write as _;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -160,16 +161,20 @@ const GIT_ICON: &str = "\u{e0a0}";
 const WORKTREE_ICON: &str = "\u{f1bb}";
 
 const RENDER_TIMEOUT: Duration = Duration::from_secs(1);
+const REFRESH_DEBOUNCE: Duration = Duration::from_secs(20);
 
-fn run_git_with_timeout<F>(
+fn run_git_with_timeout<F, R>(
     git_dir: PathBuf,
     cache_path: Option<PathBuf>,
     timeout: Duration,
     run_git: F,
+    refresh: R,
 ) -> Option<GitStats>
 where
     F: FnOnce(&Path) -> GitStats + Send + 'static,
+    R: FnOnce(&Path, &Path),
 {
+    let refresh_dir = git_dir.clone();
     let (sender, receiver) = mpsc::sync_channel(1);
     thread::spawn(move || {
         let stats = run_git(&git_dir);
@@ -183,7 +188,13 @@ where
             }
             Some(stats)
         }
-        Err(_) => cache_path.as_deref().and_then(read_cache),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            if let Some(path) = cache_path.as_deref() {
+                refresh(&refresh_dir, path);
+            }
+            cache_path.as_deref().and_then(read_cache)
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => cache_path.as_deref().and_then(read_cache),
     }
 }
 
@@ -215,6 +226,56 @@ fn write_cache(path: &Path, stats: &GitStats) {
     }
 }
 
+fn refresh_in_flight(lock_path: &Path) -> bool {
+    fs::metadata(lock_path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_some_and(|elapsed| elapsed < REFRESH_DEBOUNCE)
+}
+
+fn spawn_refresh(repo_root: &Path, cache_path: &Path) {
+    let lock_path = cache_path.with_extension("lock");
+    if refresh_in_flight(&lock_path) {
+        return;
+    }
+
+    if let Some(parent) = cache_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = File::create(&lock_path);
+
+    let Ok(exe) = env::current_exe() else {
+        let _ = fs::remove_file(&lock_path);
+        return;
+    };
+
+    if Command::new(exe)
+        .arg("refresh-git")
+        .arg("--repo-dir")
+        .arg(repo_root)
+        .arg("--cache")
+        .arg(cache_path)
+        .current_dir(repo_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .is_err()
+    {
+        let _ = fs::remove_file(lock_path);
+    }
+}
+
+/// Performs a blocking git status refresh and updates the cache. Invoked by the
+/// hidden `refresh-git` subcommand in a detached process after rendering times
+/// out, so the result is available to a later prompt.
+pub fn refresh_git(repo_dir: &Path, cache_path: &Path) {
+    let stats = internal::run_git(repo_dir);
+    write_cache(cache_path, &stats);
+    let _ = fs::remove_file(cache_path.with_extension("lock"));
+}
+
 impl<S: GitScheme> Module for Git<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let (git_dir, is_worktree) = match find_git_dir() {
@@ -223,9 +284,13 @@ impl<S: GitScheme> Module for Git<S> {
         };
 
         let cache_path = cache_path_for(&git_dir);
-        let Some(stats) =
-            run_git_with_timeout(git_dir, cache_path, RENDER_TIMEOUT, internal::run_git)
-        else {
+        let Some(stats) = run_git_with_timeout(
+            git_dir,
+            cache_path,
+            RENDER_TIMEOUT,
+            internal::run_git,
+            spawn_refresh,
+        ) else {
             return;
         };
 
@@ -302,6 +367,7 @@ impl<S: GitScheme> Module for Git<S> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -347,6 +413,7 @@ mod tests {
             Some(cache.clone()),
             Duration::from_secs(1),
             |_| stats("fresh"),
+            |_, _| panic!("a fast render must not start a background refresh"),
         );
 
         assert_eq!(result.unwrap().branch_name, "fresh");
@@ -360,28 +427,40 @@ mod tests {
         let dir = unique_temp_dir();
         let cache = dir.join("git.json");
         write_cache(&cache, &stats("cached"));
+        let refresh_started = Cell::new(false);
 
         let result = run_git_with_timeout(
             PathBuf::new(),
-            Some(cache),
+            Some(cache.clone()),
             Duration::from_millis(10),
             |_| {
                 thread::sleep(Duration::from_millis(100));
                 stats("fresh")
             },
+            |_, path| {
+                assert_eq!(path, cache);
+                refresh_started.set(true);
+            },
         );
 
         assert_eq!(result.unwrap().branch_name, "cached");
+        assert!(refresh_started.get());
 
         fs::remove_dir_all(dir).ok();
     }
 
     #[test]
     fn git_module_is_skipped_when_rendering_times_out_without_a_cache() {
-        let result = run_git_with_timeout(PathBuf::new(), None, Duration::from_millis(10), |_| {
-            thread::sleep(Duration::from_millis(100));
-            stats("fresh")
-        });
+        let result = run_git_with_timeout(
+            PathBuf::new(),
+            None,
+            Duration::from_millis(10),
+            |_| {
+                thread::sleep(Duration::from_millis(100));
+                stats("fresh")
+            },
+            |_, _| panic!("a refresh without a cache destination cannot help"),
+        );
 
         assert!(result.is_none());
     }

@@ -11,7 +11,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
 use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
-use superline::modules::refresh_pr;
+use superline::modules::{refresh_git, refresh_pr};
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
 use superline::Powerline;
@@ -154,6 +154,10 @@ enum PowerlineArgs {
     /// background by the `pr` module - not intended to be called by hand.
     #[command(hide = true)]
     RefreshPr(RefreshPrArgs),
+    /// Internal: refresh cached git status after a render timeout. Spawned in
+    /// the background by the `git` module - not intended to be called by hand.
+    #[command(hide = true)]
+    RefreshGit(RefreshGitArgs),
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -208,6 +212,14 @@ struct RefreshPrArgs {
 }
 
 #[derive(Debug, Args)]
+struct RefreshGitArgs {
+    #[arg(long)]
+    repo_dir: PathBuf,
+    #[arg(long)]
+    cache: PathBuf,
+}
+
+#[derive(Debug, Args)]
 struct InstallArgs {
     #[arg(value_enum)]
     shell: ShellArg,
@@ -243,6 +255,7 @@ fn main() {
         PowerlineArgs::Install(args) => install(args),
         PowerlineArgs::Config => open_config(),
         PowerlineArgs::RefreshPr(args) => refresh_pr(&args.branch, &args.repo_dir, &args.cache),
+        PowerlineArgs::RefreshGit(args) => refresh_git(&args.repo_dir, &args.cache),
     }
 }
 

@@ -144,7 +144,7 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
 * **cargo** - show a crab icon if a `Cargo.toml` file is present in the current dir
 * **git** - show the current git branch and status of the repo (modified, staged, and untracked files, plus git remote
   ahead/behind stats). Status collection waits up to one second; if it takes longer, the most recent cached output is
-  shown instead.
+  shown instead while the refresh continues in the background for the next prompt.
 * **pr** - show a clickable link to the GitHub PR for the current branch (via the [`gh`](https://cli.github.com)
   CLI), if one exists. The segment colour reflects the PR state (draft, open, merged, closed). When the `status` option
   is enabled (the default), a coloured dot is appended after the PR number reflecting the CI check status - green for
