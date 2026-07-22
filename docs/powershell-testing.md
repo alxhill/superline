@@ -110,6 +110,10 @@ Checks:
       - Windows: `cmd /c exit 5`
       - Unix: `sh -c 'exit 5'`
       Then run a successful command and confirm it returns to normal.
+- [ ] **Ctrl-C recovery** — start a long-running native process (`cmd /c ping -t
+      127.0.0.1`), stop it with Ctrl-C, and confirm the next prompt is still
+      superline rather than PowerShell's fallback `PS>`. Repeat with two quick
+      Ctrl-C presses, both outside and inside a git repository.
 - [ ] **cmdlet failure** — `Get-Item C:\does-not-exist` (or `/nope`) shows a
       failure status (`1`).
 - [ ] **command duration** — `Start-Sleep -Seconds 2` shows a duration segment

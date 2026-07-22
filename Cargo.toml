@@ -33,6 +33,13 @@ chrono = "0.4.38"
 users = "0.11"
 libc = "0.2"
 
+# PowerShell renders the prompt by launching `superline show` as a native
+# console process. Ignore Windows console Ctrl-C events in that short-lived
+# renderer so an interrupt intended for the previous command cannot make the
+# custom prompt return no output and fall back to `PS>`.
+[target.'cfg(windows)'.dependencies]
+ctrlc = "3.5.2"
+
 # Pick at most one git backend. When several are enabled the precedence is
 # `gitoxide` > `libgit` > the `git` CLI fallback (see `src/modules/git.rs`).
 # To use gitoxide on its own: `--no-default-features --features gitoxide`.
