@@ -407,6 +407,8 @@ fn print_shell_conf(shell: ShellSubcommand) {
 }
 
 fn show(args: ShowArgs, right_only: bool) {
+    ignore_ctrl_c_for_powershell_prompt(args.shell);
+
     match args.shell {
         ShellArg::Bash => SHELL.set(Shell::Bash),
         ShellArg::Zsh => SHELL.set(Shell::Zsh),
@@ -431,6 +433,24 @@ fn show(args: ShowArgs, right_only: bool) {
         }
     }
 }
+
+/// Keep a Windows Ctrl-C event from terminating the short-lived PowerShell
+/// prompt renderer before it can return any output. PowerShell substitutes its
+/// emergency `PS>` prompt when the custom `prompt` function returns nothing.
+///
+/// Limit this to PowerShell on Windows: the other CLI commands should remain
+/// interruptible, and Unix shells already isolate foreground process groups.
+#[cfg(windows)]
+fn ignore_ctrl_c_for_powershell_prompt(shell: ShellArg) {
+    if shell == ShellArg::Pwsh {
+        // There is only one `show` invocation per process. If registration
+        // fails, keep rendering instead of turning that failure into `PS>`.
+        let _ = ctrlc::set_handler(|| {});
+    }
+}
+
+#[cfg(not(windows))]
+fn ignore_ctrl_c_for_powershell_prompt(_shell: ShellArg) {}
 
 fn render_prompt(args: &ShowArgs, conf: Config, theme: LoadedTheme, right_only: bool) {
     if right_only {
