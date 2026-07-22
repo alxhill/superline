@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2](https://github.com/alxhill/superline/compare/v0.6.1...v0.6.2) - 2026-07-22
+
+### Fixed
+
+- *(shell)* preserve powershell prompt after ctrl-c ([#33](https://github.com/alxhill/superline/pull/33))
+
 ### Fixed
 
 - *(shell)* keep the Windows PowerShell prompt renderer alive when a Ctrl-C
