@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   event interrupts the preceding native command, preventing PowerShell from
   falling back to `PS>`.
 
+## [0.6.1](https://github.com/alxhill/superline/compare/v0.6.0...v0.6.1) - 2026-07-21
+
+### Fixed
+
+- *(git)* cache status after 100ms timeout ([#31](https://github.com/alxhill/superline/pull/31))
+
 ## [0.6.0](https://github.com/alxhill/superline/compare/v0.5.5...v0.6.0) - 2026-07-06
 
 ### Fixed

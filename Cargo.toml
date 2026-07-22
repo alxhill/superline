@@ -1,6 +1,6 @@
 [package]
 name = "superline"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["alxhill <me@alxhill.com>", "cirho <me@cirho.com>"]
 edition = "2021"
 description = "Configurable Powerline implementation in pure Rust."
