@@ -3,6 +3,8 @@ use std::time::Duration;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
+pub const DEFAULT_GIT_STATUS_TIMEOUT_MS: u64 = 250;
+
 pub trait TerminalRuntimeMetadata {
     fn shell_name(&self) -> String;
     fn total_columns(&self) -> usize;
@@ -36,7 +38,10 @@ pub enum LineSegment {
         resolve_symlinks: bool,
     },
     ReadOnly,
-    Git,
+    Git {
+        #[serde(default = "default_git_status_timeout_ms")]
+        status_timeout_ms: u64,
+    },
     Pr {
         /// Append a coloured dot reflecting the PR's CI check status. On by
         /// default; set to `false` to show just the PR number.
@@ -70,6 +75,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_git_status_timeout_ms() -> u64 {
+    DEFAULT_GIT_STATUS_TIMEOUT_MS
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum KnownLineSegment {
@@ -83,7 +92,10 @@ enum KnownLineSegment {
         resolve_symlinks: bool,
     },
     ReadOnly,
-    Git,
+    Git {
+        #[serde(default = "default_git_status_timeout_ms")]
+        status_timeout_ms: u64,
+    },
     Pr {
         #[serde(default = "default_true")]
         status: bool,
@@ -127,7 +139,7 @@ impl From<KnownLineSegment> for LineSegment {
                 resolve_symlinks,
             },
             KnownLineSegment::ReadOnly => LineSegment::ReadOnly,
-            KnownLineSegment::Git => LineSegment::Git,
+            KnownLineSegment::Git { status_timeout_ms } => LineSegment::Git { status_timeout_ms },
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
             KnownLineSegment::PythonEnv => LineSegment::PythonEnv,
             KnownLineSegment::Nvm => LineSegment::Nvm,
@@ -154,6 +166,14 @@ impl<'de> Deserialize<'de> for LineSegment {
         D: Deserializer<'de>,
     {
         let value = Value::deserialize(deserializer)?;
+
+        // Preserve the original string shorthand while also accepting the
+        // object form needed to configure the timeout.
+        if value == Value::String("git".to_string()) {
+            return Ok(LineSegment::Git {
+                status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+            });
+        }
 
         match serde_json::from_value::<KnownLineSegment>(value.clone()) {
             Ok(segment) => Ok(segment.into()),
@@ -226,7 +246,9 @@ impl Default for Config {
                             resolve_symlinks: false,
                         },
                         LineSegment::Padding(2),
-                        LineSegment::Git,
+                        LineSegment::Git {
+                            status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                        },
                         LineSegment::Pr { status: true },
                     ],
                     right: Some(vec![]),
@@ -274,6 +296,32 @@ mod tests {
         let reserialized = serde_json::to_string_pretty(&parsed)
             .expect("reparsed config should serialize to JSON");
         assert_eq!(json, reserialized);
+    }
+
+    #[test]
+    fn git_string_shorthand_uses_default_status_timeout() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""git""#).expect("git shorthand should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Git {
+                status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+            }
+        );
+    }
+
+    #[test]
+    fn git_status_timeout_is_configurable() {
+        let parsed: LineSegment = serde_json::from_str(r#"{"git":{"status_timeout_ms":250}}"#)
+            .expect("configured git module should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Git {
+                status_timeout_ms: 250,
+            }
+        );
     }
 
     #[test]

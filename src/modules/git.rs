@@ -25,6 +25,7 @@ use libgit as internal;
 use process as internal;
 
 use crate::colors::Color;
+use crate::config::DEFAULT_GIT_STATUS_TIMEOUT_MS;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -40,6 +41,7 @@ mod libgit;
 mod gitoxide;
 
 pub struct Git<S> {
+    status_timeout: Duration,
     scheme: PhantomData<S>,
 }
 
@@ -101,7 +103,12 @@ impl<S: GitScheme> Default for Git<S> {
 
 impl<S: GitScheme> Git<S> {
     pub fn new() -> Git<S> {
+        Self::with_status_timeout(Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS))
+    }
+
+    pub fn with_status_timeout(status_timeout: Duration) -> Git<S> {
         Git {
+            status_timeout,
             scheme: PhantomData,
         }
     }
@@ -160,7 +167,6 @@ const GITHUB_LOGO: &str = "\u{e709}";
 const GIT_ICON: &str = "\u{e0a0}";
 const WORKTREE_ICON: &str = "\u{f1bb}";
 
-const RENDER_TIMEOUT: Duration = Duration::from_millis(100);
 const REFRESH_DEBOUNCE: Duration = Duration::from_secs(20);
 
 enum GitRender {
@@ -302,7 +308,7 @@ impl<S: GitScheme> Module for Git<S> {
         let stats = match run_git_with_timeout(
             git_dir,
             cache_path,
-            RENDER_TIMEOUT,
+            self.status_timeout,
             internal::run_git,
             spawn_refresh,
         ) {
@@ -396,9 +402,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use super::{
-        read_cache, run_git_with_timeout, write_cache, GitRender, GitStats, RENDER_TIMEOUT,
-    };
+    use super::{read_cache, run_git_with_timeout, write_cache, GitRender, GitStats};
 
     fn unique_temp_dir() -> PathBuf {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -419,11 +423,6 @@ mod tests {
             remote: false,
             branch_name: branch_name.to_owned(),
         }
-    }
-
-    #[test]
-    fn git_render_timeout_is_one_hundred_milliseconds() {
-        assert_eq!(RENDER_TIMEOUT, Duration::from_millis(100));
     }
 
     #[test]
