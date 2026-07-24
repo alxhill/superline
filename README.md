@@ -54,19 +54,19 @@ Cargo's bin directory must be in your `$PATH` for the `superline` command to be 
 ### Git backends
 
 The `git` segment can be powered by one of three interchangeable backends, selected at compile time via cargo
-features. They all produce identical output, so this is purely a build-time trade-off:
+features. They produce identical output but have different performance and build-dependency trade-offs:
 
-- **`libgit`** (default) — uses the `git2` bindings to `libgit2`. Fast and dependency-light.
-- **`gitoxide`** — uses the pure-Rust [`gix`](https://crates.io/crates/gix) crate, with no C dependencies.
+- **`gitoxide`** (default) — uses the pure-Rust [`gix`](https://crates.io/crates/gix) crate, with no C dependencies.
+- **`libgit`** — uses the `git2` bindings to `libgit2`.
 - **the `git` CLI** — the fallback when no backend feature is enabled; shells out to the `git` binary on `$PATH`.
 
 When more than one backend feature is enabled the precedence is `gitoxide` > `libgit` > the CLI fallback. To build
 against a specific backend:
 
 ```bash
-cargo install superline                                          # libgit (default)
-cargo install superline --no-default-features --features gitoxide # pure-Rust gitoxide
-cargo install superline --no-default-features                     # git CLI fallback
+cargo install superline                                        # gitoxide (default)
+cargo install superline --no-default-features --features libgit # libgit2
+cargo install superline --no-default-features                   # git CLI fallback
 ```
 
 ## Customization

@@ -46,12 +46,12 @@ jobs:
       - name: Test (no default features, git-CLI backend)
         run: cargo test --no-default-features --verbose
 
-      # Guard the pure-Rust gitoxide backend (the `gix` crate, no C toolchain).
-      - name: Clippy (gitoxide backend)
-        run: cargo clippy --no-default-features --features gitoxide --all-targets -- -D warnings
+      # Guard the optional libgit2 backend.
+      - name: Clippy (libgit backend)
+        run: cargo clippy --no-default-features --features libgit --all-targets -- -D warnings
 
-      - name: Test (gitoxide backend)
-        run: cargo test --no-default-features --features gitoxide --verbose
+      - name: Test (libgit backend)
+        run: cargo test --no-default-features --features libgit --verbose
 
   windows:
     name: Build & test (Windows)
@@ -72,8 +72,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      # Default features build libgit2 from C source; windows-latest ships the
-      # MSVC toolchain + cmake that `cc`/`libgit2-sys` need.
+      # Default features use the pure-Rust gitoxide backend.
       - name: Build
         run: cargo build --verbose
 
@@ -85,10 +84,10 @@ jobs:
       - name: Build (no default features, git-CLI backend)
         run: cargo build --no-default-features --verbose
 
-      # gitoxide is pure Rust, so it should build on Windows without the C
-      # toolchain that the default libgit2 backend needs.
-      - name: Build (gitoxide backend)
-        run: cargo build --no-default-features --features gitoxide --verbose
+      # The optional libgit2 backend needs the MSVC toolchain + cmake supplied
+      # by windows-latest.
+      - name: Build (libgit backend)
+        run: cargo build --no-default-features --features libgit --verbose
 
       # The steps above build the committed Cargo.lock. `cargo install` instead
       # resolves dependencies fresh, so a published release can pull newer
@@ -100,9 +99,10 @@ jobs:
       # raw-dylib imports and drops that coverage. Resolve to the latest
       # compatible versions and rebuild so this job also mirrors the
       # `cargo install` view and fails loudly if a transitive bump removes a
-      # system library we depend on. Kept last because it rewrites Cargo.lock.
+      # system library the optional libgit backend depends on. Kept last because
+      # it rewrites Cargo.lock.
       - name: Update to latest compatible dependencies
         run: cargo update
 
-      - name: Build (latest deps)
-        run: cargo build --verbose
+      - name: Build (libgit backend, latest deps)
+        run: cargo build --no-default-features --features libgit --verbose
