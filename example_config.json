@@ -20,7 +20,11 @@
         {
           "padding": 2
         },
-        "git",
+        {
+          "git": {
+            "status_timeout_ms": 250
+          }
+        },
         { "pr": { "status": true } }
       ],
       "right": []

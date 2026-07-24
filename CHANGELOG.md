@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(git)* make the status collection timeout configurable with
+  `status_timeout_ms`.
+
 ## [0.6.2](https://github.com/alxhill/superline/compare/v0.6.1...v0.6.2) - 2026-07-22
 
 ### Fixed

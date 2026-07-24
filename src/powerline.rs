@@ -345,7 +345,9 @@ impl Powerline {
                     self.add_module(Cmd::<T>::new(runtime_data.last_command_status()))
                 }
                 LineSegment::Cargo => self.add_module(Cargo::<T>::new()),
-                LineSegment::Git => self.add_module(Git::<T>::new()),
+                LineSegment::Git { status_timeout_ms } => self.add_module(
+                    Git::<T>::with_status_timeout(Duration::from_millis(*status_timeout_ms)),
+                ),
                 LineSegment::Pr { status } => self.add_module(Pr::<T>::new(*status)),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
