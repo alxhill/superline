@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/alxhill/superline/compare/v0.6.2...v0.7.0) - 2026-07-24
+
+### Added
+
+- *(git)* make gitoxide the default backend ([#37](https://github.com/alxhill/superline/pull/37))
+- *(git)* make status timeout configurable ([#35](https://github.com/alxhill/superline/pull/35))
+
 ## [0.6.2](https://github.com/alxhill/superline/compare/v0.6.1...v0.6.2) - 2026-07-22
 
 ### Fixed
