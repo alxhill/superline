@@ -42,9 +42,9 @@ ctrlc = "3.5.2"
 
 # Pick at most one git backend. When several are enabled the precedence is
 # `gitoxide` > `libgit` > the `git` CLI fallback (see `src/modules/git.rs`).
-# To use gitoxide on its own: `--no-default-features --features gitoxide`.
+# To use libgit on its own: `--no-default-features --features libgit`.
 [features]
-default = ["libgit"]
+default = ["gitoxide"]
 libgit = ["git2"]
 gitoxide = ["gix"]
 
