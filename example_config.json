@@ -47,7 +47,7 @@
           "separator": "round"
         },
         "nvm",
-        "sdkman",
+        "java",
         "python_env",
         "cargo",
         {

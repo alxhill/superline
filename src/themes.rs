@@ -5,7 +5,7 @@ pub use simple::SimpleTheme;
 use crate::colors::Color;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme, SdkmanScheme,
+    JavaScheme, LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme,
     ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
 };
 
@@ -51,7 +51,7 @@ pub trait CompleteTheme:
     + CargoScheme
     + TimeScheme
     + NvmScheme
-    + SdkmanScheme
+    + JavaScheme
     + ErrorMessageScheme
     + UnknownScheme
 {

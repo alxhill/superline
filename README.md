@@ -4,7 +4,8 @@
 
 _Forked from [cirho/powerline-rust](https://github.com/cirho/powerline-rust) and adjusted for personal taste_
 
-superline supports git and github natively, and detects rust, python, node and java environments.
+superline supports git and github natively, and detects rust, python, node and java environments - from
+`.sdkmanrc`, `.nvmrc` and `.python-version`, or from a [mise](https://mise.jdx.dev) config.
 
 ![Shell with pyenv showing](https://raw.githubusercontent.com/alxhill/superline/main/with_pyenv.png)
 
@@ -144,8 +145,14 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
 * **user** - the current user
 * **read_only** - show a lockfile icon if the current directory is read only
 * **time** - show the current time, with an optional "format" - this has to be present, but can be null
-* **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python
-* **cargo** - show a crab icon if a `Cargo.toml` file is present in the current dir
+* **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.
+  Otherwise, show the version pinned by a mise config or `.python-version`, or a bare python icon in any directory
+  containing a `pyproject.toml`
+* **nvm** - show the active node version, falling back to the version pinned by a mise config or `.nvmrc`
+* **java** - show the java version and distribution pinned by a mise config or `.sdkmanrc`. Also accepted under its
+  former name, `sdkman`
+* **cargo** - show a crab icon if a `Cargo.toml` file is present in the current dir, plus the toolchain version if a
+  mise config pins one
 * **git** - show the current git branch and status of the repo (modified, staged, and untracked files, plus git remote
   ahead/behind stats). Status collection waits up to `status_timeout_ms` milliseconds (250 by default); if it takes
   longer, the most recent cached output is shown while the refresh continues in the background for the next prompt.
@@ -158,6 +165,18 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   prompt - the link appears on a subsequent prompt once the result is ready. Skipped entirely on `develop`, `main`, and
   `master`. Unlike most segments, `pr` is written as an object so its options can be set:
   `{ "pr": { "status": false } }` shows just the PR number with no check dot.
+
+#### mise
+
+The `java`, `nvm`, `python_env` and `cargo` segments read tool versions from [mise](https://mise.jdx.dev) configs
+(`mise.toml`, `.mise.toml`, `.config/mise/config.toml`, `.tool-versions`, and the `.local` variants). Configs are
+searched from the current directory upwards, with the nearest declaration of a tool winning, and a version from mise
+takes precedence over one from a language-specific file such as `.sdkmanrc`, since mise is what actually puts the tool
+on the path. A `󱁤` marker is shown next to any version that came from mise; themes can change or hide it
+with the `mise_icon` property.
+
+The global config in `$HOME` is deliberately not read - these segments report the tools a project pins, so a global
+`python` entry would otherwise light them up in every directory.
 
 There are also three ways to modify the layout:
 
@@ -192,7 +211,8 @@ A theme file has two keys: `defaults` and `modules`.
 * **defaults** - the `fg`/`bg` used for any colour a module doesn't set.
 * **modules** - per-module overrides, keyed by module name. Most modules accept `fg` and `bg`; some have extra
   properties (e.g. `git` has `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array). A few accept string
-  properties such as `cmd.user_symbol` or `pr.icon`. Any property you omit falls back to `defaults`.
+  properties such as `cmd.user_symbol`, `pr.icon`, or the `mise_icon` of a language module (set it to `""` to hide
+  the mise marker). Any property you omit falls back to `defaults`.
 
 Colours are either a name (defined in `src/colors.rs`, e.g. `"green"`, `"warning_red"`) or an ANSI 256-colour code
 (`0`–`255`). See [`example_theme.json`](https://github.com/alxhill/superline/blob/main/example_theme.json) for a full

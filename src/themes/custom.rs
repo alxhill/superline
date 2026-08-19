@@ -11,7 +11,7 @@ use thiserror::Error;
 use crate::colors::Color;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme, SdkmanScheme,
+    JavaScheme, LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme,
     ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -158,6 +158,14 @@ impl DefaultColors for CustomTheme {
 
 impl CompleteTheme for CustomTheme {}
 
+/// Per-module override of the marker shown next to a mise-managed version,
+/// falling back to the shared default when the theme does not set one.
+fn mise_icon_from_json(module: &str) -> &'static str {
+    CustomTheme::get_str(module, "mise_icon")
+        .map(|str| str.leak() as &'static str)
+        .unwrap_or(crate::mise::DEFAULT_ICON)
+}
+
 macro_rules! color_from_json {
     ($function:ident, $module:ident, $property:ident, $default:ident) => {
         fn $function() -> Color {
@@ -167,20 +175,43 @@ macro_rules! color_from_json {
     };
 }
 
-impl SdkmanScheme for CustomTheme {
-    color_from_json!(sdkman_fg, sdkman, fg, default_fg);
-    color_from_json!(sdkman_bg, sdkman, bg, default_bg);
+impl JavaScheme for CustomTheme {
+    // `sdkman` is the name this module had before it learned about mise; it is
+    // still honoured so existing theme files keep working.
+    fn java_fg() -> Color {
+        Self::get_color("java", "fg")
+            .or_else(|| Self::get_color("sdkman", "fg"))
+            .unwrap_or_else(Self::default_fg)
+    }
+
+    fn java_bg() -> Color {
+        Self::get_color("java", "bg")
+            .or_else(|| Self::get_color("sdkman", "bg"))
+            .unwrap_or_else(Self::default_bg)
+    }
+
+    fn mise_icon() -> &'static str {
+        mise_icon_from_json("java")
+    }
 }
 
 impl NvmScheme for CustomTheme {
     color_from_json!(nvm_fg, nvm, fg, default_fg);
     color_from_json!(nvm_bg, nvm, bg, default_bg);
     color_from_json!(nvm_inactive_bg, nvm, inactive_bg, default_bg);
+
+    fn mise_icon() -> &'static str {
+        mise_icon_from_json("nvm")
+    }
 }
 
 impl CargoScheme for CustomTheme {
     color_from_json!(cargo_fg, cargo, fg, default_fg);
     color_from_json!(cargo_bg, cargo, bg, default_bg);
+
+    fn mise_icon() -> &'static str {
+        mise_icon_from_json("cargo")
+    }
 }
 
 impl ErrorMessageScheme for CustomTheme {
@@ -280,6 +311,10 @@ impl PythonEnvScheme for CustomTheme {
 
     color_from_json!(pyver_fg, py, version_fg, default_fg);
     color_from_json!(pyver_bg, py, version_bg, default_bg);
+
+    fn mise_icon() -> &'static str {
+        mise_icon_from_json("py")
+    }
 }
 
 impl ReadOnlyScheme for CustomTheme {

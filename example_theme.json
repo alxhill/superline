@@ -71,7 +71,7 @@
       "inactive_bg": "burgundy",
       "fg": "white"
     },
-    "sdkman": {
+    "java": {
       "bg": "white",
       "fg": 160
     }
