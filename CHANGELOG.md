@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/alxhill/superline/compare/v0.7.0...v0.8.0) - 2026-08-19
+
+### Added
+
+- *(mise)* read java, node, python and rust versions from mise configs ([#38](https://github.com/alxhill/superline/pull/38))
+
 ### Added
 
 - *(mise)* read java, node, python and rust versions from mise configs, marked
