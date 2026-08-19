@@ -6,6 +6,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::colors::Color;
+use crate::mise;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -27,6 +28,12 @@ pub trait PythonEnvScheme: DefaultColors {
     }
     fn pyver_bg() -> Color {
         Self::default_bg()
+    }
+
+    /// Marks a version that came from a mise config rather than
+    /// `.python-version`.
+    fn mise_icon() -> &'static str {
+        mise::DEFAULT_ICON
     }
 }
 
@@ -89,13 +96,24 @@ impl<S: PythonEnvScheme> Module for PythonEnv<S> {
                 Style::simple(S::pyver_fg(), S::pyver_bg()),
             );
         } else if let Ok(cwd) = env::current_dir() {
-            let py_ver = File::open(cwd.join(".python-version"))
-                .and_then(read_to_string)
-                .ok();
+            // A mise config wins over `.python-version`: it is what puts an
+            // interpreter on the path, and repos often keep both.
+            let mise_ver = mise::tool_version("python");
+            let py_ver = mise_ver.map(str::to_string).or_else(|| {
+                File::open(cwd.join(".python-version"))
+                    .and_then(read_to_string)
+                    .ok()
+            });
 
-            if cwd.join(".python-version").exists() || cwd.join("pyproject.toml").exists() {
+            if py_ver.is_some() || cwd.join("pyproject.toml").exists() {
+                let source_icon = if mise_ver.is_some() {
+                    format!("{} ", S::mise_icon())
+                } else {
+                    String::new()
+                };
+
                 powerline.add_short_segment(
-                    format!("{} ", pylogo),
+                    format!("{}{} ", source_icon, pylogo),
                     Style::simple(S::pyenv_fg(), S::pyenv_bg()),
                 );
 

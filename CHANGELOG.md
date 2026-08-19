@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(mise)* read java, node, python and rust versions from mise configs, marked
+  with a mise indicator. The `sdkman` segment is now named `java` (the old name
+  still parses).
+
 ## [0.7.0](https://github.com/alxhill/superline/compare/v0.6.2...v0.7.0) - 2026-07-24
 
 ### Added

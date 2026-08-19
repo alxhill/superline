@@ -50,7 +50,7 @@ pub enum LineSegment {
     },
     PythonEnv,
     Nvm,
-    Sdkman,
+    Java,
     Cargo,
     Host,
     Shell,
@@ -102,7 +102,9 @@ enum KnownLineSegment {
     },
     PythonEnv,
     Nvm,
-    Sdkman,
+    /// Named `sdkman` before it also read mise configs; both names parse.
+    #[serde(alias = "sdkman")]
+    Java,
     Cargo,
     Host,
     Shell,
@@ -143,7 +145,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
             KnownLineSegment::PythonEnv => LineSegment::PythonEnv,
             KnownLineSegment::Nvm => LineSegment::Nvm,
-            KnownLineSegment::Sdkman => LineSegment::Sdkman,
+            KnownLineSegment::Java => LineSegment::Java,
             KnownLineSegment::Cargo => LineSegment::Cargo,
             KnownLineSegment::Host => LineSegment::Host,
             KnownLineSegment::Shell => LineSegment::Shell,
@@ -208,6 +210,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "pr"
             | "python_env"
             | "nvm"
+            | "java"
             | "sdkman"
             | "cargo"
             | "host"
@@ -263,7 +266,7 @@ impl Default for Config {
                     right: Some(vec![
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::Nvm,
-                        LineSegment::Sdkman,
+                        LineSegment::Java,
                         LineSegment::PythonEnv,
                         LineSegment::Cargo,
                         LineSegment::Padding(0),
@@ -322,6 +325,16 @@ mod tests {
                 status_timeout_ms: 250,
             }
         );
+    }
+
+    #[test]
+    fn java_segment_still_parses_under_its_old_sdkman_name() {
+        for name in [r#""java""#, r#""sdkman""#] {
+            let parsed: LineSegment =
+                serde_json::from_str(name).unwrap_or_else(|_| panic!("{name} should parse"));
+
+            assert_eq!(parsed, LineSegment::Java);
+        }
     }
 
     #[test]
