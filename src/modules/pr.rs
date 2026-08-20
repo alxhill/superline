@@ -333,16 +333,7 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
 
     let gh: GhPr = serde_json::from_slice(&output.stdout).ok()?;
 
-    // A draft PR is reported as OPEN with `isDraft: true`, so check that first.
-    let state = if gh.is_draft {
-        PrState::Draft
-    } else {
-        match gh.state.as_str() {
-            "MERGED" => PrState::Merged,
-            "CLOSED" => PrState::Closed,
-            _ => PrState::Open,
-        }
-    };
+    let state = pr_state(&gh.state, gh.is_draft);
 
     Some(PrInfo {
         number: gh.number,
@@ -423,6 +414,18 @@ impl CheckItem {
     }
 }
 
+/// Derives the display state from the `state` and `isDraft` fields of a `gh`
+/// response. A draft PR is reported as OPEN with `isDraft: true`, but the flag
+/// stays set once the draft is merged or closed, so the terminal state wins.
+fn pr_state(state: &str, is_draft: bool) -> PrState {
+    match state {
+        "MERGED" => PrState::Merged,
+        "CLOSED" => PrState::Closed,
+        _ if is_draft => PrState::Draft,
+        _ => PrState::Open,
+    }
+}
+
 /// Shape of the `gh pr view --json ...` response we care about.
 #[derive(Deserialize)]
 struct GhPr {
@@ -447,5 +450,26 @@ fn write_cache(path: &Path, cache: &PrCache) {
         if serde_json::to_writer(&mut file, cache).is_ok() && file.flush().is_ok() {
             let _ = fs::rename(&tmp, path);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn draft_flag_only_applies_while_the_pr_is_open() {
+        assert!(matches!(pr_state("OPEN", true), PrState::Draft));
+        assert!(matches!(pr_state("OPEN", false), PrState::Open));
+        assert!(matches!(pr_state("CLOSED", true), PrState::Closed));
+        assert!(matches!(pr_state("MERGED", true), PrState::Merged));
+    }
+
+    #[test]
+    fn closed_and_merged_prs_hide_the_check_status() {
+        assert!(pr_state("OPEN", true).is_open());
+        assert!(pr_state("OPEN", false).is_open());
+        assert!(!pr_state("CLOSED", true).is_open());
+        assert!(!pr_state("MERGED", true).is_open());
     }
 }
