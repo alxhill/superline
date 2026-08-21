@@ -154,7 +154,9 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
 * **cargo** - show a crab icon if a `Cargo.toml` file is present in the current dir, plus the toolchain version if a
   mise config pins one
 * **git** - show the current git branch and status of the repo (modified, staged, and untracked files, plus git remote
-  ahead/behind stats). Status collection waits up to `status_timeout_ms` milliseconds (250 by default); if it takes
+  ahead/behind stats). The GitHub logo appears whenever the repo has a remote configured; the ahead/behind counts
+  beside it need an upstream tracking ref that still resolves, so they're absent on a branch that was never pushed or
+  whose remote branch has since been deleted. Status collection waits up to `status_timeout_ms` milliseconds (250 by default); if it takes
   longer, the most recent cached output is shown while the refresh continues in the background for the next prompt.
   Before the first result is cached, the segment displays `loading…` instead. The string shorthand `"git"` uses the
   default timeout.

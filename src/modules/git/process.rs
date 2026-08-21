@@ -67,6 +67,18 @@ pub fn get_detached_branch_name() -> String {
     }
 }
 
+/// Whether the repository has any remote configured. This is deliberately
+/// repo-level rather than reading the `## local...remote` separator out of
+/// `git status -b --porcelain`: that separator survives as `...origin/x [gone]`
+/// once the upstream branch is deleted, and it is absent on a branch that was
+/// never pushed even though the repo has a remote.
+fn has_remote() -> bool {
+    Command::new("git")
+        .arg("remote")
+        .output()
+        .is_ok_and(|out| out.status.success() && !out.stdout.iter().all(u8::is_ascii_whitespace))
+}
+
 pub fn run_git(_: &Path) -> GitStats {
     let output = Command::new("git")
         .args(["status", "--porcelain", "-b"])
@@ -77,9 +89,7 @@ pub fn run_git(_: &Path) -> GitStats {
     let mut lines = output.split(|x| *x == (b'\n'));
     let branch_line = std::str::from_utf8(lines.next().unwrap()).unwrap();
 
-    // `git status -b --porcelain` renders an upstream as `## local...remote`, so
-    // the `...` separator tells us whether the branch is tracking a remote.
-    let remote = branch_line.contains("...");
+    let remote = has_remote();
 
     let mut ahead = 0;
     let mut behind = 0;
