@@ -122,6 +122,9 @@ pub struct GitStats {
     pub ahead: u32,
     pub behind: u32,
     pub staged: u32,
+    /// Whether the repository has any remote configured. Repo-level, not
+    /// branch-level: it stays true on a branch that was never pushed, and on
+    /// one whose remote-tracking ref has been pruned.
     pub remote: bool,
     pub branch_name: String,
 }

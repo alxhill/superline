@@ -8,7 +8,8 @@ use super::GitStats;
 
 /// gitoxide (pure-Rust) git backend. Produces the same [`GitStats`] the libgit
 /// and CLI backends do: a count of staged / non-staged / untracked / conflicted
-/// paths plus the ahead/behind distance from the upstream tracking branch.
+/// paths, whether the repository has a remote configured, and the ahead/behind
+/// distance from the upstream tracking branch.
 pub fn run_git(path: &Path) -> GitStats {
     let repo = gix::discover(path).unwrap();
 
@@ -60,7 +61,14 @@ pub fn run_git(path: &Path) -> GitStats {
         _ => String::from("Big Bang"),
     };
 
-    let (mut remote, mut ahead, mut behind) = (false, 0, 0);
+    // Repo-level: whether any remote is configured at all. Deliberately not the
+    // branch's upstream - a merged branch whose remote-tracking ref has been
+    // pruned still lives in a repo that has a remote.
+    let remote = !repo.remote_names().is_empty();
+
+    // Ahead/behind, in contrast, are branch-specific and need a tracking ref
+    // that actually resolves to a commit to count against.
+    let (mut ahead, mut behind) = (0, 0);
 
     if let (Some(name), Some(local)) = (head_name, head_id) {
         let local = local.detach();
@@ -71,7 +79,6 @@ pub fn run_git(path: &Path) -> GitStats {
             .and_then(|mut reference| reference.peel_to_id().ok().map(|id| id.detach()));
 
         if let Some(upstream) = upstream {
-            remote = true;
             ahead = count_commits(&repo, local, upstream);
             behind = count_commits(&repo, upstream, local);
         }
