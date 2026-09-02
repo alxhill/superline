@@ -51,7 +51,7 @@
         "python_env",
         "cargo",
         {
-          "usage": {
+          "ai_usage": {
             "provider": "claude",
             "session": true,
             "weekly": false,
@@ -59,7 +59,7 @@
           }
         },
         {
-          "usage": {
+          "ai_usage": {
             "provider": "codex",
             "session": true,
             "weekly": true,

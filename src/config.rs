@@ -57,7 +57,7 @@ pub enum LineSegment {
     Time {
         format: Option<String>,
     },
-    Usage {
+    AiUsage {
         provider: UsageProvider,
         #[serde(default = "default_true")]
         session: bool,
@@ -66,6 +66,8 @@ pub enum LineSegment {
         #[serde(default)]
         display: UsageDisplay,
         threshold: Option<f64>,
+        session_label: Option<String>,
+        weekly_label: Option<String>,
     },
     User,
     Cmd,
@@ -121,7 +123,7 @@ enum KnownLineSegment {
     Time {
         format: Option<String>,
     },
-    Usage {
+    AiUsage {
         provider: UsageProvider,
         #[serde(default = "default_true")]
         session: bool,
@@ -130,6 +132,8 @@ enum KnownLineSegment {
         #[serde(default)]
         display: UsageDisplay,
         threshold: Option<f64>,
+        session_label: Option<String>,
+        weekly_label: Option<String>,
     },
     User,
     Cmd,
@@ -170,18 +174,22 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Host => LineSegment::Host,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
-            KnownLineSegment::Usage {
+            KnownLineSegment::AiUsage {
                 provider,
                 session,
                 weekly,
                 display,
                 threshold,
-            } => LineSegment::Usage {
+                session_label,
+                weekly_label,
+            } => LineSegment::AiUsage {
                 provider,
                 session,
                 weekly,
                 display,
                 threshold,
+                session_label,
+                weekly_label,
             },
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Cmd => LineSegment::Cmd,
@@ -249,7 +257,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "host"
             | "shell"
             | "time"
-            | "usage"
+            | "ai_usage"
             | "user"
             | "cmd"
             | "last_cmd_duration"
@@ -388,17 +396,19 @@ mod tests {
 
     #[test]
     fn usage_defaults_to_both_windows_and_percentage() {
-        let parsed: LineSegment = serde_json::from_str(r#"{"usage":{"provider":"claude"}}"#)
-            .expect("usage module should parse");
+        let parsed: LineSegment = serde_json::from_str(r#"{"ai_usage":{"provider":"claude"}}"#)
+            .expect("AI usage module should parse");
 
         assert_eq!(
             parsed,
-            LineSegment::Usage {
+            LineSegment::AiUsage {
                 provider: UsageProvider::Claude,
                 session: true,
                 weekly: true,
                 display: UsageDisplay::Percentage,
                 threshold: None,
+                session_label: None,
+                weekly_label: None,
             }
         );
     }
@@ -406,18 +416,20 @@ mod tests {
     #[test]
     fn usage_windows_and_display_are_configurable() {
         let parsed: LineSegment = serde_json::from_str(
-            r#"{"usage":{"provider":"codex","session":false,"weekly":true,"display":"sparkline","threshold":80}}"#,
+            r#"{"ai_usage":{"provider":"codex","session":false,"weekly":true,"display":"sparkline","threshold":80,"session_label":"","weekly_label":"week"}}"#,
         )
-        .expect("configured usage module should parse");
+        .expect("configured AI usage module should parse");
 
         assert_eq!(
             parsed,
-            LineSegment::Usage {
+            LineSegment::AiUsage {
                 provider: UsageProvider::Codex,
                 session: false,
                 weekly: true,
                 display: UsageDisplay::Sparkline,
                 threshold: Some(80.0),
+                session_label: Some(String::new()),
+                weekly_label: Some("week".to_string()),
             }
         );
     }

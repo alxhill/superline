@@ -361,14 +361,22 @@ impl Powerline {
                     Some(format) => self.add_module(Time::<T>::with_time_format(format.clone())),
                     None => self.add_module(Time::<T>::new()),
                 },
-                LineSegment::Usage {
+                LineSegment::AiUsage {
                     provider,
                     session,
                     weekly,
                     display,
                     threshold,
+                    session_label,
+                    weekly_label,
                 } => self.add_module(Usage::<T>::new(
-                    *provider, *session, *weekly, *display, *threshold,
+                    *provider,
+                    *session,
+                    *weekly,
+                    *display,
+                    *threshold,
+                    session_label.clone(),
+                    weekly_label.clone(),
                 )),
                 LineSegment::LastCmdDuration { min_run_time } => {
                     self.add_module(LastCmdDuration::<T>::new(

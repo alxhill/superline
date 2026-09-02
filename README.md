@@ -145,15 +145,16 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
 * **user** - the current user
 * **read_only** - show a lockfile icon if the current directory is read only
 * **time** - show the current time, with an optional "format" - this has to be present, but can be null
-* **usage** - show Claude or Codex subscription usage via the corresponding provider CLI on `PATH`. Superline
+* **ai_usage** - show Claude or Codex subscription usage via the corresponding provider CLI on `PATH`. Superline
   refreshes it in the background and caches the result, so prompt rendering never waits for a provider request. Set
   `provider` to `"claude"` or `"codex"`, choose the five-hour and weekly lanes with `session` / `weekly` (both
-  default to `true`), and set
+  default to `true`), label them with `session_label` / `weekly_label` (defaulting to `"5h"` / `"7d"`; use an empty
+  string to omit a label), and set
   `display` to `"percentage"` (the default), `"bar"` (a five-cell shaded bar), or `"sparkline"` (one glyph per
   window). The values are percent used. Set `threshold` to a percent-used warning level; configure the warning
-  background in the theme as `modules.usage.threshold_bg`. It replaces the entire widget background whenever either
+  background in the theme as `modules.ai_usage.threshold_bg`. It replaces the entire widget background whenever either
   enabled window crosses the threshold. For example:
-  `{ "usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80 } }`.
+  `{ "ai_usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80 } }`.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
 * **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.

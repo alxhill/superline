@@ -159,7 +159,7 @@ enum PowerlineArgs {
     #[command(hide = true)]
     RefreshGit(RefreshGitArgs),
     /// Internal: refresh cached Claude/Codex usage. Spawned in the background
-    /// by the `usage` module - not intended to be called by hand.
+    /// by the `ai_usage` module - not intended to be called by hand.
     #[command(hide = true)]
     RefreshUsage(RefreshUsageArgs),
 }

@@ -27,6 +27,8 @@ const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
 const OPENAI_ICON: &str = "\u{ec81}";
 const CLAUDE_ICON: &str = "\u{ec82}";
+const DEFAULT_SESSION_LABEL: &str = "5h";
+const DEFAULT_WEEKLY_LABEL: &str = "7d";
 
 pub struct Usage<S> {
     provider: UsageProvider,
@@ -34,6 +36,8 @@ pub struct Usage<S> {
     show_weekly: bool,
     display: UsageDisplay,
     threshold: Option<f64>,
+    session_label: String,
+    weekly_label: String,
     scheme: PhantomData<S>,
 }
 
@@ -62,6 +66,8 @@ impl<S: UsageScheme> Usage<S> {
         show_weekly: bool,
         display: UsageDisplay,
         threshold: Option<f64>,
+        session_label: Option<String>,
+        weekly_label: Option<String>,
     ) -> Self {
         Self {
             provider,
@@ -69,6 +75,8 @@ impl<S: UsageScheme> Usage<S> {
             show_weekly,
             display,
             threshold: threshold.filter(|threshold| threshold.is_finite()),
+            session_label: session_label.unwrap_or_else(|| DEFAULT_SESSION_LABEL.to_string()),
+            weekly_label: weekly_label.unwrap_or_else(|| DEFAULT_WEEKLY_LABEL.to_string()),
             scheme: PhantomData,
         }
     }
@@ -109,6 +117,8 @@ impl<S: UsageScheme> Module for Usage<S> {
                     self.show_session,
                     self.show_weekly,
                     self.display,
+                    &self.session_label,
+                    &self.weekly_label,
                 )
             })
             .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
@@ -143,13 +153,15 @@ fn format_usage(
     show_session: bool,
     show_weekly: bool,
     display: UsageDisplay,
+    session_label: &str,
+    weekly_label: &str,
 ) -> String {
     let mut parts = vec![provider_label(provider).to_string()];
     if show_session {
-        parts.push(format_window("5h", cache.session, display));
+        parts.push(format_window(session_label, cache.session, display));
     }
     if show_weekly {
-        parts.push(format_window("7d", cache.weekly, display));
+        parts.push(format_window(weekly_label, cache.weekly, display));
     }
     parts.join(" ")
 }
@@ -164,7 +176,11 @@ fn format_window_parts(
     used_percent: Option<f64>,
     display: UsageDisplay,
 ) -> (String, String) {
-    let prefix = format!("{label} ");
+    let prefix = if !label.is_empty() {
+        format!("{label} ")
+    } else {
+        Default::default()
+    };
     let Some(percent) = used_percent.filter(|percent| percent.is_finite()) else {
         return (prefix, "–".to_string());
     };
@@ -629,7 +645,9 @@ mod tests {
                 &cache,
                 true,
                 false,
-                UsageDisplay::Percentage
+                UsageDisplay::Percentage,
+                DEFAULT_SESSION_LABEL,
+                DEFAULT_WEEKLY_LABEL,
             ),
             "\u{ec82} 5h 12%"
         );
@@ -639,9 +657,23 @@ mod tests {
                 &cache,
                 false,
                 true,
-                UsageDisplay::Percentage
+                UsageDisplay::Percentage,
+                DEFAULT_SESSION_LABEL,
+                DEFAULT_WEEKLY_LABEL,
             ),
             "\u{ec81} 7d 68%"
+        );
+        assert_eq!(
+            format_usage(
+                UsageProvider::Claude,
+                &cache,
+                true,
+                true,
+                UsageDisplay::Sparkline,
+                "",
+                "",
+            ),
+            "\u{ec82} ▂ ▆"
         );
     }
 

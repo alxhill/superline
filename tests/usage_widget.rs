@@ -27,7 +27,7 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
 
     fs::write(
         root.join("theme.json"),
-        r#"{"defaults":{"fg":250,"bg":0},"modules":{"usage":{"threshold_bg":203}}}"#,
+        r#"{"defaults":{"fg":250,"bg":0},"modules":{"ai_usage":{"threshold_bg":203}}}"#,
     )
     .expect("write theme");
     let config = root.join("config.json");
@@ -37,8 +37,8 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
             "theme": "theme.json",
             "rows": [{
                 "left": [
-                    {"usage":{"provider":"claude","weekly":false,"display":"sparkline"}},
-                    {"usage":{"provider":"codex","session":false,"display":"bar","threshold":75,"threshold_color":160}}
+                    {"ai_usage":{"provider":"claude","weekly":false,"display":"sparkline","session_label":""}},
+                    {"ai_usage":{"provider":"codex","session":false,"display":"bar","threshold":75}}
                 ]
             }]
         }"#,
@@ -56,7 +56,7 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\u{ec82} 5h ▂"), "stdout:\n{stdout}");
+    assert!(stdout.contains("\u{ec82} ▂"), "stdout:\n{stdout}");
     let warning_background = stdout
         .find("\x1b[48;5;203m")
         .expect("usage warning background should be rendered");

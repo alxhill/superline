@@ -349,11 +349,11 @@ impl TimeScheme for CustomTheme {
 }
 
 impl UsageScheme for CustomTheme {
-    color_from_json!(claude_usage_bg, usage, claude_bg, default_bg);
-    color_from_json!(claude_usage_fg, usage, claude_fg, default_fg);
-    color_from_json!(codex_usage_bg, usage, codex_bg, default_bg);
-    color_from_json!(codex_usage_fg, usage, codex_fg, default_fg);
-    color_from_json!(usage_threshold_bg, usage, threshold_bg, alert_bg);
+    color_from_json!(claude_usage_bg, ai_usage, claude_bg, default_bg);
+    color_from_json!(claude_usage_fg, ai_usage, claude_fg, default_fg);
+    color_from_json!(codex_usage_bg, ai_usage, codex_bg, default_bg);
+    color_from_json!(codex_usage_fg, ai_usage, codex_fg, default_fg);
+    color_from_json!(usage_threshold_bg, ai_usage, threshold_bg, alert_bg);
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
