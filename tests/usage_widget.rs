@@ -50,6 +50,7 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
         .env("HOME", &root)
         .env("USERPROFILE", &root)
         .env("XDG_CACHE_HOME", root.join("cache"))
+        .env("LOCALAPPDATA", root.join("cache"))
         .output()
         .expect("render prompt");
 
