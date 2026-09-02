@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3](https://github.com/alxhill/superline/compare/v0.8.2...v0.8.3) - 2026-09-02
+
+### Added
+
+- add claude and codex usage widget ([#44](https://github.com/alxhill/superline/pull/44))
+
 ## [0.8.2](https://github.com/alxhill/superline/compare/v0.8.1...v0.8.2) - 2026-08-21
 
 ### Fixed
