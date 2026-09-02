@@ -346,7 +346,6 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
 
 /// Both provider commands render their quota panels only when connected to a
 /// terminal, so run them in a small pseudo-terminal and issue the slash command
-/// CodexBar uses for that provider.
 fn capture_cli(provider: UsageProvider) -> Option<String> {
     let pair = native_pty_system()
         .openpty(PtySize {
