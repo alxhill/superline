@@ -10,8 +10,8 @@ use std::{env, io};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
-use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
-use superline::modules::{refresh_git, refresh_pr};
+use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata, UsageProvider};
+use superline::modules::{refresh_git, refresh_pr, refresh_usage};
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
 use superline::Powerline;
@@ -158,6 +158,10 @@ enum PowerlineArgs {
     /// the background by the `git` module - not intended to be called by hand.
     #[command(hide = true)]
     RefreshGit(RefreshGitArgs),
+    /// Internal: refresh cached Claude/Codex usage. Spawned in the background
+    /// by the `ai_usage` module - not intended to be called by hand.
+    #[command(hide = true)]
+    RefreshUsage(RefreshUsageArgs),
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -220,6 +224,14 @@ struct RefreshGitArgs {
 }
 
 #[derive(Debug, Args)]
+struct RefreshUsageArgs {
+    #[arg(long)]
+    provider: String,
+    #[arg(long)]
+    cache: PathBuf,
+}
+
+#[derive(Debug, Args)]
 struct InstallArgs {
     #[arg(value_enum)]
     shell: ShellArg,
@@ -256,6 +268,14 @@ fn main() {
         PowerlineArgs::Config => open_config(),
         PowerlineArgs::RefreshPr(args) => refresh_pr(&args.branch, &args.repo_dir, &args.cache),
         PowerlineArgs::RefreshGit(args) => refresh_git(&args.repo_dir, &args.cache),
+        PowerlineArgs::RefreshUsage(args) => {
+            let provider = match args.provider.as_str() {
+                "claude" => UsageProvider::Claude,
+                "codex" => UsageProvider::Codex,
+                _ => return,
+            };
+            refresh_usage(provider, &args.cache);
+        }
     }
 }
 

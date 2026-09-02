@@ -7,7 +7,7 @@ use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::modules::{
     Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Nvm, Pr, PythonEnv,
-    ReadOnly, ShellName, Spacer, Time, Unknown, User,
+    ReadOnly, ShellName, Spacer, Time, Unknown, Usage, User,
 };
 use crate::terminal::*;
 use crate::themes::CompleteTheme;
@@ -361,6 +361,23 @@ impl Powerline {
                     Some(format) => self.add_module(Time::<T>::with_time_format(format.clone())),
                     None => self.add_module(Time::<T>::new()),
                 },
+                LineSegment::AiUsage {
+                    provider,
+                    session,
+                    weekly,
+                    display,
+                    threshold,
+                    session_label,
+                    weekly_label,
+                } => self.add_module(Usage::<T>::new(
+                    *provider,
+                    *session,
+                    *weekly,
+                    *display,
+                    *threshold,
+                    session_label.clone(),
+                    weekly_label.clone(),
+                )),
                 LineSegment::LastCmdDuration { min_run_time } => {
                     self.add_module(LastCmdDuration::<T>::new(
                         runtime_data.last_command_duration(),

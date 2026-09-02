@@ -57,6 +57,18 @@ pub enum LineSegment {
     Time {
         format: Option<String>,
     },
+    AiUsage {
+        provider: UsageProvider,
+        #[serde(default = "default_true")]
+        session: bool,
+        #[serde(default = "default_true")]
+        weekly: bool,
+        #[serde(default)]
+        display: UsageDisplay,
+        threshold: Option<f64>,
+        session_label: Option<String>,
+        weekly_label: Option<String>,
+    },
     User,
     Cmd,
     LastCmdDuration {
@@ -111,6 +123,18 @@ enum KnownLineSegment {
     Time {
         format: Option<String>,
     },
+    AiUsage {
+        provider: UsageProvider,
+        #[serde(default = "default_true")]
+        session: bool,
+        #[serde(default = "default_true")]
+        weekly: bool,
+        #[serde(default)]
+        display: UsageDisplay,
+        threshold: Option<f64>,
+        session_label: Option<String>,
+        weekly_label: Option<String>,
+    },
     User,
     Cmd,
     LastCmdDuration {
@@ -150,6 +174,23 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Host => LineSegment::Host,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
+            KnownLineSegment::AiUsage {
+                provider,
+                session,
+                weekly,
+                display,
+                threshold,
+                session_label,
+                weekly_label,
+            } => LineSegment::AiUsage {
+                provider,
+                session,
+                weekly,
+                display,
+                threshold,
+                session_label,
+                weekly_label,
+            },
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Cmd => LineSegment::Cmd,
             KnownLineSegment::LastCmdDuration { min_run_time } => {
@@ -216,6 +257,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "host"
             | "shell"
             | "time"
+            | "ai_usage"
             | "user"
             | "cmd"
             | "last_cmd_duration"
@@ -223,6 +265,31 @@ fn is_known_segment_name(name: &str) -> bool {
             | "error"
             | "unknown"
     )
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageProvider {
+    Claude,
+    Codex,
+}
+
+impl UsageProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageDisplay {
+    #[default]
+    Percentage,
+    Bar,
+    Sparkline,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -323,6 +390,46 @@ mod tests {
             parsed,
             LineSegment::Git {
                 status_timeout_ms: 250,
+            }
+        );
+    }
+
+    #[test]
+    fn usage_defaults_to_both_windows_and_percentage() {
+        let parsed: LineSegment = serde_json::from_str(r#"{"ai_usage":{"provider":"claude"}}"#)
+            .expect("AI usage module should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::AiUsage {
+                provider: UsageProvider::Claude,
+                session: true,
+                weekly: true,
+                display: UsageDisplay::Percentage,
+                threshold: None,
+                session_label: None,
+                weekly_label: None,
+            }
+        );
+    }
+
+    #[test]
+    fn usage_windows_and_display_are_configurable() {
+        let parsed: LineSegment = serde_json::from_str(
+            r#"{"ai_usage":{"provider":"codex","session":false,"weekly":true,"display":"sparkline","threshold":80,"session_label":"","weekly_label":"week"}}"#,
+        )
+        .expect("configured AI usage module should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::AiUsage {
+                provider: UsageProvider::Codex,
+                session: false,
+                weekly: true,
+                display: UsageDisplay::Sparkline,
+                threshold: Some(80.0),
+                session_label: Some(String::new()),
+                weekly_label: Some("week".to_string()),
             }
         );
     }

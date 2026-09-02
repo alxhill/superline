@@ -12,7 +12,7 @@ use crate::colors::Color;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     JavaScheme, LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 
@@ -346,6 +346,14 @@ impl UserScheme for CustomTheme {
 impl TimeScheme for CustomTheme {
     color_from_json!(time_bg, time, bg, default_bg);
     color_from_json!(time_fg, time, fg, default_fg);
+}
+
+impl UsageScheme for CustomTheme {
+    color_from_json!(claude_usage_bg, ai_usage, claude_bg, default_bg);
+    color_from_json!(claude_usage_fg, ai_usage, claude_fg, default_fg);
+    color_from_json!(codex_usage_bg, ai_usage, codex_bg, default_bg);
+    color_from_json!(codex_usage_fg, ai_usage, codex_fg, default_fg);
+    color_from_json!(usage_threshold_bg, ai_usage, threshold_bg, alert_bg);
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -19,6 +19,7 @@ mod shell_name;
 mod spacer;
 mod time;
 mod unknown;
+mod usage;
 
 pub use cargo::{Cargo, CargoScheme};
 pub use cmd::{Cmd, CmdScheme};
@@ -37,6 +38,7 @@ pub use shell_name::{ShellName, ShellScheme};
 pub use spacer::{Spacer, SpacerScheme};
 pub use time::{Time, TimeScheme};
 pub use unknown::{Unknown, UnknownScheme};
+pub use usage::{refresh_usage, Usage, UsageScheme};
 pub use user::{User, UserScheme};
 
 pub trait Module {

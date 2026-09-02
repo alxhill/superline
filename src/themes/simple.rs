@@ -2,7 +2,7 @@ use crate::colors::{black, dark_grey, grey, light_grey, Color};
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     JavaScheme, LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 
@@ -128,6 +128,12 @@ impl TimeScheme for SimpleTheme {
     }
     fn time_fg() -> Color {
         Color(250)
+    }
+}
+
+impl UsageScheme for SimpleTheme {
+    fn usage_threshold_bg() -> Color {
+        Color(161)
     }
 }
 

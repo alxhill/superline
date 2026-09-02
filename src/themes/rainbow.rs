@@ -3,7 +3,7 @@ use crate::colors::*;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     JavaScheme, LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 
@@ -72,6 +72,28 @@ impl TimeScheme for RainbowTheme {
     }
     fn time_fg() -> Color {
         mid_grey()
+    }
+}
+
+impl UsageScheme for RainbowTheme {
+    fn claude_usage_bg() -> Color {
+        burnt_orange()
+    }
+
+    fn claude_usage_fg() -> Color {
+        black()
+    }
+
+    fn codex_usage_bg() -> Color {
+        forest_green()
+    }
+
+    fn codex_usage_fg() -> Color {
+        white()
+    }
+
+    fn usage_threshold_bg() -> Color {
+        warning_red()
     }
 }
 
