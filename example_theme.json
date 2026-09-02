@@ -59,7 +59,8 @@
       "claude_bg": "burnt_orange",
       "claude_fg": "black",
       "codex_bg": "forest_green",
-      "codex_fg": "white"
+      "codex_fg": "white",
+      "threshold_bg": "warning_red"
     },
     "cmd": {
       "passed_fg": "green",

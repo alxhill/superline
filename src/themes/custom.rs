@@ -353,6 +353,7 @@ impl UsageScheme for CustomTheme {
     color_from_json!(claude_usage_fg, usage, claude_fg, default_fg);
     color_from_json!(codex_usage_bg, usage, codex_bg, default_bg);
     color_from_json!(codex_usage_fg, usage, codex_fg, default_fg);
+    color_from_json!(usage_threshold_bg, usage, threshold_bg, alert_bg);
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

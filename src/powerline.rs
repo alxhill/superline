@@ -367,14 +367,8 @@ impl Powerline {
                     weekly,
                     display,
                     threshold,
-                    threshold_color,
                 } => self.add_module(Usage::<T>::new(
-                    *provider,
-                    *session,
-                    *weekly,
-                    *display,
-                    *threshold,
-                    threshold_color.as_ref().and_then(|color| color.color()),
+                    *provider, *session, *weekly, *display, *threshold,
                 )),
                 LineSegment::LastCmdDuration { min_run_time } => {
                     self.add_module(LastCmdDuration::<T>::new(

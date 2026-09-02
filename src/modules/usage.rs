@@ -34,7 +34,6 @@ pub struct Usage<S> {
     show_weekly: bool,
     display: UsageDisplay,
     threshold: Option<f64>,
-    threshold_color: Option<Color>,
     scheme: PhantomData<S>,
 }
 
@@ -51,6 +50,9 @@ pub trait UsageScheme: DefaultColors {
     fn codex_usage_bg() -> Color {
         Self::default_bg()
     }
+    fn usage_threshold_bg() -> Color {
+        Self::alert_bg()
+    }
 }
 
 impl<S: UsageScheme> Usage<S> {
@@ -60,7 +62,6 @@ impl<S: UsageScheme> Usage<S> {
         show_weekly: bool,
         display: UsageDisplay,
         threshold: Option<f64>,
-        threshold_color: Option<Color>,
     ) -> Self {
         Self {
             provider,
@@ -68,7 +69,6 @@ impl<S: UsageScheme> Usage<S> {
             show_weekly,
             display,
             threshold: threshold.filter(|threshold| threshold.is_finite()),
-            threshold_color,
             scheme: PhantomData,
         }
     }
@@ -117,7 +117,7 @@ impl<S: UsageScheme> Module for Usage<S> {
             .filter(|cache| {
                 threshold_reached(cache, self.show_session, self.show_weekly, self.threshold)
             })
-            .and(self.threshold_color)
+            .map(|_| S::usage_threshold_bg())
             .unwrap_or(bg);
         powerline.add_segment(label, Style::simple(default_fg, bg));
     }

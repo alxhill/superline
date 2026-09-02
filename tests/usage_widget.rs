@@ -25,11 +25,16 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
     )
     .expect("write Codex cache");
 
+    fs::write(
+        root.join("theme.json"),
+        r#"{"defaults":{"fg":250,"bg":0},"modules":{"usage":{"threshold_bg":203}}}"#,
+    )
+    .expect("write theme");
     let config = root.join("config.json");
     fs::write(
         &config,
         r#"{
-            "theme": "simple",
+            "theme": "theme.json",
             "rows": [{
                 "left": [
                     {"usage":{"provider":"claude","weekly":false,"display":"sparkline"}},
@@ -53,7 +58,7 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\u{ec82} 5h ▂"), "stdout:\n{stdout}");
     let warning_background = stdout
-        .find("\x1b[48;5;160m")
+        .find("\x1b[48;5;203m")
         .expect("usage warning background should be rendered");
     let codex_icon = stdout
         .find("\u{ec81}")

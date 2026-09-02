@@ -91,6 +91,10 @@ impl UsageScheme for RainbowTheme {
     fn codex_usage_fg() -> Color {
         white()
     }
+
+    fn usage_threshold_bg() -> Color {
+        warning_red()
+    }
 }
 
 impl CargoScheme for RainbowTheme {

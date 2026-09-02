@@ -131,7 +131,11 @@ impl TimeScheme for SimpleTheme {
     }
 }
 
-impl UsageScheme for SimpleTheme {}
+impl UsageScheme for SimpleTheme {
+    fn usage_threshold_bg() -> Color {
+        Color(161)
+    }
+}
 
 impl PrScheme for SimpleTheme {
     fn pr_draft_bg() -> Color {
