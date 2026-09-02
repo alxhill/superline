@@ -63,7 +63,9 @@
             "provider": "codex",
             "session": true,
             "weekly": true,
-            "display": "percentage"
+            "display": "sparkline",
+            "threshold": 80,
+            "threshold_color": "warning_red"
           }
         },
         {

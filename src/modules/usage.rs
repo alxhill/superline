@@ -22,6 +22,7 @@ use super::Module;
 const CACHE_TTL: Duration = Duration::from_secs(60);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
+const SPARKLINE: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
 const OPENAI_ICON: &str = "\u{ec81}";
@@ -32,6 +33,8 @@ pub struct Usage<S> {
     show_session: bool,
     show_weekly: bool,
     display: UsageDisplay,
+    threshold: Option<f64>,
+    threshold_color: Option<Color>,
     scheme: PhantomData<S>,
 }
 
@@ -56,12 +59,16 @@ impl<S: UsageScheme> Usage<S> {
         show_session: bool,
         show_weekly: bool,
         display: UsageDisplay,
+        threshold: Option<f64>,
+        threshold_color: Option<Color>,
     ) -> Self {
         Self {
             provider,
             show_session,
             show_weekly,
             display,
+            threshold: threshold.filter(|threshold| threshold.is_finite()),
+            threshold_color,
             scheme: PhantomData,
         }
     }
@@ -104,7 +111,14 @@ impl<S: UsageScheme> Module for Usage<S> {
                 )
             })
             .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
-        let (fg, bg) = provider_style::<S>(self.provider);
+        let (default_fg, bg) = provider_style::<S>(self.provider);
+        let fg = cache
+            .as_ref()
+            .filter(|cache| {
+                threshold_reached(cache, self.show_session, self.show_weekly, self.threshold)
+            })
+            .and(self.threshold_color)
+            .unwrap_or(default_fg);
         powerline.add_segment(label, Style::simple(fg, bg));
     }
 }
@@ -150,12 +164,31 @@ fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) 
         UsageDisplay::Bar => {
             let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
             format!(
-                "{label} [{}{}]",
-                "■".repeat(filled),
-                "□".repeat(BAR_WIDTH - filled)
+                "{label} {}{}",
+                "▓".repeat(filled),
+                "░".repeat(BAR_WIDTH - filled)
             )
         }
+        UsageDisplay::Sparkline => {
+            let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
+            format!("{label} {}", SPARKLINE[index])
+        }
     }
+}
+
+fn threshold_reached(
+    cache: &UsageCache,
+    show_session: bool,
+    show_weekly: bool,
+    threshold: Option<f64>,
+) -> bool {
+    let Some(threshold) = threshold else {
+        return false;
+    };
+    let exceeds = |percent: Option<f64>| {
+        percent.is_some_and(|percent| percent.is_finite() && percent >= threshold)
+    };
+    (show_session && exceeds(cache.session)) || (show_weekly && exceeds(cache.weekly))
 }
 
 fn cache_path_for(provider: UsageProvider) -> Option<PathBuf> {
@@ -608,13 +641,42 @@ mod tests {
     fn bar_display_is_clamped_and_fixed_width() {
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Bar),
-            "5h [■■■□□]"
+            "5h ▓▓▓░░"
         );
         assert_eq!(
             format_window("7d", Some(120.0), UsageDisplay::Bar),
-            "7d [■■■■■]"
+            "7d ▓▓▓▓▓"
         );
         assert_eq!(format_window("7d", None, UsageDisplay::Bar), "7d –");
+    }
+
+    #[test]
+    fn sparkline_display_uses_one_glyph_per_window() {
+        assert_eq!(
+            format_window("5h", Some(0.0), UsageDisplay::Sparkline),
+            "5h ▁"
+        );
+        assert_eq!(
+            format_window("5h", Some(61.0), UsageDisplay::Sparkline),
+            "5h ▅"
+        );
+        assert_eq!(
+            format_window("7d", Some(100.0), UsageDisplay::Sparkline),
+            "7d █"
+        );
+    }
+
+    #[test]
+    fn threshold_checks_the_visible_windows() {
+        let cache = UsageCache {
+            session: Some(81.0),
+            weekly: Some(79.0),
+            fetched_at: 0,
+        };
+
+        assert!(threshold_reached(&cache, true, false, Some(80.0)));
+        assert!(!threshold_reached(&cache, false, true, Some(80.0)));
+        assert!(threshold_reached(&cache, true, true, Some(80.0)));
     }
 
     #[test]

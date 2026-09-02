@@ -3,6 +3,8 @@ use std::time::Duration;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
+use crate::colors::Color;
+
 pub const DEFAULT_GIT_STATUS_TIMEOUT_MS: u64 = 250;
 
 pub trait TerminalRuntimeMetadata {
@@ -65,6 +67,8 @@ pub enum LineSegment {
         weekly: bool,
         #[serde(default)]
         display: UsageDisplay,
+        threshold: Option<f64>,
+        threshold_color: Option<UsageThresholdColor>,
     },
     User,
     Cmd,
@@ -128,6 +132,8 @@ enum KnownLineSegment {
         weekly: bool,
         #[serde(default)]
         display: UsageDisplay,
+        threshold: Option<f64>,
+        threshold_color: Option<UsageThresholdColor>,
     },
     User,
     Cmd,
@@ -173,11 +179,15 @@ impl From<KnownLineSegment> for LineSegment {
                 session,
                 weekly,
                 display,
+                threshold,
+                threshold_color,
             } => LineSegment::Usage {
                 provider,
                 session,
                 weekly,
                 display,
+                threshold,
+                threshold_color,
             },
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Cmd => LineSegment::Cmd,
@@ -277,6 +287,26 @@ pub enum UsageDisplay {
     #[default]
     Percentage,
     Bar,
+    Sparkline,
+}
+
+/// A foreground colour used for a usage window which has crossed its configured
+/// threshold. Named colours use the same palette names as custom themes; a
+/// 0–255 terminal colour code is also accepted.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum UsageThresholdColor {
+    Named(String),
+    Code(u8),
+}
+
+impl UsageThresholdColor {
+    pub fn color(&self) -> Option<Color> {
+        match self {
+            Self::Named(name) => Color::from_name(name),
+            Self::Code(code) => Some(Color::from_u8(*code)),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -393,6 +423,8 @@ mod tests {
                 session: true,
                 weekly: true,
                 display: UsageDisplay::Percentage,
+                threshold: None,
+                threshold_color: None,
             }
         );
     }
@@ -400,7 +432,7 @@ mod tests {
     #[test]
     fn usage_windows_and_display_are_configurable() {
         let parsed: LineSegment = serde_json::from_str(
-            r#"{"usage":{"provider":"codex","session":false,"weekly":true,"display":"bar"}}"#,
+            r#"{"usage":{"provider":"codex","session":false,"weekly":true,"display":"sparkline","threshold":80,"threshold_color":"warning_red"}}"#,
         )
         .expect("configured usage module should parse");
 
@@ -410,7 +442,9 @@ mod tests {
                 provider: UsageProvider::Codex,
                 session: false,
                 weekly: true,
-                display: UsageDisplay::Bar,
+                display: UsageDisplay::Sparkline,
+                threshold: Some(80.0),
+                threshold_color: Some(UsageThresholdColor::Named("warning_red".to_string())),
             }
         );
     }

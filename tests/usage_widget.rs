@@ -32,8 +32,8 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
             "theme": "simple",
             "rows": [{
                 "left": [
-                    {"usage":{"provider":"claude","weekly":false}},
-                    {"usage":{"provider":"codex","session":false,"display":"bar"}}
+                    {"usage":{"provider":"claude","weekly":false,"display":"sparkline"}},
+                    {"usage":{"provider":"codex","session":false,"display":"bar","threshold":75,"threshold_color":160}}
                 ]
             }]
         }"#,
@@ -51,8 +51,9 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\u{ec82} 5h 12%"), "stdout:\n{stdout}");
-    assert!(stdout.contains("\u{ec81} 7d [■■■■□]"), "stdout:\n{stdout}");
+    assert!(stdout.contains("\u{ec82} 5h ▂"), "stdout:\n{stdout}");
+    assert!(stdout.contains("\u{ec81} 7d ▓▓▓▓░"), "stdout:\n{stdout}");
+    assert!(stdout.contains("\x1b[38;5;160m"), "stdout:\n{stdout}");
 
     let _ = fs::remove_dir_all(PathBuf::from(root));
 }
