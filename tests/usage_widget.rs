@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -68,5 +67,5 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
         "the warning background should begin before the entire widget: {stdout}"
     );
 
-    let _ = fs::remove_dir_all(PathBuf::from(root));
+    let _ = fs::remove_dir_all(root);
 }
