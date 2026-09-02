@@ -1,0 +1,58 @@
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const BIN: &str = env!("CARGO_BIN_EXE_superline");
+
+#[test]
+fn usage_widget_renders_each_configured_provider_instance_from_cache() {
+    let root = std::env::temp_dir().join(format!("superline-usage-it-{}", std::process::id()));
+    let cache_dir = root.join("cache/superline");
+    fs::create_dir_all(&cache_dir).expect("create cache directory");
+    let fetched_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("current time")
+        .as_secs();
+    fs::write(
+        cache_dir.join("usage-claude.json"),
+        format!(r#"{{"session":12.4,"weekly":67.8,"fetched_at":{fetched_at}}}"#),
+    )
+    .expect("write Claude cache");
+    fs::write(
+        cache_dir.join("usage-codex.json"),
+        format!(r#"{{"session":40.0,"weekly":80.0,"fetched_at":{fetched_at}}}"#),
+    )
+    .expect("write Codex cache");
+
+    let config = root.join("config.json");
+    fs::write(
+        &config,
+        r#"{
+            "theme": "simple",
+            "rows": [{
+                "left": [
+                    {"usage":{"provider":"claude","weekly":false}},
+                    {"usage":{"provider":"codex","session":false,"display":"bar"}}
+                ]
+            }]
+        }"#,
+    )
+    .expect("write config");
+
+    let output = Command::new(BIN)
+        .args(["show", "fish", "-s", "0", "-c", "120", "--config"])
+        .arg(&config)
+        .env("HOME", &root)
+        .env("USERPROFILE", &root)
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .output()
+        .expect("render prompt");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\u{ec82} 5h 12%"), "stdout:\n{stdout}");
+    assert!(stdout.contains("\u{ec81} 7d [■■■■□]"), "stdout:\n{stdout}");
+
+    let _ = fs::remove_dir_all(PathBuf::from(root));
+}

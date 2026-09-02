@@ -51,6 +51,22 @@
         "python_env",
         "cargo",
         {
+          "usage": {
+            "provider": "claude",
+            "session": true,
+            "weekly": false,
+            "display": "bar"
+          }
+        },
+        {
+          "usage": {
+            "provider": "codex",
+            "session": true,
+            "weekly": true,
+            "display": "percentage"
+          }
+        },
+        {
           "padding": 0
         }
       ]

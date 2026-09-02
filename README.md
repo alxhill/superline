@@ -145,6 +145,14 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
 * **user** - the current user
 * **read_only** - show a lockfile icon if the current directory is read only
 * **time** - show the current time, with an optional "format" - this has to be present, but can be null
+* **usage** - show Claude or Codex subscription usage via the corresponding provider CLI on `PATH`. Superline
+  refreshes it in the background and caches the result, so prompt rendering never waits for a provider request. Set
+  `provider` to `"claude"` or `"codex"`, choose the five-hour and weekly lanes with `session` / `weekly` (both
+  default to `true`), and set
+  `display` to `"percentage"` (the default) or `"bar"`. The values are percent used. For example:
+  `{ "usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar" } }`.
+  Add the module more than once to show both providers or different windows/display styles. Provider labels use the
+  Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
 * **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.
   Otherwise, show the version pinned by a mise config or `.python-version`, or a bare python icon in any directory
   containing a `pyproject.toml`

@@ -57,6 +57,15 @@ pub enum LineSegment {
     Time {
         format: Option<String>,
     },
+    Usage {
+        provider: UsageProvider,
+        #[serde(default = "default_true")]
+        session: bool,
+        #[serde(default = "default_true")]
+        weekly: bool,
+        #[serde(default)]
+        display: UsageDisplay,
+    },
     User,
     Cmd,
     LastCmdDuration {
@@ -111,6 +120,15 @@ enum KnownLineSegment {
     Time {
         format: Option<String>,
     },
+    Usage {
+        provider: UsageProvider,
+        #[serde(default = "default_true")]
+        session: bool,
+        #[serde(default = "default_true")]
+        weekly: bool,
+        #[serde(default)]
+        display: UsageDisplay,
+    },
     User,
     Cmd,
     LastCmdDuration {
@@ -150,6 +168,17 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Host => LineSegment::Host,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
+            KnownLineSegment::Usage {
+                provider,
+                session,
+                weekly,
+                display,
+            } => LineSegment::Usage {
+                provider,
+                session,
+                weekly,
+                display,
+            },
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Cmd => LineSegment::Cmd,
             KnownLineSegment::LastCmdDuration { min_run_time } => {
@@ -216,6 +245,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "host"
             | "shell"
             | "time"
+            | "usage"
             | "user"
             | "cmd"
             | "last_cmd_duration"
@@ -223,6 +253,30 @@ fn is_known_segment_name(name: &str) -> bool {
             | "error"
             | "unknown"
     )
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageProvider {
+    Claude,
+    Codex,
+}
+
+impl UsageProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageDisplay {
+    #[default]
+    Percentage,
+    Bar,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -323,6 +377,40 @@ mod tests {
             parsed,
             LineSegment::Git {
                 status_timeout_ms: 250,
+            }
+        );
+    }
+
+    #[test]
+    fn usage_defaults_to_both_windows_and_percentage() {
+        let parsed: LineSegment = serde_json::from_str(r#"{"usage":{"provider":"claude"}}"#)
+            .expect("usage module should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Usage {
+                provider: UsageProvider::Claude,
+                session: true,
+                weekly: true,
+                display: UsageDisplay::Percentage,
+            }
+        );
+    }
+
+    #[test]
+    fn usage_windows_and_display_are_configurable() {
+        let parsed: LineSegment = serde_json::from_str(
+            r#"{"usage":{"provider":"codex","session":false,"weekly":true,"display":"bar"}}"#,
+        )
+        .expect("configured usage module should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Usage {
+                provider: UsageProvider::Codex,
+                session: false,
+                weekly: true,
+                display: UsageDisplay::Bar,
             }
         );
     }
