@@ -31,7 +31,7 @@ const OPENAI_ICON: &str = "\u{ec81}";
 const CLAUDE_ICON: &str = "\u{ec82}";
 // spaces added manually to allow for compact display
 const DEFAULT_SESSION_LABEL: &str = "5h ";
-const DEFAULT_WEEKLY_LABEL: &str = " 7d";
+const DEFAULT_WEEKLY_LABEL: &str = " 7d ";
 
 pub struct Usage<S> {
     provider: UsageProvider,
@@ -663,7 +663,7 @@ mod tests {
                 DEFAULT_SESSION_LABEL,
                 DEFAULT_WEEKLY_LABEL,
             ),
-            "\u{ec81}  7d68%"
+            "\u{ec81}  7d 68%"
         );
         assert_eq!(
             format_usage(
