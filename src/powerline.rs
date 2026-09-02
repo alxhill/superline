@@ -283,6 +283,20 @@ impl Powerline {
         };
     }
 
+    /// Add a segment containing terminal escapes while preserving correct
+    /// column accounting for right-aligned prompts.
+    pub fn add_segment_with_visible_width<D: Display>(
+        &mut self,
+        seg: D,
+        style: Style,
+        visible_width: usize,
+    ) {
+        let _ = match self.direction {
+            Direction::Left => self.write_segment(seg, style, true, Some(visible_width)),
+            Direction::Right => self.write_segment_right(seg, style, true, Some(visible_width)),
+        };
+    }
+
     pub fn add_short_segment<D: Display>(&mut self, seg: D, style: Style) {
         let _ = match self.direction {
             Direction::Left => self.write_segment(seg, style, false, None),

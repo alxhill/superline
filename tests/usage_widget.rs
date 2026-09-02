@@ -52,8 +52,15 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\u{ec82} 5h ▂"), "stdout:\n{stdout}");
-    assert!(stdout.contains("\u{ec81} 7d ▓▓▓▓░"), "stdout:\n{stdout}");
-    assert!(stdout.contains("\x1b[38;5;160m"), "stdout:\n{stdout}");
+    assert!(
+        stdout.contains("\u{ec81} 7d \x1b[48;5;160m▓▓▓▓░"),
+        "stdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("7d \x1b[48;5;160m▓▓▓▓░\x1b[48;5;0m"),
+        "stdout:\n{stdout}"
+    );
+    assert!(!stdout.contains("\x1b[38;5;160m"), "stdout:\n{stdout}");
 
     let _ = fs::remove_dir_all(PathBuf::from(root));
 }

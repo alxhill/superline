@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::colors::Color;
 use crate::config::{UsageDisplay, UsageProvider};
+use crate::terminal::BgColor;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -99,27 +100,31 @@ impl<S: UsageScheme> Module for Usage<S> {
             spawn_refresh(self.provider, &cache_path);
         }
 
+        let (default_fg, bg) = provider_style::<S>(self.provider);
         let label = cache
             .as_ref()
             .map(|cache| {
-                format_usage(
+                format_usage_with_threshold(
                     self.provider,
                     cache,
-                    self.show_session,
-                    self.show_weekly,
-                    self.display,
+                    UsageRenderOptions {
+                        show_session: self.show_session,
+                        show_weekly: self.show_weekly,
+                        display: self.display,
+                        threshold: self.threshold,
+                        threshold_color: self.threshold_color,
+                        background: bg,
+                    },
                 )
             })
-            .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
-        let (default_fg, bg) = provider_style::<S>(self.provider);
-        let fg = cache
-            .as_ref()
-            .filter(|cache| {
-                threshold_reached(cache, self.show_session, self.show_weekly, self.threshold)
-            })
-            .and(self.threshold_color)
-            .unwrap_or(default_fg);
-        powerline.add_segment(label, Style::simple(fg, bg));
+            .unwrap_or_else(|| {
+                RenderedUsage::plain(format!("{} …", provider_label(self.provider)))
+            });
+        powerline.add_segment_with_visible_width(
+            label.text,
+            Style::simple(default_fg, bg),
+            label.visible_width,
+        );
     }
 }
 
@@ -137,6 +142,7 @@ fn provider_style<S: UsageScheme>(provider: UsageProvider) -> (Color, Color) {
     }
 }
 
+#[cfg(test)]
 fn format_usage(
     provider: UsageProvider,
     cache: &UsageCache,
@@ -154,41 +160,119 @@ fn format_usage(
     parts.join(" ")
 }
 
-fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) -> String {
-    let Some(percent) = used_percent.filter(|percent| percent.is_finite()) else {
-        return format!("{label} –");
-    };
-    let percent = percent.clamp(0.0, 100.0);
-    match display {
-        UsageDisplay::Percentage => format!("{label} {:.0}%", percent),
-        UsageDisplay::Bar => {
-            let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
-            format!(
-                "{label} {}{}",
-                "▓".repeat(filled),
-                "░".repeat(BAR_WIDTH - filled)
-            )
-        }
-        UsageDisplay::Sparkline => {
-            let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
-            format!("{label} {}", SPARKLINE[index])
+struct RenderedUsage {
+    text: String,
+    visible_width: usize,
+}
+
+#[derive(Clone, Copy)]
+struct UsageRenderOptions {
+    show_session: bool,
+    show_weekly: bool,
+    display: UsageDisplay,
+    threshold: Option<f64>,
+    threshold_color: Option<Color>,
+    background: Color,
+}
+
+impl RenderedUsage {
+    fn plain(text: String) -> Self {
+        let visible_width = text.chars().count();
+        Self {
+            text,
+            visible_width,
         }
     }
 }
 
+fn format_usage_with_threshold(
+    provider: UsageProvider,
+    cache: &UsageCache,
+    options: UsageRenderOptions,
+) -> RenderedUsage {
+    let mut text = provider_label(provider).to_string();
+    let mut visible_width = text.chars().count();
+
+    for (label, percent) in [
+        ("5h", options.show_session.then_some(cache.session)),
+        ("7d", options.show_weekly.then_some(cache.weekly)),
+    ] {
+        let Some(percent) = percent else {
+            continue;
+        };
+        let (prefix, value) = format_window_parts(label, percent, options.display);
+        visible_width += 1 + prefix.chars().count() + value.chars().count();
+        text.push(' ');
+        text.push_str(&prefix);
+        if options
+            .threshold_color
+            .is_some_and(|_| exceeds_threshold(percent, options.threshold))
+        {
+            let warning = options
+                .threshold_color
+                .expect("threshold color was checked above");
+            text.push_str(&format!(
+                "{}{}{}",
+                BgColor::from(warning),
+                value,
+                BgColor::from(options.background)
+            ));
+        } else {
+            text.push_str(&value);
+        }
+    }
+
+    RenderedUsage {
+        text,
+        visible_width,
+    }
+}
+
+#[cfg(test)]
+fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) -> String {
+    let (prefix, value) = format_window_parts(label, used_percent, display);
+    format!("{prefix}{value}")
+}
+
+fn format_window_parts(
+    label: &str,
+    used_percent: Option<f64>,
+    display: UsageDisplay,
+) -> (String, String) {
+    let prefix = format!("{label} ");
+    let Some(percent) = used_percent.filter(|percent| percent.is_finite()) else {
+        return (prefix, "–".to_string());
+    };
+    let percent = percent.clamp(0.0, 100.0);
+    let value = match display {
+        UsageDisplay::Percentage => format!("{percent:.0}%"),
+        UsageDisplay::Bar => {
+            let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
+            format!("{}{}", "▓".repeat(filled), "░".repeat(BAR_WIDTH - filled))
+        }
+        UsageDisplay::Sparkline => {
+            let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
+            SPARKLINE[index].to_string()
+        }
+    };
+    (prefix, value)
+}
+
+#[cfg(test)]
 fn threshold_reached(
     cache: &UsageCache,
     show_session: bool,
     show_weekly: bool,
     threshold: Option<f64>,
 ) -> bool {
-    let Some(threshold) = threshold else {
-        return false;
-    };
-    let exceeds = |percent: Option<f64>| {
-        percent.is_some_and(|percent| percent.is_finite() && percent >= threshold)
-    };
-    (show_session && exceeds(cache.session)) || (show_weekly && exceeds(cache.weekly))
+    (show_session && exceeds_threshold(cache.session, threshold))
+        || (show_weekly && exceeds_threshold(cache.weekly, threshold))
+}
+
+fn exceeds_threshold(percent: Option<f64>, threshold: Option<f64>) -> bool {
+    percent.is_some_and(|percent| {
+        percent.is_finite() && threshold.is_some_and(|threshold| percent >= threshold)
+    })
 }
 
 fn cache_path_for(provider: UsageProvider) -> Option<PathBuf> {
