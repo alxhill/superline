@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::colors::Color;
 use crate::config::{UsageDisplay, UsageProvider};
-use crate::terminal::BgColor;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -104,27 +103,23 @@ impl<S: UsageScheme> Module for Usage<S> {
         let label = cache
             .as_ref()
             .map(|cache| {
-                format_usage_with_threshold(
+                format_usage(
                     self.provider,
                     cache,
-                    UsageRenderOptions {
-                        show_session: self.show_session,
-                        show_weekly: self.show_weekly,
-                        display: self.display,
-                        threshold: self.threshold,
-                        threshold_color: self.threshold_color,
-                        background: bg,
-                    },
+                    self.show_session,
+                    self.show_weekly,
+                    self.display,
                 )
             })
-            .unwrap_or_else(|| {
-                RenderedUsage::plain(format!("{} …", provider_label(self.provider)))
-            });
-        powerline.add_segment_with_visible_width(
-            label.text,
-            Style::simple(default_fg, bg),
-            label.visible_width,
-        );
+            .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
+        let bg = cache
+            .as_ref()
+            .filter(|cache| {
+                threshold_reached(cache, self.show_session, self.show_weekly, self.threshold)
+            })
+            .and(self.threshold_color)
+            .unwrap_or(bg);
+        powerline.add_segment(label, Style::simple(default_fg, bg));
     }
 }
 
@@ -142,7 +137,6 @@ fn provider_style<S: UsageScheme>(provider: UsageProvider) -> (Color, Color) {
     }
 }
 
-#[cfg(test)]
 fn format_usage(
     provider: UsageProvider,
     cache: &UsageCache,
@@ -160,75 +154,6 @@ fn format_usage(
     parts.join(" ")
 }
 
-struct RenderedUsage {
-    text: String,
-    visible_width: usize,
-}
-
-#[derive(Clone, Copy)]
-struct UsageRenderOptions {
-    show_session: bool,
-    show_weekly: bool,
-    display: UsageDisplay,
-    threshold: Option<f64>,
-    threshold_color: Option<Color>,
-    background: Color,
-}
-
-impl RenderedUsage {
-    fn plain(text: String) -> Self {
-        let visible_width = text.chars().count();
-        Self {
-            text,
-            visible_width,
-        }
-    }
-}
-
-fn format_usage_with_threshold(
-    provider: UsageProvider,
-    cache: &UsageCache,
-    options: UsageRenderOptions,
-) -> RenderedUsage {
-    let mut text = provider_label(provider).to_string();
-    let mut visible_width = text.chars().count();
-
-    for (label, percent) in [
-        ("5h", options.show_session.then_some(cache.session)),
-        ("7d", options.show_weekly.then_some(cache.weekly)),
-    ] {
-        let Some(percent) = percent else {
-            continue;
-        };
-        let (prefix, value) = format_window_parts(label, percent, options.display);
-        visible_width += 1 + prefix.chars().count() + value.chars().count();
-        text.push(' ');
-        text.push_str(&prefix);
-        if options
-            .threshold_color
-            .is_some_and(|_| exceeds_threshold(percent, options.threshold))
-        {
-            let warning = options
-                .threshold_color
-                .expect("threshold color was checked above");
-            text.push_str(&format!(
-                "{}{}{}",
-                BgColor::from(warning),
-                value,
-                BgColor::from(options.background)
-            ));
-        } else {
-            text.push_str(&value);
-        }
-    }
-
-    RenderedUsage {
-        text,
-        visible_width,
-    }
-}
-
-#[cfg(test)]
 fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) -> String {
     let (prefix, value) = format_window_parts(label, used_percent, display);
     format!("{prefix}{value}")
@@ -258,7 +183,6 @@ fn format_window_parts(
     (prefix, value)
 }
 
-#[cfg(test)]
 fn threshold_reached(
     cache: &UsageCache,
     show_session: bool,

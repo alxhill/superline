@@ -151,8 +151,8 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   default to `true`), and set
   `display` to `"percentage"` (the default), `"bar"` (a five-cell shaded bar), or `"sparkline"` (one glyph per
   window). The values are percent used. Set `threshold` to a percent-used warning level and `threshold_color` to a
-  named palette colour or ANSI colour code; the latter replaces the background of only the affected window's value
-  (the bar, sparkline, or percentage) when it crosses the threshold. For example:
+  named palette colour or ANSI colour code; the latter replaces the entire widget background whenever either enabled
+  window crosses the threshold. For example:
   `{ "usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80, "threshold_color": "warning_red" } }`.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
