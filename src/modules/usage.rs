@@ -29,8 +29,9 @@ const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
 const OPENAI_ICON: &str = "\u{ec81}";
 const CLAUDE_ICON: &str = "\u{ec82}";
-const DEFAULT_SESSION_LABEL: &str = "5h";
-const DEFAULT_WEEKLY_LABEL: &str = "7d";
+// spaces added manually to allow for compact display
+const DEFAULT_SESSION_LABEL: &str = "5h ";
+const DEFAULT_WEEKLY_LABEL: &str = " 7d";
 
 pub struct Usage<S> {
     provider: UsageProvider,
@@ -158,14 +159,14 @@ fn format_usage(
     session_label: &str,
     weekly_label: &str,
 ) -> String {
-    let mut parts = vec![provider_label(provider).to_string()];
+    let mut parts = vec![provider_label(provider).to_string(), " ".to_string()];
     if show_session {
         parts.push(format_window(session_label, cache.session, display));
     }
     if show_weekly {
         parts.push(format_window(weekly_label, cache.weekly, display));
     }
-    parts.join(" ")
+    parts.join("")
 }
 
 fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) -> String {
@@ -179,7 +180,7 @@ fn format_window_parts(
     display: UsageDisplay,
 ) -> (String, String) {
     let prefix = if !label.is_empty() {
-        format!("{label} ")
+        label.to_string()
     } else {
         Default::default()
     };
@@ -663,7 +664,7 @@ mod tests {
                 DEFAULT_SESSION_LABEL,
                 DEFAULT_WEEKLY_LABEL,
             ),
-            "\u{ec81} 7d 68%"
+            "\u{ec81}  7d68%"
         );
         assert_eq!(
             format_usage(
@@ -675,7 +676,7 @@ mod tests {
                 "",
                 "",
             ),
-            "\u{ec82} ▂ ▆"
+            "\u{ec82} ▂▆"
         );
     }
 
@@ -683,28 +684,28 @@ mod tests {
     fn bar_display_is_clamped_and_fixed_width() {
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Bar),
-            "5h ▓▓▓░░"
+            "5h▓▓▓░░"
         );
         assert_eq!(
             format_window("7d", Some(120.0), UsageDisplay::Bar),
-            "7d ▓▓▓▓▓"
+            "7d▓▓▓▓▓"
         );
-        assert_eq!(format_window("7d", None, UsageDisplay::Bar), "7d –");
+        assert_eq!(format_window("7d", None, UsageDisplay::Bar), "7d–");
     }
 
     #[test]
     fn sparkline_display_uses_one_glyph_per_window() {
         assert_eq!(
             format_window("5h", Some(0.0), UsageDisplay::Sparkline),
-            "5h ▁"
+            "5h▁"
         );
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Sparkline),
-            "5h ▅"
+            "5h▅"
         );
         assert_eq!(
             format_window("7d", Some(100.0), UsageDisplay::Sparkline),
-            "7d █"
+            "7d█"
         );
     }
 
