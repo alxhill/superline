@@ -1,5 +1,5 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write as _};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write as _};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -11,6 +11,7 @@ use fs2::FileExt;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 use crate::colors::Color;
 use crate::config::{UsageDisplay, UsageProvider};
@@ -24,15 +25,7 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
 const SPARKLINE: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
-// Codex treats characters arriving within 8ms of each other as a paste and an
-// Enter within 120ms of one as a newline, which turns the slash command into a
-// prompt for the model. Pace keystrokes like a person typing instead.
-const KEYSTROKE_INTERVAL: Duration = Duration::from_millis(25);
-const ENTER_DELAY: Duration = Duration::from_millis(150);
-// Codex answers the first `/status` after launch with "refresh requested; run
-// /status again shortly" and only renders the limits on a later one.
-const CODEX_STATUS_RETRIES: usize = 3;
-const CODEX_STATUS_RETRY_DELAY: Duration = Duration::from_millis(1500);
+const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 // A stable, disposable Claude CLI probe session prevents creating a new local
 // conversation on every refresh; its transcript is removed after each probe.
 const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
@@ -342,8 +335,10 @@ pub fn refresh_usage(provider: UsageProvider, cache_path: &Path) {
 }
 
 fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
-    let output = capture_cli(provider)?;
-    let (session, weekly) = parse_cli_usage(provider, &output);
+    let (session, weekly) = match provider {
+        UsageProvider::Claude => parse_claude_usage(&capture_claude_cli()?),
+        UsageProvider::Codex => fetch_codex_rate_limits()?,
+    };
     session?;
 
     Some(UsageCache {
@@ -353,9 +348,96 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
     })
 }
 
-/// Both provider commands render their quota panels only when connected to a
-/// terminal, so run them in a small pseudo-terminal and issue the slash command
-fn capture_cli(provider: UsageProvider) -> Option<String> {
+/// Codex exposes the same rate-limit read its `/status` card uses over the
+/// app-server JSON-RPC protocol, so no terminal emulation or keystrokes are
+/// needed. The TUI is unsafe to drive: it treats a burst of keystrokes as a
+/// paste and can hand the slash command to the model as a prompt, and its
+/// first `/status` after launch only says "refresh requested".
+fn fetch_codex_rate_limits() -> Option<(Option<f64>, Option<f64>)> {
+    let binary = resolve_binary("codex")?;
+    let mut child = Command::new(binary)
+        .arg("app-server")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let result = (|| {
+        let mut stdin = child.stdin.take()?;
+        let stdout = child.stdout.take()?;
+        let requests = [
+            json!({
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "clientInfo": {
+                        "name": "superline",
+                        "version": env!("CARGO_PKG_VERSION"),
+                    },
+                },
+            }),
+            json!({"method": "initialized", "params": {}}),
+            json!({"id": 2, "method": "account/rateLimits/read", "params": {}}),
+        ];
+        for request in requests {
+            writeln!(stdin, "{request}").ok()?;
+        }
+        stdin.flush().ok()?;
+
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                let Ok(line) = line else { break };
+                if sender.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        let deadline = Instant::now() + CODEX_APP_SERVER_TIMEOUT;
+        loop {
+            let remaining = deadline.checked_duration_since(Instant::now())?;
+            let line = receiver.recv_timeout(remaining).ok()?;
+            let Ok(message) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            if message.get("id").and_then(Value::as_u64) == Some(2) {
+                return parse_codex_rate_limits(&message);
+            }
+        }
+    })();
+    let _ = child.kill();
+    let _ = child.wait();
+    result
+}
+
+/// Codex reports the five-hour window as `primary` and the weekly window as
+/// `secondary`; the durations settle it when both are present.
+fn parse_codex_rate_limits(message: &Value) -> Option<(Option<f64>, Option<f64>)> {
+    let limits = message.get("result")?.get("rateLimits")?;
+    let window = |name: &str| {
+        let window = limits.get(name)?;
+        let used = window.get("usedPercent")?.as_f64()?;
+        Some((
+            window.get("windowDurationMins").and_then(Value::as_u64),
+            used,
+        ))
+    };
+    let (mut session, mut weekly) = (window("primary"), window("secondary"));
+    if let (Some((Some(short), _)), Some((Some(long), _))) = (session, weekly) {
+        if short > long {
+            std::mem::swap(&mut session, &mut weekly);
+        }
+    }
+    Some((
+        session.map(|(_, used)| used.clamp(0.0, 100.0)),
+        weekly.map(|(_, used)| used.clamp(0.0, 100.0)),
+    ))
+}
+
+/// Claude renders its quota panel only when connected to a terminal, so run it
+/// in a small pseudo-terminal and issue the slash command
+fn capture_claude_cli() -> Option<String> {
+    let provider = UsageProvider::Claude;
     let pair = native_pty_system()
         .openpty(PtySize {
             rows: 60,
@@ -369,34 +451,20 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
     let mut command = CommandBuilder::new(binary);
     command.env("TERM", "xterm-256color");
     command.env("DISABLE_AUTOUPDATER", "1");
-    if provider == UsageProvider::Claude {
-        for (key, _) in std::env::vars_os() {
-            if key.to_string_lossy().starts_with("ANTHROPIC_") {
-                command.env_remove(key);
-            }
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("ANTHROPIC_") {
+            command.env_remove(key);
         }
     }
-    match provider {
-        UsageProvider::Codex => command.args([
-            "-s",
-            "read-only",
-            "-a",
-            "never",
-            "-c",
-            "history.persistence=\"none\"",
-        ]),
-        UsageProvider::Claude => command.args([
-            "--allowed-tools",
-            "",
-            "--strict-mcp-config",
-            "--session-id",
-            CLAUDE_PROBE_SESSION_ID,
-        ]),
-    }
+    command.args([
+        "--allowed-tools",
+        "",
+        "--strict-mcp-config",
+        "--session-id",
+        CLAUDE_PROBE_SESSION_ID,
+    ]);
     let probe_directory = probe_directory(provider)?;
-    if provider == UsageProvider::Claude {
-        cleanup_claude_probe_sessions(&probe_directory);
-    }
+    cleanup_claude_probe_sessions(&probe_directory);
     command.cwd(&probe_directory);
 
     let mut child = pair.slave.spawn_command(command).ok()?;
@@ -419,10 +487,7 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
     });
 
     let mut output = Vec::new();
-    thread::sleep(match provider {
-        UsageProvider::Claude => Duration::from_secs(2),
-        UsageProvider::Codex => Duration::from_millis(500),
-    });
+    thread::sleep(Duration::from_secs(2));
     while let Ok(chunk) = receiver.try_recv() {
         output.extend_from_slice(&chunk);
     }
@@ -435,7 +500,7 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
         .filter(|character| !character.is_whitespace())
         .collect::<String>()
         .to_ascii_lowercase();
-    if provider == UsageProvider::Claude && normalized_initial.contains("quicksafetycheck:") {
+    if normalized_initial.contains("quicksafetycheck:") {
         // The first row is "No, exit" and the second is "Yes, I trust this
         // folder". Move to the latter before confirming.
         if writer.write_all(b"\x1b[B\r").is_err() || writer.flush().is_err() {
@@ -445,26 +510,14 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
         }
         thread::sleep(Duration::from_millis(500));
     }
-    // Codex also has a `/usage` command, but it spends a rate-limit reset.
-    let slash_command = match provider {
-        UsageProvider::Claude => "/usage",
-        UsageProvider::Codex => "/status",
-    };
-    if type_line(&mut *writer, slash_command).is_err() {
+    if writer.write_all(b"/usage\r").is_err() || writer.flush().is_err() {
         let _ = child.kill();
         let _ = child.wait();
         return None;
     }
 
-    let timeout = match provider {
-        UsageProvider::Claude => Duration::from_secs(15),
-        UsageProvider::Codex => Duration::from_secs(20),
-    };
-    let deadline = Instant::now() + timeout;
+    let deadline = Instant::now() + Duration::from_secs(15);
     let mut last_enter = Instant::now();
-    let mut last_command = Instant::now();
-    let mut command_output_start = output.len();
-    let mut retries = 0;
     let mut parsed_at = None;
     while Instant::now() < deadline && output.len() < MAX_CAPTURE_BYTES {
         if let Ok(chunk) = receiver.recv_timeout(Duration::from_millis(100)) {
@@ -473,26 +526,10 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
                 let _ = writer.write_all(b"\x1b[1;1R");
             }
             let text = String::from_utf8_lossy(&output);
-            let (session, weekly) = parse_cli_usage(provider, &text);
-            if session.is_some() && (weekly.is_some() || provider == UsageProvider::Codex) {
+            let (session, weekly) = parse_claude_usage(&text);
+            if session.is_some() && weekly.is_some() {
                 parsed_at.get_or_insert_with(Instant::now);
             }
-        }
-
-        if parsed_at.is_none()
-            && provider == UsageProvider::Codex
-            && retries < CODEX_STATUS_RETRIES
-            && last_command.elapsed() >= CODEX_STATUS_RETRY_DELAY
-            && codex_limits_pending(&String::from_utf8_lossy(&output[command_output_start..]))
-        {
-            if type_line(&mut *writer, slash_command).is_err() {
-                break;
-            }
-            retries += 1;
-            last_command = Instant::now();
-            last_enter = last_command;
-            command_output_start = output.len();
-            continue;
         }
 
         if last_enter.elapsed() >= Duration::from_millis(800) {
@@ -509,29 +546,9 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
     let _ = writer.flush();
     let _ = child.kill();
     let _ = child.wait();
-    if provider == UsageProvider::Claude {
-        cleanup_claude_probe_sessions(&probe_directory);
-    }
+    cleanup_claude_probe_sessions(&probe_directory);
     let output = String::from_utf8(output).ok()?;
     Some(output)
-}
-
-fn type_line(writer: &mut dyn std::io::Write, text: &str) -> std::io::Result<()> {
-    for character in text.as_bytes() {
-        writer.write_all(&[*character])?;
-        writer.flush()?;
-        thread::sleep(KEYSTROKE_INTERVAL);
-    }
-    thread::sleep(ENTER_DELAY);
-    writer.write_all(b"\r")?;
-    writer.flush()
-}
-
-fn codex_limits_pending(text: &str) -> bool {
-    let clean = strip_terminal_sequences(text);
-    Regex::new(r"(?i)refresh\s*requested")
-        .expect("valid refresh regex")
-        .is_match(&clean)
 }
 
 /// Use a private, tool-owned directory so accepting Claude's one-time trust
@@ -598,21 +615,15 @@ fn resolve_binary(name: &str) -> Option<PathBuf> {
     None
 }
 
-fn parse_cli_usage(provider: UsageProvider, text: &str) -> (Option<f64>, Option<f64>) {
+fn parse_claude_usage(text: &str) -> (Option<f64>, Option<f64>) {
     let clean = strip_terminal_sequences(text);
-    match provider {
-        UsageProvider::Claude => (
-            percent_near_label(&clean, r"current\s*session"),
-            percent_near_label(
-                &clean,
-                r"current\s*week\s*\(\s*all\s*m\s*o\s*d\s*e\s*l\s*s\s*\)",
-            ),
+    (
+        percent_near_label(&clean, r"current\s*session"),
+        percent_near_label(
+            &clean,
+            r"current\s*week\s*\(\s*all\s*m\s*o\s*d\s*e\s*l\s*s\s*\)",
         ),
-        UsageProvider::Codex => (
-            percent_near_label(&clean, r"(?:5h|5-hour)\s*limit"),
-            percent_near_label(&clean, r"weekly\s*limit"),
-        ),
-    }
+    )
 }
 
 fn percent_near_label(text: &str, label: &str) -> Option<f64> {
@@ -654,48 +665,63 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_codex_remaining_percentages_as_used() {
-        let text = "5h limit: 83% left (resets 16:32)\nWeekly limit: 82% remaining";
+    fn parses_codex_rate_limit_windows_from_app_server_response() {
+        let message = json!({
+            "id": 2,
+            "result": {
+                "rateLimits": {
+                    "primary": {"usedPercent": 17, "windowDurationMins": 300, "resetsAt": 1},
+                    "secondary": {"usedPercent": 37, "windowDurationMins": 10080, "resetsAt": 2},
+                    "planType": "business"
+                }
+            }
+        });
         assert_eq!(
-            parse_cli_usage(UsageProvider::Codex, text),
-            (Some(17.0), Some(18.0))
+            parse_codex_rate_limits(&message),
+            Some((Some(17.0), Some(37.0)))
         );
-    }
 
-    #[test]
-    fn codex_deferred_limits_request_another_status() {
-        let text = "\x1b[2m│  Limits:               refresh requested; run /status again shortly.  │\x1b[0m";
-        assert!(codex_limits_pending(text));
-        assert!(codex_limits_pending("Limits: refresh  requested"));
-        assert!(!codex_limits_pending(
-            "5h limit: [████] 100% left (resets 15:36)\nWeekly limit: 63% left"
-        ));
+        let swapped = json!({
+            "id": 2,
+            "result": {
+                "rateLimits": {
+                    "primary": {"usedPercent": 37, "windowDurationMins": 10080},
+                    "secondary": {"usedPercent": 17, "windowDurationMins": 300}
+                }
+            }
+        });
         assert_eq!(
-            parse_cli_usage(
-                UsageProvider::Codex,
-                "Limits: refresh requested; run /status again shortly. Context 0% used"
-            ),
-            (None, None)
+            parse_codex_rate_limits(&swapped),
+            Some((Some(17.0), Some(37.0)))
         );
+
+        let session_only = json!({
+            "id": 2,
+            "result": {"rateLimits": {"primary": {"usedPercent": 120}, "secondary": null}}
+        });
+        assert_eq!(
+            parse_codex_rate_limits(&session_only),
+            Some((Some(100.0), None))
+        );
+
+        let error = json!({
+            "id": 2,
+            "error": {"code": -32603, "message": "failed to fetch codex rate limits"}
+        });
+        assert_eq!(parse_codex_rate_limits(&error), None);
     }
 
     #[test]
     fn parses_claude_used_percentages_from_ansi_output() {
         let text = "\x1b[2JSettings: Usage\nCurrent session\n17% used\nResets 4pm\n\
                     Current week (all models)\n42% used\x1b[0m";
-        assert_eq!(
-            parse_cli_usage(UsageProvider::Claude, text),
-            (Some(17.0), Some(42.0))
-        );
+        assert_eq!(parse_claude_usage(text), (Some(17.0), Some(42.0)));
     }
 
     #[test]
     fn parses_claude_weekly_label_split_by_terminal_repaints() {
         let text = "Current session 5% used\nCurrent week (all m odels) 10% used";
-        assert_eq!(
-            parse_cli_usage(UsageProvider::Claude, text),
-            (Some(5.0), Some(10.0))
-        );
+        assert_eq!(parse_claude_usage(text), (Some(5.0), Some(10.0)));
     }
 
     #[test]
