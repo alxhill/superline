@@ -64,10 +64,13 @@ pub enum LineSegment {
         #[serde(default = "default_true")]
         weekly: bool,
         #[serde(default)]
+        fable: bool,
+        #[serde(default)]
         display: UsageDisplay,
         threshold: Option<f64>,
         session_label: Option<String>,
         weekly_label: Option<String>,
+        fable_label: Option<String>,
     },
     User,
     Cmd,
@@ -130,10 +133,13 @@ enum KnownLineSegment {
         #[serde(default = "default_true")]
         weekly: bool,
         #[serde(default)]
+        fable: bool,
+        #[serde(default)]
         display: UsageDisplay,
         threshold: Option<f64>,
         session_label: Option<String>,
         weekly_label: Option<String>,
+        fable_label: Option<String>,
     },
     User,
     Cmd,
@@ -178,18 +184,22 @@ impl From<KnownLineSegment> for LineSegment {
                 provider,
                 session,
                 weekly,
+                fable,
                 display,
                 threshold,
                 session_label,
                 weekly_label,
+                fable_label,
             } => LineSegment::AiUsage {
                 provider,
                 session,
                 weekly,
+                fable,
                 display,
                 threshold,
                 session_label,
                 weekly_label,
+                fable_label,
             },
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Cmd => LineSegment::Cmd,
@@ -405,10 +415,12 @@ mod tests {
                 provider: UsageProvider::Claude,
                 session: true,
                 weekly: true,
+                fable: false,
                 display: UsageDisplay::Percentage,
                 threshold: None,
                 session_label: None,
                 weekly_label: None,
+                fable_label: None,
             }
         );
     }
@@ -426,10 +438,35 @@ mod tests {
                 provider: UsageProvider::Codex,
                 session: false,
                 weekly: true,
+                fable: false,
                 display: UsageDisplay::Sparkline,
                 threshold: Some(80.0),
                 session_label: Some(String::new()),
                 weekly_label: Some("week".to_string()),
+                fable_label: None,
+            }
+        );
+    }
+
+    #[test]
+    fn usage_fable_window_is_configurable() {
+        let parsed: LineSegment = serde_json::from_str(
+            r#"{"ai_usage":{"provider":"claude","fable":true,"fable_label":"fable "}}"#,
+        )
+        .expect("AI usage module with fable window should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::AiUsage {
+                provider: UsageProvider::Claude,
+                session: true,
+                weekly: true,
+                fable: true,
+                display: UsageDisplay::Percentage,
+                threshold: None,
+                session_label: None,
+                weekly_label: None,
+                fable_label: Some("fable ".to_string()),
             }
         );
     }

@@ -15,7 +15,7 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
         .as_secs();
     fs::write(
         cache_dir.join("usage-claude.json"),
-        format!(r#"{{"session":12.4,"weekly":67.8,"fetched_at":{fetched_at}}}"#),
+        format!(r#"{{"session":12.4,"weekly":67.8,"fable":33.3,"fetched_at":{fetched_at}}}"#),
     )
     .expect("write Claude cache");
     fs::write(
@@ -37,7 +37,8 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
             "rows": [{
                 "left": [
                     {"ai_usage":{"provider":"claude","weekly":false,"display":"sparkline","session_label":""}},
-                    {"ai_usage":{"provider":"codex","session":false,"display":"bar","threshold":75}}
+                    {"ai_usage":{"provider":"codex","session":false,"display":"bar","threshold":75}},
+                    {"ai_usage":{"provider":"claude","session":false,"weekly":false,"fable":true}}
                 ]
             }]
         }"#,
@@ -57,6 +58,7 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\u{ec82} ▂"), "stdout:\n{stdout}");
+    assert!(stdout.contains("\u{ec82}  F 33%"), "stdout:\n{stdout}");
     let warning_background = stdout
         .find("\x1b[48;5;203m")
         .expect("usage warning background should be rendered");
