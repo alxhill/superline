@@ -34,16 +34,71 @@ const CLAUDE_ICON: &str = "\u{ec82}";
 // spaces added manually to allow for compact display
 const DEFAULT_SESSION_LABEL: &str = "5h ";
 const DEFAULT_WEEKLY_LABEL: &str = " 7d ";
+const DEFAULT_FABLE_LABEL: &str = " F ";
 
 pub struct Usage<S> {
     provider: UsageProvider,
-    show_session: bool,
-    show_weekly: bool,
+    windows: UsageWindows,
     display: UsageDisplay,
     threshold: Option<f64>,
-    session_label: String,
-    weekly_label: String,
     scheme: PhantomData<S>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UsageWindow {
+    pub enabled: bool,
+    pub label: String,
+}
+
+impl UsageWindow {
+    pub fn new(enabled: bool, label: Option<String>, default_label: &str) -> Self {
+        Self {
+            enabled,
+            label: label.unwrap_or_else(|| default_label.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UsageWindows {
+    pub session: UsageWindow,
+    pub weekly: UsageWindow,
+    pub fable: UsageWindow,
+}
+
+impl UsageWindows {
+    pub fn new(
+        session: UsageWindow,
+        weekly: UsageWindow,
+        fable: UsageWindow,
+        provider: UsageProvider,
+    ) -> Self {
+        Self {
+            session,
+            weekly,
+            // Only the Claude CLI reports a Fable-specific weekly window.
+            fable: UsageWindow {
+                enabled: fable.enabled && provider == UsageProvider::Claude,
+                ..fable
+            },
+        }
+    }
+
+    pub fn session(enabled: bool, label: Option<String>) -> UsageWindow {
+        UsageWindow::new(enabled, label, DEFAULT_SESSION_LABEL)
+    }
+
+    pub fn weekly(enabled: bool, label: Option<String>) -> UsageWindow {
+        UsageWindow::new(enabled, label, DEFAULT_WEEKLY_LABEL)
+    }
+
+    pub fn fable(enabled: bool, label: Option<String>) -> UsageWindow {
+        UsageWindow::new(enabled, label, DEFAULT_FABLE_LABEL)
+    }
+
+    fn any_enabled(&self) -> bool {
+        self.session.enabled || self.weekly.enabled || self.fable.enabled
+    }
 }
 
 pub trait UsageScheme: DefaultColors {
@@ -67,21 +122,15 @@ pub trait UsageScheme: DefaultColors {
 impl<S: UsageScheme> Usage<S> {
     pub fn new(
         provider: UsageProvider,
-        show_session: bool,
-        show_weekly: bool,
+        windows: UsageWindows,
         display: UsageDisplay,
         threshold: Option<f64>,
-        session_label: Option<String>,
-        weekly_label: Option<String>,
     ) -> Self {
         Self {
             provider,
-            show_session,
-            show_weekly,
+            windows,
             display,
             threshold: threshold.filter(|threshold| threshold.is_finite()),
-            session_label: session_label.unwrap_or_else(|| DEFAULT_SESSION_LABEL.to_string()),
-            weekly_label: weekly_label.unwrap_or_else(|| DEFAULT_WEEKLY_LABEL.to_string()),
             scheme: PhantomData,
         }
     }
@@ -91,12 +140,14 @@ impl<S: UsageScheme> Usage<S> {
 struct UsageCache {
     session: Option<f64>,
     weekly: Option<f64>,
+    #[serde(default)]
+    fable: Option<f64>,
     fetched_at: u64,
 }
 
 impl<S: UsageScheme> Module for Usage<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        if !self.show_session && !self.show_weekly {
+        if !self.windows.any_enabled() {
             return;
         }
 
@@ -115,23 +166,11 @@ impl<S: UsageScheme> Module for Usage<S> {
         let (default_fg, bg) = provider_style::<S>(self.provider);
         let label = cache
             .as_ref()
-            .map(|cache| {
-                format_usage(
-                    self.provider,
-                    cache,
-                    self.show_session,
-                    self.show_weekly,
-                    self.display,
-                    &self.session_label,
-                    &self.weekly_label,
-                )
-            })
+            .map(|cache| format_usage(self.provider, cache, &self.windows, self.display))
             .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
         let bg = cache
             .as_ref()
-            .filter(|cache| {
-                threshold_reached(cache, self.show_session, self.show_weekly, self.threshold)
-            })
+            .filter(|cache| threshold_reached(cache, &self.windows, self.threshold))
             .map(|_| S::usage_threshold_bg())
             .unwrap_or(bg);
         powerline.add_segment(label, Style::simple(default_fg, bg));
@@ -155,18 +194,18 @@ fn provider_style<S: UsageScheme>(provider: UsageProvider) -> (Color, Color) {
 fn format_usage(
     provider: UsageProvider,
     cache: &UsageCache,
-    show_session: bool,
-    show_weekly: bool,
+    windows: &UsageWindows,
     display: UsageDisplay,
-    session_label: &str,
-    weekly_label: &str,
 ) -> String {
     let mut parts = vec![provider_label(provider).to_string(), " ".to_string()];
-    if show_session {
-        parts.push(format_window(session_label, cache.session, display));
-    }
-    if show_weekly {
-        parts.push(format_window(weekly_label, cache.weekly, display));
+    for (window, used_percent) in [
+        (&windows.session, cache.session),
+        (&windows.weekly, cache.weekly),
+        (&windows.fable, cache.fable),
+    ] {
+        if window.enabled {
+            parts.push(format_window(&window.label, used_percent, display));
+        }
     }
     parts.join("")
 }
@@ -204,14 +243,10 @@ fn format_window_parts(
     (prefix, value)
 }
 
-fn threshold_reached(
-    cache: &UsageCache,
-    show_session: bool,
-    show_weekly: bool,
-    threshold: Option<f64>,
-) -> bool {
-    (show_session && exceeds_threshold(cache.session, threshold))
-        || (show_weekly && exceeds_threshold(cache.weekly, threshold))
+fn threshold_reached(cache: &UsageCache, windows: &UsageWindows, threshold: Option<f64>) -> bool {
+    (windows.session.enabled && exceeds_threshold(cache.session, threshold))
+        || (windows.weekly.enabled && exceeds_threshold(cache.weekly, threshold))
+        || (windows.fable.enabled && exceeds_threshold(cache.fable, threshold))
 }
 
 fn exceeds_threshold(percent: Option<f64>, threshold: Option<f64>) -> bool {
@@ -335,15 +370,22 @@ pub fn refresh_usage(provider: UsageProvider, cache_path: &Path) {
 }
 
 fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
-    let (session, weekly) = match provider {
-        UsageProvider::Claude => parse_claude_usage(&capture_claude_cli()?),
-        UsageProvider::Codex => fetch_codex_rate_limits()?,
+    let (session, weekly, fable) = match provider {
+        UsageProvider::Claude => {
+            let parsed = parse_claude_usage(&capture_claude_cli()?);
+            (parsed.session, parsed.weekly, parsed.fable)
+        }
+        UsageProvider::Codex => {
+            let (session, weekly) = fetch_codex_rate_limits()?;
+            (session, weekly, None)
+        }
     };
     session?;
 
     Some(UsageCache {
         session,
         weekly,
+        fable,
         fetched_at: now_secs(),
     })
 }
@@ -526,8 +568,8 @@ fn capture_claude_cli() -> Option<String> {
                 let _ = writer.write_all(b"\x1b[1;1R");
             }
             let text = String::from_utf8_lossy(&output);
-            let (session, weekly) = parse_claude_usage(&text);
-            if session.is_some() && weekly.is_some() {
+            let parsed = parse_claude_usage(&text);
+            if parsed.session.is_some() && parsed.weekly.is_some() {
                 parsed_at.get_or_insert_with(Instant::now);
             }
         }
@@ -615,15 +657,23 @@ fn resolve_binary(name: &str) -> Option<PathBuf> {
     None
 }
 
-fn parse_claude_usage(text: &str) -> (Option<f64>, Option<f64>) {
+#[derive(Debug, PartialEq)]
+struct ParsedUsage {
+    session: Option<f64>,
+    weekly: Option<f64>,
+    fable: Option<f64>,
+}
+
+fn parse_claude_usage(text: &str) -> ParsedUsage {
     let clean = strip_terminal_sequences(text);
-    (
-        percent_near_label(&clean, r"current\s*session"),
-        percent_near_label(
+    ParsedUsage {
+        session: percent_near_label(&clean, r"current\s*session"),
+        weekly: percent_near_label(
             &clean,
             r"current\s*week\s*\(\s*all\s*m\s*o\s*d\s*e\s*l\s*s\s*\)",
         ),
-    )
+        fable: percent_near_label(&clean, r"current\s*week\s*\(\s*f\s*a\s*b\s*l\s*e\s*\)"),
+    }
 }
 
 fn percent_near_label(text: &str, label: &str) -> Option<f64> {
@@ -715,13 +765,66 @@ mod tests {
     fn parses_claude_used_percentages_from_ansi_output() {
         let text = "\x1b[2JSettings: Usage\nCurrent session\n17% used\nResets 4pm\n\
                     Current week (all models)\n42% used\x1b[0m";
-        assert_eq!(parse_claude_usage(text), (Some(17.0), Some(42.0)));
+        assert_eq!(
+            parse_claude_usage(text),
+            ParsedUsage {
+                session: Some(17.0),
+                weekly: Some(42.0),
+                fable: None,
+            }
+        );
     }
 
     #[test]
     fn parses_claude_weekly_label_split_by_terminal_repaints() {
         let text = "Current session 5% used\nCurrent week (all m odels) 10% used";
-        assert_eq!(parse_claude_usage(text), (Some(5.0), Some(10.0)));
+        assert_eq!(
+            parse_claude_usage(text),
+            ParsedUsage {
+                session: Some(5.0),
+                weekly: Some(10.0),
+                fable: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claude_fable_window_when_present() {
+        let text = "Current session\n███████ 14%used\nResets 2:50pm\n\
+                    Current week (all models)\n██████▌ 13% used\nResets Sep 7 at 8pm\n\
+                    Current week (Fable)\n████████ 16% used\nResets Sep 7 at 8pm";
+        assert_eq!(
+            parse_claude_usage(text),
+            ParsedUsage {
+                session: Some(14.0),
+                weekly: Some(13.0),
+                fable: Some(16.0),
+            }
+        );
+    }
+
+    #[test]
+    fn cache_without_fable_field_still_loads() {
+        let cache: UsageCache =
+            serde_json::from_str(r#"{"session":12.0,"weekly":13.0,"fetched_at":1}"#)
+                .expect("pre-fable cache should deserialize");
+        assert_eq!(cache.fable, None);
+    }
+
+    fn windows(
+        provider: UsageProvider,
+        session: bool,
+        weekly: bool,
+        fable: bool,
+        labels: Option<&str>,
+    ) -> UsageWindows {
+        let label = labels.map(str::to_string);
+        UsageWindows::new(
+            UsageWindows::session(session, label.clone()),
+            UsageWindows::weekly(weekly, label.clone()),
+            UsageWindows::fable(fable, label),
+            provider,
+        )
     }
 
     #[test]
@@ -729,17 +832,15 @@ mod tests {
         let cache = UsageCache {
             session: Some(12.4),
             weekly: Some(67.8),
+            fable: Some(33.3),
             fetched_at: 0,
         };
         assert_eq!(
             format_usage(
                 UsageProvider::Claude,
                 &cache,
-                true,
-                false,
+                &windows(UsageProvider::Claude, true, false, false, None),
                 UsageDisplay::Percentage,
-                DEFAULT_SESSION_LABEL,
-                DEFAULT_WEEKLY_LABEL,
             ),
             "\u{ec82} 5h 12%"
         );
@@ -747,11 +848,8 @@ mod tests {
             format_usage(
                 UsageProvider::Codex,
                 &cache,
-                false,
-                true,
+                &windows(UsageProvider::Codex, false, true, false, None),
                 UsageDisplay::Percentage,
-                DEFAULT_SESSION_LABEL,
-                DEFAULT_WEEKLY_LABEL,
             ),
             "\u{ec81}  7d 68%"
         );
@@ -759,13 +857,33 @@ mod tests {
             format_usage(
                 UsageProvider::Claude,
                 &cache,
-                true,
-                true,
+                &windows(UsageProvider::Claude, true, true, true, None),
+                UsageDisplay::Percentage,
+            ),
+            "\u{ec82} 5h 12% 7d 68% F 33%"
+        );
+        assert_eq!(
+            format_usage(
+                UsageProvider::Claude,
+                &cache,
+                &windows(UsageProvider::Claude, true, true, false, Some("")),
                 UsageDisplay::Sparkline,
-                "",
-                "",
             ),
             "\u{ec82} ▂▆"
+        );
+    }
+
+    #[test]
+    fn fable_window_is_only_enabled_for_claude() {
+        assert!(
+            !windows(UsageProvider::Codex, true, true, true, None)
+                .fable
+                .enabled
+        );
+        assert!(
+            windows(UsageProvider::Claude, true, true, true, None)
+                .fable
+                .enabled
         );
     }
 
@@ -803,12 +921,36 @@ mod tests {
         let cache = UsageCache {
             session: Some(81.0),
             weekly: Some(79.0),
+            fable: Some(95.0),
             fetched_at: 0,
         };
 
-        assert!(threshold_reached(&cache, true, false, Some(80.0)));
-        assert!(!threshold_reached(&cache, false, true, Some(80.0)));
-        assert!(threshold_reached(&cache, true, true, Some(80.0)));
+        let claude = UsageProvider::Claude;
+        assert!(threshold_reached(
+            &cache,
+            &windows(claude, true, false, false, None),
+            Some(80.0)
+        ));
+        assert!(!threshold_reached(
+            &cache,
+            &windows(claude, false, true, false, None),
+            Some(80.0)
+        ));
+        assert!(threshold_reached(
+            &cache,
+            &windows(claude, true, true, false, None),
+            Some(80.0)
+        ));
+        assert!(threshold_reached(
+            &cache,
+            &windows(claude, false, false, true, None),
+            Some(80.0)
+        ));
+        assert!(!threshold_reached(
+            &cache,
+            &windows(claude, false, true, false, None),
+            Some(90.0)
+        ));
     }
 
     #[test]
