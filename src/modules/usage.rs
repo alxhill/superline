@@ -24,6 +24,15 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
 const SPARKLINE: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
+// Codex treats characters arriving within 8ms of each other as a paste and an
+// Enter within 120ms of one as a newline, which turns the slash command into a
+// prompt for the model. Pace keystrokes like a person typing instead.
+const KEYSTROKE_INTERVAL: Duration = Duration::from_millis(25);
+const ENTER_DELAY: Duration = Duration::from_millis(150);
+// Codex answers the first `/status` after launch with "refresh requested; run
+// /status again shortly" and only renders the limits on a later one.
+const CODEX_STATUS_RETRIES: usize = 3;
+const CODEX_STATUS_RETRY_DELAY: Duration = Duration::from_millis(1500);
 // A stable, disposable Claude CLI probe session prevents creating a new local
 // conversation on every refresh; its transcript is removed after each probe.
 const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
@@ -436,11 +445,12 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
         }
         thread::sleep(Duration::from_millis(500));
     }
+    // Codex also has a `/usage` command, but it spends a rate-limit reset.
     let slash_command = match provider {
-        UsageProvider::Claude => b"/usage\r".as_slice(),
-        UsageProvider::Codex => b"/status\r".as_slice(),
+        UsageProvider::Claude => "/usage",
+        UsageProvider::Codex => "/status",
     };
-    if writer.write_all(slash_command).is_err() || writer.flush().is_err() {
+    if type_line(&mut *writer, slash_command).is_err() {
         let _ = child.kill();
         let _ = child.wait();
         return None;
@@ -448,10 +458,13 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
 
     let timeout = match provider {
         UsageProvider::Claude => Duration::from_secs(15),
-        UsageProvider::Codex => Duration::from_secs(8),
+        UsageProvider::Codex => Duration::from_secs(20),
     };
     let deadline = Instant::now() + timeout;
     let mut last_enter = Instant::now();
+    let mut last_command = Instant::now();
+    let mut command_output_start = output.len();
+    let mut retries = 0;
     let mut parsed_at = None;
     while Instant::now() < deadline && output.len() < MAX_CAPTURE_BYTES {
         if let Ok(chunk) = receiver.recv_timeout(Duration::from_millis(100)) {
@@ -464,6 +477,22 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
             if session.is_some() && (weekly.is_some() || provider == UsageProvider::Codex) {
                 parsed_at.get_or_insert_with(Instant::now);
             }
+        }
+
+        if parsed_at.is_none()
+            && provider == UsageProvider::Codex
+            && retries < CODEX_STATUS_RETRIES
+            && last_command.elapsed() >= CODEX_STATUS_RETRY_DELAY
+            && codex_limits_pending(&String::from_utf8_lossy(&output[command_output_start..]))
+        {
+            if type_line(&mut *writer, slash_command).is_err() {
+                break;
+            }
+            retries += 1;
+            last_command = Instant::now();
+            last_enter = last_command;
+            command_output_start = output.len();
+            continue;
         }
 
         if last_enter.elapsed() >= Duration::from_millis(800) {
@@ -485,6 +514,24 @@ fn capture_cli(provider: UsageProvider) -> Option<String> {
     }
     let output = String::from_utf8(output).ok()?;
     Some(output)
+}
+
+fn type_line(writer: &mut dyn std::io::Write, text: &str) -> std::io::Result<()> {
+    for character in text.as_bytes() {
+        writer.write_all(&[*character])?;
+        writer.flush()?;
+        thread::sleep(KEYSTROKE_INTERVAL);
+    }
+    thread::sleep(ENTER_DELAY);
+    writer.write_all(b"\r")?;
+    writer.flush()
+}
+
+fn codex_limits_pending(text: &str) -> bool {
+    let clean = strip_terminal_sequences(text);
+    Regex::new(r"(?i)refresh\s*requested")
+        .expect("valid refresh regex")
+        .is_match(&clean)
 }
 
 /// Use a private, tool-owned directory so accepting Claude's one-time trust
@@ -612,6 +659,23 @@ mod tests {
         assert_eq!(
             parse_cli_usage(UsageProvider::Codex, text),
             (Some(17.0), Some(18.0))
+        );
+    }
+
+    #[test]
+    fn codex_deferred_limits_request_another_status() {
+        let text = "\x1b[2m│  Limits:               refresh requested; run /status again shortly.  │\x1b[0m";
+        assert!(codex_limits_pending(text));
+        assert!(codex_limits_pending("Limits: refresh  requested"));
+        assert!(!codex_limits_pending(
+            "5h limit: [████] 100% left (resets 15:36)\nWeekly limit: 63% left"
+        ));
+        assert_eq!(
+            parse_cli_usage(
+                UsageProvider::Codex,
+                "Limits: refresh requested; run /status again shortly. Context 0% used"
+            ),
+            (None, None)
         );
     }
 
