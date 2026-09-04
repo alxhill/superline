@@ -34,11 +34,47 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+        id: release-plz
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The project repository doubles as a Homebrew tap. Once crates.io has
+      # the new source archive, pin its URL and checksum in a small follow-up
+      # PR. Using the PAT makes that PR run the normal required checks.
+      - name: Update Homebrew formula
+        if: steps.release-plz.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+        run: |
+          version=$(jq -r '.[] | select(.package_name == "superline") | .version' <<<"$RELEASES")
+          test -n "$version"
+
+          archive_url="https://static.crates.io/crates/superline/superline-${version}.crate"
+          curl --fail --location --retry 6 --retry-all-errors --retry-delay 10 \
+            --output /tmp/superline.crate "$archive_url"
+          checksum=$(sha256sum /tmp/superline.crate | cut -d ' ' -f 1)
+
+          perl -pi -e "s/superline-[0-9]+\\.[0-9]+\\.[0-9]+\\.crate/superline-${version}.crate/" Formula/superline.rb
+          perl -pi -e "s/sha256 \"[0-9a-f]{64}\"/sha256 \"${checksum}\"/" Formula/superline.rb
+
+          branch="ah/homebrew-${version}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add Formula/superline.rb
+          git commit -m "chore: update homebrew formula to v${version}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$branch"
+
+          pr_url=$(gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --head "$branch" \
+            --title "chore: update homebrew formula to v${version}" \
+            --body "Update the Homebrew formula to the crates.io archive for v${version}.")
+          gh pr merge --repo "$GITHUB_REPOSITORY" --squash --auto "$pr_url"
 
   # Open/update the "release" PR that bumps the version and updates the
   # changelog based on the conventional commits merged since the last release.
