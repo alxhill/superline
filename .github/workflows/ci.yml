@@ -13,20 +13,6 @@ env:
   RUSTFLAGS: ""
 
 jobs:
-  test-homebrew-dispatch:
-    name: Test Homebrew dispatch
-    if: github.event_name == 'pull_request' && github.head_ref == 'ah/homebrew-install'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch current version to Homebrew tap
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
-        run: |
-          gh workflow run update.yml \
-            --repo alxhill/homebrew-superline \
-            --ref main \
-            --field version=0.9.2
-
   build-and-test:
     name: Build & test
     runs-on: ubuntu-latest
