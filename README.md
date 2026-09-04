@@ -44,8 +44,6 @@ brew install alxhill/superline/superline
 superline install <shell name>
 ```
 
-The Homebrew package currently supports Apple Silicon Macs.
-
 Or install from crates.io with Cargo:
 
 ```bash
