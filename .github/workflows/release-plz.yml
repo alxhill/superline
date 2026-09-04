@@ -46,10 +46,12 @@ jobs:
   # This job needs a token that is NOT `secrets.GITHUB_TOKEN`. GitHub refuses to
   # start workflow runs for events raised by `GITHUB_TOKEN` - a recursion guard -
   # so a release PR opened with it gets no CI and cannot satisfy the required
-  # checks on `main` without someone pressing "Approve and run" by hand. A PAT
-  # or GitHub App token makes the PR look like it came from a real account, and
-  # `pull_request` fires normally. Falls back to `GITHUB_TOKEN` so the workflow
-  # still runs (needing the manual click) when the secret is absent.
+  # checks on `main` without someone pressing "Approve and run" by hand.
+  # `RELEASE_PLZ_TOKEN` is a non-expiring fine-grained PAT with Contents and Pull
+  # requests read/write, which makes the PR look like it came from a real account
+  # so `pull_request` fires normally. Deliberately no `|| GITHUB_TOKEN` fallback:
+  # if the secret is ever missing this job fails loudly, rather than quietly
+  # going back to a release PR that nobody notices has no CI.
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-latest
@@ -68,4 +70,4 @@ jobs:
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
