@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/alxhill/superline/compare/v0.9.1...v0.9.2) - 2026-09-04
+
+### Other
+
+- queue the release PR to auto-merge once CI passes ([#55](https://github.com/alxhill/superline/pull/55))
+- open the release PR with a PAT so its checks run ([#53](https://github.com/alxhill/superline/pull/53))
+
 ## [0.9.1](https://github.com/alxhill/superline/compare/v0.9.0...v0.9.1) - 2026-09-04
 
 ### Added
