@@ -66,8 +66,23 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+        id: release-plz
         uses: release-plz/action@v0.5
         with:
           command: release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      # Queue the release PR to merge itself once CI is green, so cutting a
+      # release needs no clicks at all. `--auto` merges straight away if the
+      # checks have already passed.
+      #
+      # This must use `RELEASE_PLZ_TOKEN` rather than `GITHUB_TOKEN`, for the
+      # same reason the PR itself does: merging pushes to `main`, and a push
+      # made by `GITHUB_TOKEN` would not start the `release` job above - the
+      # release PR would merge and then silently never publish.
+      - name: Queue the release PR to auto-merge
+        if: steps.release-plz.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          PR: ${{ steps.release-plz.outputs.pr }}
+        run: gh pr merge --squash --auto --repo '${{ github.repository }}' "$(jq -r .number <<<"$PR")"
