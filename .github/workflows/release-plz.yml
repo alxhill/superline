@@ -19,6 +19,10 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release-plz.outputs.releases_created }}
+      version: ${{ steps.release-metadata.outputs.version }}
+      tag: ${{ steps.release-metadata.outputs.tag }}
     # Runs in the `cargo` deployment environment - the crates.io trusted
     # publisher is scoped to this environment name, so the OIDC token is only
     # accepted for jobs that declare it.
@@ -34,11 +38,74 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+        id: release-plz
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read release metadata
+        if: steps.release-plz.outputs.releases_created == 'true'
+        id: release-metadata
+        env:
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+        run: |
+          version=$(jq -r '.[] | select(.package_name == "superline") | .version' <<<"$RELEASES")
+          tag=$(jq -r '.[] | select(.package_name == "superline") | .tag' <<<"$RELEASES")
+          test -n "$version"
+          test -n "$tag"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  homebrew-release:
+    name: Build Homebrew release
+    needs: release-plz-release
+    if: needs.release-plz-release.outputs.release_created == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release-plz-release.outputs.tag }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Apple Silicon binary
+        env:
+          RUSTFLAGS: -Ctarget-cpu=apple-m1
+        run: cargo build --release --locked
+
+      - name: Package binary
+        id: package
+        env:
+          VERSION: ${{ needs.release-plz-release.outputs.version }}
+        run: |
+          asset="superline-${VERSION}-aarch64-apple-darwin.tar.gz"
+          tar -czf "$asset" -C target/release superline
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-plz-release.outputs.tag }}
+          ASSET: ${{ steps.package.outputs.asset }}
+        run: gh release upload "$TAG" "$ASSET" --clobber
+
+      # RELEASE_PLZ_TOKEN has access to both this repository and the Homebrew
+      # tap, so the newly uploaded binary can update the formula immediately.
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          VERSION: ${{ needs.release-plz-release.outputs.version }}
+        run: |
+          gh workflow run update.yml \
+            --repo alxhill/homebrew-superline \
+            --ref main \
+            --field version="$VERSION"
 
   # Open/update the "release" PR that bumps the version and updates the
   # changelog based on the conventional commits merged since the last release.

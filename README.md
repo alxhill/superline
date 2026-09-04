@@ -37,7 +37,14 @@ seems to fix some character alignment issues.
 
 ![iTerm2 Profile configuration](https://raw.githubusercontent.com/alxhill/superline/main/iterm_config.png)
 
-To install the package, just run the following:
+Install with Homebrew:
+
+```bash
+brew install alxhill/superline/superline
+superline install <shell name>
+```
+
+Or install from crates.io with Cargo:
 
 ```bash
 cargo install superline
@@ -50,7 +57,7 @@ PowerShell profile (`$PROFILE`), creating it if necessary. PowerShell compiles f
 behind `src/platform.rs`) but isn't yet runtime-tested there — see
 [`docs/powershell-testing.md`](docs/powershell-testing.md) for the cross-platform testing plan and Windows caveats.
 
-Cargo's bin directory must be in your `$PATH` for the `superline` command to be available.
+When installing with Cargo, its bin directory must be in your `$PATH` for the `superline` command to be available.
 
 ### Git backends
 
