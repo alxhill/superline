@@ -40,7 +40,6 @@ seems to fix some character alignment issues.
 Install with Homebrew:
 
 ```bash
-brew tap alxhill/superline https://github.com/alxhill/superline
 brew install alxhill/superline/superline
 superline install <shell name>
 ```

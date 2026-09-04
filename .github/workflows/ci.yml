@@ -13,26 +13,6 @@ env:
   RUSTFLAGS: ""
 
 jobs:
-  homebrew:
-    name: Homebrew formula
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Create test tap
-        run: |
-          brew tap-new --no-git local/superline
-          cp Formula/superline.rb "$(brew --repository local/superline)/Formula/"
-
-      - name: Audit formula
-        run: brew audit --strict local/superline/superline
-
-      - name: Install formula
-        run: brew install local/superline/superline
-
-      - name: Test formula
-        run: brew test local/superline/superline
-
   build-and-test:
     name: Build & test
     runs-on: ubuntu-latest
