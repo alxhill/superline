@@ -164,6 +164,14 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   background in the theme as `modules.ai_usage.threshold_bg`. It replaces the entire widget background whenever either
   enabled window crosses the threshold. For example:
   `{ "ai_usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80 } }`.
+  Set `credits` to `true` to add a usage-credits lane: Claude reports the dollars spent against the account's credit
+  limit and Codex reports the per-seat credit budget as a plain count. It has its own `credits_label` (defaulting to
+  `"C"`) and `credits_display`, which accepts the same styles as `display` plus `"numeric"` for the raw figures, e.g.
+  `$50/$100` or `411/12000` (for the rate-limit windows, `"numeric"` behaves like `"percentage"`); when unset it
+  follows `display`. Set `credits_only_when_limited` to `true` to show the lane only once a session or weekly window
+  has hit 100%, which is when the provider starts drawing from credits. The credits lane counts towards `threshold`
+  whenever it is visible. For example:
+  `{ "ai_usage": { "provider": "claude", "display": "sparkline", "credits": true, "credits_display": "numeric", "credits_only_when_limited": true } }`.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
 * **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.

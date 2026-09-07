@@ -15,12 +15,16 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
         .as_secs();
     fs::write(
         cache_dir.join("usage-claude.json"),
-        format!(r#"{{"session":12.4,"weekly":67.8,"fable":33.3,"fetched_at":{fetched_at}}}"#),
+        format!(
+            r#"{{"session":12.4,"weekly":67.8,"fable":33.3,"credits":{{"used":12.5,"limit":500.0,"unit":"dollars"}},"fetched_at":{fetched_at}}}"#
+        ),
     )
     .expect("write Claude cache");
     fs::write(
         cache_dir.join("usage-codex.json"),
-        format!(r#"{{"session":40.0,"weekly":80.0,"fetched_at":{fetched_at}}}"#),
+        format!(
+            r#"{{"session":100.0,"weekly":80.0,"credits":{{"used":410.78,"limit":12000.0,"unit":"count"}},"fetched_at":{fetched_at}}}"#
+        ),
     )
     .expect("write Codex cache");
 
@@ -38,7 +42,9 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
                 "left": [
                     {"ai_usage":{"provider":"claude","weekly":false,"display":"sparkline","session_label":""}},
                     {"ai_usage":{"provider":"codex","session":false,"display":"bar","threshold":75}},
-                    {"ai_usage":{"provider":"claude","session":false,"weekly":false,"fable":true}}
+                    {"ai_usage":{"provider":"claude","session":false,"weekly":false,"fable":true}},
+                    {"ai_usage":{"provider":"claude","session":false,"weekly":false,"credits":true,"credits_display":"numeric","credits_only_when_limited":true}},
+                    {"ai_usage":{"provider":"codex","session":false,"weekly":false,"credits":true,"credits_display":"numeric","credits_label":"","credits_only_when_limited":true}}
                 ]
             }]
         }"#,
@@ -59,6 +65,10 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\u{ec82} ▂"), "stdout:\n{stdout}");
     assert!(stdout.contains("\u{ec82}  F 33%"), "stdout:\n{stdout}");
+    // Claude has headroom, so its hidden-until-limited credits lane stays empty.
+    assert!(!stdout.contains("$12.50"), "stdout:\n{stdout}");
+    // Codex has exhausted its session window, so its credits appear numerically.
+    assert!(stdout.contains("\u{ec81} 411/12000"), "stdout:\n{stdout}");
     let warning_background = stdout
         .find("\x1b[48;5;203m")
         .expect("usage warning background should be rendered");
