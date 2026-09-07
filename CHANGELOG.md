@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/alxhill/superline/compare/v0.9.3...v0.10.0) - 2026-09-07
+
+### Added
+
+- *(usage)* show claude and codex usage credits ([#58](https://github.com/alxhill/superline/pull/58))
+
 ## [0.9.3](https://github.com/alxhill/superline/compare/v0.9.2...v0.9.3) - 2026-09-04
 
 ### Added
