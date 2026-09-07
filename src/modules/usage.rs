@@ -35,6 +35,7 @@ const CLAUDE_ICON: &str = "\u{ec82}";
 const DEFAULT_SESSION_LABEL: &str = "5h ";
 const DEFAULT_WEEKLY_LABEL: &str = " 7d ";
 const DEFAULT_FABLE_LABEL: &str = " F ";
+const DEFAULT_CREDITS_LABEL: &str = " C ";
 
 pub struct Usage<S> {
     provider: UsageProvider,
@@ -59,11 +60,22 @@ impl UsageWindow {
     }
 }
 
+/// The credits lane has its own display style and can hide itself until a
+/// rate-limit window is exhausted, which is when providers start billing
+/// against credits.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreditsWindow {
+    pub window: UsageWindow,
+    pub display: UsageDisplay,
+    pub only_when_limited: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct UsageWindows {
     pub session: UsageWindow,
     pub weekly: UsageWindow,
     pub fable: UsageWindow,
+    pub credits: CreditsWindow,
 }
 
 impl UsageWindows {
@@ -71,6 +83,7 @@ impl UsageWindows {
         session: UsageWindow,
         weekly: UsageWindow,
         fable: UsageWindow,
+        credits: CreditsWindow,
         provider: UsageProvider,
     ) -> Self {
         Self {
@@ -81,6 +94,20 @@ impl UsageWindows {
                 enabled: fable.enabled && provider == UsageProvider::Claude,
                 ..fable
             },
+            credits,
+        }
+    }
+
+    pub fn credits(
+        enabled: bool,
+        label: Option<String>,
+        display: UsageDisplay,
+        only_when_limited: bool,
+    ) -> CreditsWindow {
+        CreditsWindow {
+            window: UsageWindow::new(enabled, label, DEFAULT_CREDITS_LABEL),
+            display,
+            only_when_limited,
         }
     }
 
@@ -97,7 +124,14 @@ impl UsageWindows {
     }
 
     fn any_enabled(&self) -> bool {
-        self.session.enabled || self.weekly.enabled || self.fable.enabled
+        self.session.enabled
+            || self.weekly.enabled
+            || self.fable.enabled
+            || self.credits.window.enabled
+    }
+
+    fn credits_visible(&self, cache: &UsageCache) -> bool {
+        self.credits.window.enabled && (!self.credits.only_when_limited || cache.limit_reached())
     }
 }
 
@@ -142,7 +176,56 @@ struct UsageCache {
     weekly: Option<f64>,
     #[serde(default)]
     fable: Option<f64>,
+    #[serde(default)]
+    credits: Option<CreditsUsage>,
     fetched_at: u64,
+}
+
+impl UsageCache {
+    /// Providers bill against credits once any rate-limit window is exhausted.
+    fn limit_reached(&self) -> bool {
+        [self.session, self.weekly, self.fable]
+            .into_iter()
+            .flatten()
+            .any(|percent| percent >= 100.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum CreditsUnit {
+    Dollars,
+    Count,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+struct CreditsUsage {
+    used: f64,
+    limit: f64,
+    unit: CreditsUnit,
+}
+
+impl CreditsUsage {
+    fn percent_used(&self) -> Option<f64> {
+        (self.limit > 0.0).then(|| (self.used / self.limit * 100.0).clamp(0.0, 100.0))
+    }
+
+    fn numeric(&self) -> String {
+        format!(
+            "{}/{}",
+            format_amount(self.used, self.unit),
+            format_amount(self.limit, self.unit)
+        )
+    }
+}
+
+fn format_amount(amount: f64, unit: CreditsUnit) -> String {
+    let amount = amount.max(0.0);
+    match unit {
+        CreditsUnit::Dollars if amount.fract() == 0.0 => format!("${amount:.0}"),
+        CreditsUnit::Dollars => format!("${amount:.2}"),
+        CreditsUnit::Count => format!("{amount:.0}"),
+    }
 }
 
 impl<S: UsageScheme> Module for Usage<S> {
@@ -207,7 +290,21 @@ fn format_usage(
             parts.push(format_window(&window.label, used_percent, display));
         }
     }
+    if windows.credits_visible(cache) {
+        parts.push(format_credits(
+            &windows.credits.window.label,
+            cache.credits.as_ref(),
+            windows.credits.display,
+        ));
+    }
     parts.join("")
+}
+
+fn format_credits(label: &str, credits: Option<&CreditsUsage>, display: UsageDisplay) -> String {
+    match (display, credits) {
+        (UsageDisplay::Numeric, Some(credits)) => format!("{label}{}", credits.numeric()),
+        _ => format_window(label, credits.and_then(CreditsUsage::percent_used), display),
+    }
 }
 
 fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) -> String {
@@ -230,7 +327,8 @@ fn format_window_parts(
     };
     let percent = percent.clamp(0.0, 100.0);
     let value = match display {
-        UsageDisplay::Percentage => format!("{percent:.0}%"),
+        // Rate-limit windows only report a percentage, so numeric falls back to it.
+        UsageDisplay::Percentage | UsageDisplay::Numeric => format!("{percent:.0}%"),
         UsageDisplay::Bar => {
             let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
             format!("{}{}", "▓".repeat(filled), "░".repeat(BAR_WIDTH - filled))
@@ -247,6 +345,11 @@ fn threshold_reached(cache: &UsageCache, windows: &UsageWindows, threshold: Opti
     (windows.session.enabled && exceeds_threshold(cache.session, threshold))
         || (windows.weekly.enabled && exceeds_threshold(cache.weekly, threshold))
         || (windows.fable.enabled && exceeds_threshold(cache.fable, threshold))
+        || (windows.credits_visible(cache)
+            && exceeds_threshold(
+                cache.credits.as_ref().and_then(CreditsUsage::percent_used),
+                threshold,
+            ))
 }
 
 fn exceeds_threshold(percent: Option<f64>, threshold: Option<f64>) -> bool {
@@ -370,22 +473,17 @@ pub fn refresh_usage(provider: UsageProvider, cache_path: &Path) {
 }
 
 fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
-    let (session, weekly, fable) = match provider {
-        UsageProvider::Claude => {
-            let parsed = parse_claude_usage(&capture_claude_cli()?);
-            (parsed.session, parsed.weekly, parsed.fable)
-        }
-        UsageProvider::Codex => {
-            let (session, weekly) = fetch_codex_rate_limits()?;
-            (session, weekly, None)
-        }
+    let parsed = match provider {
+        UsageProvider::Claude => parse_claude_usage(&capture_claude_cli()?),
+        UsageProvider::Codex => fetch_codex_rate_limits()?,
     };
-    session?;
+    parsed.session?;
 
     Some(UsageCache {
-        session,
-        weekly,
-        fable,
+        session: parsed.session,
+        weekly: parsed.weekly,
+        fable: parsed.fable,
+        credits: parsed.credits,
         fetched_at: now_secs(),
     })
 }
@@ -395,7 +493,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
 /// needed. The TUI is unsafe to drive: it treats a burst of keystrokes as a
 /// paste and can hand the slash command to the model as a prompt, and its
 /// first `/status` after launch only says "refresh requested".
-fn fetch_codex_rate_limits() -> Option<(Option<f64>, Option<f64>)> {
+fn fetch_codex_rate_limits() -> Option<ParsedUsage> {
     let binary = resolve_binary("codex")?;
     let mut child = Command::new(binary)
         .arg("app-server")
@@ -453,8 +551,9 @@ fn fetch_codex_rate_limits() -> Option<(Option<f64>, Option<f64>)> {
 }
 
 /// Codex reports the five-hour window as `primary` and the weekly window as
-/// `secondary`; the durations settle it when both are present.
-fn parse_codex_rate_limits(message: &Value) -> Option<(Option<f64>, Option<f64>)> {
+/// `secondary`; the durations settle it when both are present. Credits come
+/// from `individualLimit`, the per-seat credit budget, as a plain count.
+fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
     let limits = message.get("result")?.get("rateLimits")?;
     let window = |name: &str| {
         let window = limits.get(name)?;
@@ -470,10 +569,28 @@ fn parse_codex_rate_limits(message: &Value) -> Option<(Option<f64>, Option<f64>)
             std::mem::swap(&mut session, &mut weekly);
         }
     }
-    Some((
-        session.map(|(_, used)| used.clamp(0.0, 100.0)),
-        weekly.map(|(_, used)| used.clamp(0.0, 100.0)),
-    ))
+    let credits = limits.get("individualLimit").and_then(|limit| {
+        Some(CreditsUsage {
+            used: number_field(limit, "used")?,
+            limit: number_field(limit, "limit")?,
+            unit: CreditsUnit::Count,
+        })
+    });
+    Some(ParsedUsage {
+        session: session.map(|(_, used)| used.clamp(0.0, 100.0)),
+        weekly: weekly.map(|(_, used)| used.clamp(0.0, 100.0)),
+        fable: None,
+        credits,
+    })
+}
+
+/// Codex serialises the credit budget figures as strings.
+fn number_field(value: &Value, key: &str) -> Option<f64> {
+    match value.get(key)? {
+        Value::Number(number) => number.as_f64(),
+        Value::String(text) => text.trim().parse().ok(),
+        _ => None,
+    }
 }
 
 /// Claude renders its quota panel only when connected to a terminal, so run it
@@ -662,6 +779,7 @@ struct ParsedUsage {
     session: Option<f64>,
     weekly: Option<f64>,
     fable: Option<f64>,
+    credits: Option<CreditsUsage>,
 }
 
 fn parse_claude_usage(text: &str) -> ParsedUsage {
@@ -673,7 +791,25 @@ fn parse_claude_usage(text: &str) -> ParsedUsage {
             r"current\s*week\s*\(\s*all\s*m\s*o\s*d\s*e\s*l\s*s\s*\)",
         ),
         fable: percent_near_label(&clean, r"current\s*week\s*\(\s*f\s*a\s*b\s*l\s*e\s*\)"),
+        credits: parse_claude_credits(&clean),
     }
+}
+
+/// The credits row reads `Usage credits … $12.50 / $500.00 spent`.
+fn parse_claude_credits(text: &str) -> Option<CreditsUsage> {
+    let pattern = Regex::new(
+        r"(?is)usage\s*credits.{0,500}?\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*/\s*\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*(spent|used)",
+    )
+    .ok()?;
+    let captures = pattern.captures_iter(text).last()?;
+    let amount = |index: usize| -> Option<f64> {
+        captures.get(index)?.as_str().replace(',', "").parse().ok()
+    };
+    Some(CreditsUsage {
+        used: amount(1)?,
+        limit: amount(2)?,
+        unit: CreditsUnit::Dollars,
+    })
 }
 
 fn percent_near_label(text: &str, label: &str) -> Option<f64> {
@@ -728,7 +864,12 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&message),
-            Some((Some(17.0), Some(37.0)))
+            Some(ParsedUsage {
+                session: Some(17.0),
+                weekly: Some(37.0),
+                fable: None,
+                credits: None,
+            })
         );
 
         let swapped = json!({
@@ -742,7 +883,12 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&swapped),
-            Some((Some(17.0), Some(37.0)))
+            Some(ParsedUsage {
+                session: Some(17.0),
+                weekly: Some(37.0),
+                fable: None,
+                credits: None,
+            })
         );
 
         let session_only = json!({
@@ -751,7 +897,32 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&session_only),
-            Some((Some(100.0), None))
+            Some(ParsedUsage {
+                session: Some(100.0),
+                weekly: None,
+                fable: None,
+                credits: None,
+            })
+        );
+
+        let with_credits = json!({
+            "id": 2,
+            "result": {
+                "rateLimits": {
+                    "primary": {"usedPercent": 100, "windowDurationMins": 300},
+                    "secondary": {"usedPercent": 29, "windowDurationMins": 10080},
+                    "credits": {"hasCredits": true, "unlimited": false, "balance": null},
+                    "individualLimit": {"limit": "12000", "used": "410.7836902141571", "remainingPercent": 97}
+                }
+            }
+        });
+        assert_eq!(
+            parse_codex_rate_limits(&with_credits).and_then(|parsed| parsed.credits),
+            Some(CreditsUsage {
+                used: 410.7836902141571,
+                limit: 12000.0,
+                unit: CreditsUnit::Count,
+            })
         );
 
         let error = json!({
@@ -771,6 +942,7 @@ mod tests {
                 session: Some(17.0),
                 weekly: Some(42.0),
                 fable: None,
+                credits: None,
             }
         );
     }
@@ -784,6 +956,7 @@ mod tests {
                 session: Some(5.0),
                 weekly: Some(10.0),
                 fable: None,
+                credits: None,
             }
         );
     }
@@ -799,6 +972,29 @@ mod tests {
                 session: Some(14.0),
                 weekly: Some(13.0),
                 fable: Some(16.0),
+                credits: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claude_usage_credits_row() {
+        let text = "Current session\n████ 25%used\nResets 3:30pm\n\
+                    Current week (all models)\n████ 32%used\n\
+                    Current week (Fable)\n████ 39%used\n\
+                    Usage credits                     3%used\
+                    $12.50 / $500.00 spent · Resets Oct 1 (America/New_York)";
+        assert_eq!(
+            parse_claude_usage(text),
+            ParsedUsage {
+                session: Some(25.0),
+                weekly: Some(32.0),
+                fable: Some(39.0),
+                credits: Some(CreditsUsage {
+                    used: 12.5,
+                    limit: 500.0,
+                    unit: CreditsUnit::Dollars,
+                }),
             }
         );
     }
@@ -809,6 +1005,7 @@ mod tests {
             serde_json::from_str(r#"{"session":12.0,"weekly":13.0,"fetched_at":1}"#)
                 .expect("pre-fable cache should deserialize");
         assert_eq!(cache.fable, None);
+        assert_eq!(cache.credits, None);
     }
 
     fn windows(
@@ -823,8 +1020,136 @@ mod tests {
             UsageWindows::session(session, label.clone()),
             UsageWindows::weekly(weekly, label.clone()),
             UsageWindows::fable(fable, label),
+            UsageWindows::credits(false, None, UsageDisplay::Numeric, false),
             provider,
         )
+    }
+
+    fn with_credits(
+        mut windows: UsageWindows,
+        display: UsageDisplay,
+        only_when_limited: bool,
+    ) -> UsageWindows {
+        windows.credits = UsageWindows::credits(true, None, display, only_when_limited);
+        windows
+    }
+
+    fn cache(session: f64, credits: Option<CreditsUsage>) -> UsageCache {
+        UsageCache {
+            session: Some(session),
+            weekly: Some(20.0),
+            fable: None,
+            credits,
+            fetched_at: 0,
+        }
+    }
+
+    const DOLLARS: CreditsUsage = CreditsUsage {
+        used: 50.0,
+        limit: 100.0,
+        unit: CreditsUnit::Dollars,
+    };
+
+    #[test]
+    fn credits_display_is_configured_separately_from_the_windows() {
+        let windows = with_credits(
+            windows(UsageProvider::Claude, true, false, false, None),
+            UsageDisplay::Numeric,
+            false,
+        );
+        assert_eq!(
+            format_usage(
+                UsageProvider::Claude,
+                &cache(12.0, Some(DOLLARS)),
+                &windows,
+                UsageDisplay::Sparkline,
+            ),
+            "\u{ec82} 5h ▂ C $50/$100"
+        );
+
+        let count = CreditsUsage {
+            used: 410.78,
+            limit: 12000.0,
+            unit: CreditsUnit::Count,
+        };
+        assert_eq!(
+            format_credits("", Some(&count), UsageDisplay::Numeric),
+            "411/12000"
+        );
+        assert_eq!(
+            format_credits("", Some(&DOLLARS), UsageDisplay::Percentage),
+            "50%"
+        );
+        assert_eq!(
+            format_credits("", Some(&DOLLARS), UsageDisplay::Bar),
+            "▓▓▓░░"
+        );
+        assert_eq!(
+            format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
+            "▅"
+        );
+        assert_eq!(format_credits("C", None, UsageDisplay::Numeric), "C–");
+        assert_eq!(format_amount(12.5, CreditsUnit::Dollars), "$12.50");
+        assert_eq!(format_amount(1234.0, CreditsUnit::Dollars), "$1234");
+    }
+
+    #[test]
+    fn credits_can_be_hidden_until_a_window_is_exhausted() {
+        let windows = with_credits(
+            windows(UsageProvider::Codex, true, false, false, Some("")),
+            UsageDisplay::Numeric,
+            true,
+        );
+        assert_eq!(
+            format_usage(
+                UsageProvider::Codex,
+                &cache(40.0, Some(DOLLARS)),
+                &windows,
+                UsageDisplay::Percentage,
+            ),
+            "\u{ec81} 40%"
+        );
+        assert_eq!(
+            format_usage(
+                UsageProvider::Codex,
+                &cache(100.0, Some(DOLLARS)),
+                &windows,
+                UsageDisplay::Percentage,
+            ),
+            "\u{ec81} 100% C $50/$100"
+        );
+    }
+
+    #[test]
+    fn numeric_display_falls_back_to_percentage_for_rate_limit_windows() {
+        assert_eq!(
+            format_window("5h", Some(61.0), UsageDisplay::Numeric),
+            "5h61%"
+        );
+    }
+
+    #[test]
+    fn threshold_considers_visible_credits() {
+        let windows = with_credits(
+            windows(UsageProvider::Claude, true, false, false, None),
+            UsageDisplay::Numeric,
+            true,
+        );
+        let credits = CreditsUsage {
+            used: 90.0,
+            limit: 100.0,
+            unit: CreditsUnit::Dollars,
+        };
+        assert!(!threshold_reached(
+            &cache(10.0, Some(credits)),
+            &windows,
+            Some(85.0)
+        ));
+        assert!(threshold_reached(
+            &cache(100.0, Some(credits)),
+            &windows,
+            Some(85.0)
+        ));
     }
 
     #[test]
@@ -833,6 +1158,7 @@ mod tests {
             session: Some(12.4),
             weekly: Some(67.8),
             fable: Some(33.3),
+            credits: None,
             fetched_at: 0,
         };
         assert_eq!(
@@ -922,6 +1248,7 @@ mod tests {
             session: Some(81.0),
             weekly: Some(79.0),
             fable: Some(95.0),
+            credits: None,
             fetched_at: 0,
         };
 

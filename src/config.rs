@@ -71,6 +71,12 @@ pub enum LineSegment {
         session_label: Option<String>,
         weekly_label: Option<String>,
         fable_label: Option<String>,
+        #[serde(default)]
+        credits: bool,
+        credits_display: Option<UsageDisplay>,
+        credits_label: Option<String>,
+        #[serde(default)]
+        credits_only_when_limited: bool,
     },
     User,
     Cmd,
@@ -140,6 +146,12 @@ enum KnownLineSegment {
         session_label: Option<String>,
         weekly_label: Option<String>,
         fable_label: Option<String>,
+        #[serde(default)]
+        credits: bool,
+        credits_display: Option<UsageDisplay>,
+        credits_label: Option<String>,
+        #[serde(default)]
+        credits_only_when_limited: bool,
     },
     User,
     Cmd,
@@ -190,6 +202,10 @@ impl From<KnownLineSegment> for LineSegment {
                 session_label,
                 weekly_label,
                 fable_label,
+                credits,
+                credits_display,
+                credits_label,
+                credits_only_when_limited,
             } => LineSegment::AiUsage {
                 provider,
                 session,
@@ -200,6 +216,10 @@ impl From<KnownLineSegment> for LineSegment {
                 session_label,
                 weekly_label,
                 fable_label,
+                credits,
+                credits_display,
+                credits_label,
+                credits_only_when_limited,
             },
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Cmd => LineSegment::Cmd,
@@ -300,6 +320,7 @@ pub enum UsageDisplay {
     Percentage,
     Bar,
     Sparkline,
+    Numeric,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -341,6 +362,10 @@ impl Default for Config {
                             session_label: None,
                             weekly_label: None,
                             fable_label: None,
+                            credits: true,
+                            credits_display: Some(UsageDisplay::Numeric),
+                            credits_label: None,
+                            credits_only_when_limited: true,
                         },
                         LineSegment::Padding(1),
                         LineSegment::AiUsage {
@@ -353,6 +378,10 @@ impl Default for Config {
                             session_label: None,
                             weekly_label: None,
                             fable_label: None,
+                            credits: true,
+                            credits_display: Some(UsageDisplay::Numeric),
+                            credits_label: None,
+                            credits_only_when_limited: true,
                         },
                     ],
                     right: Some(vec![]),
@@ -445,6 +474,10 @@ mod tests {
                 session_label: None,
                 weekly_label: None,
                 fable_label: None,
+                credits: false,
+                credits_display: None,
+                credits_label: None,
+                credits_only_when_limited: false,
             }
         );
     }
@@ -468,6 +501,10 @@ mod tests {
                 session_label: Some(String::new()),
                 weekly_label: Some("week".to_string()),
                 fable_label: None,
+                credits: false,
+                credits_display: None,
+                credits_label: None,
+                credits_only_when_limited: false,
             }
         );
     }
@@ -491,6 +528,37 @@ mod tests {
                 session_label: None,
                 weekly_label: None,
                 fable_label: Some("fable ".to_string()),
+                credits: false,
+                credits_display: None,
+                credits_label: None,
+                credits_only_when_limited: false,
+            }
+        );
+    }
+
+    #[test]
+    fn usage_credits_window_is_configurable() {
+        let parsed: LineSegment = serde_json::from_str(
+            r#"{"ai_usage":{"provider":"codex","credits":true,"credits_display":"numeric","credits_label":"","credits_only_when_limited":true}}"#,
+        )
+        .expect("AI usage module with credits window should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::AiUsage {
+                provider: UsageProvider::Codex,
+                session: true,
+                weekly: true,
+                fable: false,
+                display: UsageDisplay::Percentage,
+                threshold: None,
+                session_label: None,
+                weekly_label: None,
+                fable_label: None,
+                credits: true,
+                credits_display: Some(UsageDisplay::Numeric),
+                credits_label: Some(String::new()),
+                credits_only_when_limited: true,
             }
         );
     }

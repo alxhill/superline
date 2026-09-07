@@ -371,12 +371,22 @@ impl Powerline {
                     session_label,
                     weekly_label,
                     fable_label,
+                    credits,
+                    credits_display,
+                    credits_label,
+                    credits_only_when_limited,
                 } => self.add_module(Usage::<T>::new(
                     *provider,
                     UsageWindows::new(
                         UsageWindows::session(*session, session_label.clone()),
                         UsageWindows::weekly(*weekly, weekly_label.clone()),
                         UsageWindows::fable(*fable, fable_label.clone()),
+                        UsageWindows::credits(
+                            *credits,
+                            credits_label.clone(),
+                            credits_display.unwrap_or(*display),
+                            *credits_only_when_limited,
+                        ),
                         *provider,
                     ),
                     *display,
