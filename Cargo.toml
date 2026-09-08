@@ -8,6 +8,17 @@ license = "MIT"
 repository = "https://github.com/alxhill/superline"
 readme = "README.md"
 
+# `cargo binstall superline` fetches the prebuilt binary attached to the GitHub
+# release for the host target instead of compiling from source. The URL and the
+# archive layout must stay in step with what `.github/workflows/release-plz.yml`
+# uploads; the binary sits at the root of the tarball, not in a versioned
+# directory. binstall reads this from the published crate, so changes here only
+# take effect for releases cut after they land.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "{ bin }{ binary-ext }"
+
 [dependencies]
 hostname = "0.3"
 git2 = { version = "0.18", optional = true, default-features = false }

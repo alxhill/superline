@@ -44,7 +44,17 @@ brew install alxhill/superline/superline
 superline install <shell name>
 ```
 
-Or install from crates.io with Cargo:
+Or download a prebuilt binary with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) — no Rust
+toolchain needed to compile, and no waiting for one:
+
+```bash
+cargo binstall superline
+superline install <shell name>
+```
+
+Prebuilt binaries are published for macOS (Apple silicon and Intel), Linux (x86-64 and arm64) and Windows (x86-64),
+and use the default `gitoxide` git backend. On any other platform, or to pick a different backend, build from
+crates.io with Cargo:
 
 ```bash
 cargo install superline

@@ -58,13 +58,48 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  homebrew-release:
-    name: Build Homebrew release
+  # Prebuilt binaries attached to the GitHub release. Two consumers depend on
+  # the names produced here: `cargo binstall superline` resolves them from the
+  # `[package.metadata.binstall]` URL template in Cargo.toml, and the Homebrew
+  # tap downloads the aarch64-apple-darwin tarball to compute its checksum. Each
+  # archive holds the bare binary at its root - no versioned directory.
+  release-assets:
+    name: Build ${{ matrix.target }}
     needs: release-plz-release
     if: needs.release-plz-release.outputs.release_created == 'true'
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    strategy:
+      # One unbuildable target should not hide whether the others are fine.
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            # Every Apple silicon Mac is an M1 or later, so this baseline costs
+            # no compatibility.
+            rustflags: -Ctarget-cpu=apple-m1
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            rustflags: ""
+          # Built on the oldest supported runner image so the binary does not
+          # require a newer glibc than the distro the user is on.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            rustflags: ""
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+            rustflags: ""
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            rustflags: ""
+    env:
+      # `.cargo/config.toml` compiles for the host CPU, which is wrong for a
+      # binary other people download (and impossible when cross-compiling).
+      # RUSTFLAGS takes precedence over the config file, so setting it here -
+      # empty for most targets - is what disables that.
+      RUSTFLAGS: ${{ matrix.rustflags }}
     steps:
       - name: Checkout release
         uses: actions/checkout@v5
@@ -73,31 +108,45 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-      - name: Build Apple Silicon binary
-        env:
-          RUSTFLAGS: -Ctarget-cpu=apple-m1
-        run: cargo build --release --locked
+      - name: Build binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package binary
         id: package
+        shell: bash
         env:
           VERSION: ${{ needs.release-plz-release.outputs.version }}
+          TARGET: ${{ matrix.target }}
         run: |
-          asset="superline-${VERSION}-aarch64-apple-darwin.tar.gz"
-          tar -czf "$asset" -C target/release superline
+          bin=superline
+          if [[ "$TARGET" == *windows* ]]; then
+            bin=superline.exe
+          fi
+          asset="superline-${VERSION}-${TARGET}.tar.gz"
+          tar -czf "$asset" -C "target/${TARGET}/release" "$bin"
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
 
       - name: Upload release asset
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-plz-release.outputs.tag }}
           ASSET: ${{ steps.package.outputs.asset }}
         run: gh release upload "$TAG" "$ASSET" --clobber
 
-      # RELEASE_PLZ_TOKEN has access to both this repository and the Homebrew
-      # tap, so the newly uploaded binary can update the formula immediately.
-      - name: Update Homebrew formula
+  # RELEASE_PLZ_TOKEN has access to both this repository and the Homebrew tap,
+  # so the newly uploaded binary can update the formula immediately. Gated on
+  # the whole matrix: a release with missing binaries is a release to fix before
+  # pointing the tap at it.
+  homebrew-formula:
+    name: Update Homebrew formula
+    needs: [release-plz-release, release-assets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch tap update
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           VERSION: ${{ needs.release-plz-release.outputs.version }}
