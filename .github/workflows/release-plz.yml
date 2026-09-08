@@ -58,8 +58,6 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  # The matrix that builds the binaries lives in its own workflow so that
-  # `ci.yml` can run exactly the same build on every pull request as a dry run.
   release-assets:
     name: Release assets
     needs: release-plz-release
@@ -72,10 +70,6 @@ jobs:
       version: ${{ needs.release-plz-release.outputs.version }}
       upload: true
 
-  # RELEASE_PLZ_TOKEN has access to both this repository and the Homebrew tap,
-  # so the newly uploaded binary can update the formula immediately. Gated on
-  # the whole matrix: a release with missing binaries is a release to fix before
-  # pointing the tap at it.
   homebrew-formula:
     name: Update Homebrew formula
     needs: [release-plz-release, release-assets]

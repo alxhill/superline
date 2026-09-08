@@ -53,12 +53,6 @@ jobs:
       - name: Test (libgit backend)
         run: cargo test --no-default-features --features libgit --verbose
 
-  # Dry run of the release build. Every target a release publishes is compiled
-  # and packaged here, and each archive is checked against the `cargo binstall`
-  # metadata in Cargo.toml - but nothing is uploaded to a release. The release
-  # path itself only runs after the version is tagged and on crates.io, so a
-  # cross-compile that broke is much better found here. Pull requests only; on
-  # `main` the release workflow builds the same targets for real.
   release-assets:
     name: Release assets (dry run)
     if: github.event_name == 'pull_request'

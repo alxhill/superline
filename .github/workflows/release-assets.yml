@@ -7,10 +7,6 @@ name: Release assets
 #   * `release-plz.yml`, with `upload: true`, to attach them to a new release.
 #   * `ci.yml`, on every pull request, as a dry run that builds and checks the
 #     archives and publishes nothing.
-#
-# The dry run exists because the release path only runs after a version is
-# already tagged and published to crates.io. A cross-compile that stopped
-# working would otherwise surface there, with the release half-finished.
 on:
   workflow_call:
     inputs:
@@ -41,15 +37,6 @@ jobs:
             # Every Apple silicon Mac is an M1 or later, so this baseline costs
             # no compatibility.
             rustflags: -Ctarget-cpu=apple-m1
-          # x86-64-v3 is the AVX2/BMI2/FMA baseline - Intel Haswell (2013) and
-          # AMD Excavator (2015) onwards. Every Intel Mac that runs a supported
-          # macOS is well past it. On Linux and Windows it rules out older and
-          # low-end chips (pre-Haswell, and Atom-derived parts up to Goldmont
-          # Plus), which get an illegal-instruction crash rather than a message,
-          # so the README points those users at `cargo install`.
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            rustflags: -Ctarget-cpu=x86-64-v3
           # Built on the oldest supported runner image so the binary does not
           # require a newer glibc than the distro the user is on.
           - target: x86_64-unknown-linux-gnu
@@ -133,9 +120,7 @@ jobs:
           ASSET: ${{ steps.package.outputs.asset }}
         run: gh release upload "$TAG" "$ASSET" --clobber
 
-      # On a dry run the archive is kept as a build artifact instead. Handy for
-      # trying a PR's binary on a machine you do not build on - the Windows one
-      # especially, given `docs/powershell-testing.md`.
+      # On a dry run the archive is kept as a build artifact
       - name: Upload dry-run artifact
         if: ${{ !inputs.upload }}
         uses: actions/upload-artifact@v4
