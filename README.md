@@ -53,8 +53,10 @@ superline install <shell name>
 ```
 
 Prebuilt binaries are published for macOS (Apple silicon and Intel), Linux (x86-64 and arm64) and Windows (x86-64),
-and use the default `gitoxide` git backend. On any other platform, or to pick a different backend, build from
-crates.io with Cargo:
+and use the default `gitoxide` git backend. The x86-64 builds target `x86-64-v3`, so they need a CPU with AVX2 —
+Intel Haswell (2013) or AMD Excavator (2015) and later, which includes every Intel Mac that runs a current macOS. On
+an older or low-end chip without it the binary dies with "Illegal instruction" rather than a useful message; install
+with Cargo instead. Cargo is also the way to install on any other platform, or to pick a different git backend:
 
 ```bash
 cargo install superline

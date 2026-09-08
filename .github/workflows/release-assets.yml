@@ -41,25 +41,31 @@ jobs:
             # Every Apple silicon Mac is an M1 or later, so this baseline costs
             # no compatibility.
             rustflags: -Ctarget-cpu=apple-m1
+          # x86-64-v3 is the AVX2/BMI2/FMA baseline - Intel Haswell (2013) and
+          # AMD Excavator (2015) onwards. Every Intel Mac that runs a supported
+          # macOS is well past it. On Linux and Windows it rules out older and
+          # low-end chips (pre-Haswell, and Atom-derived parts up to Goldmont
+          # Plus), which get an illegal-instruction crash rather than a message,
+          # so the README points those users at `cargo install`.
           - target: x86_64-apple-darwin
             os: macos-latest
-            rustflags: ""
+            rustflags: -Ctarget-cpu=x86-64-v3
           # Built on the oldest supported runner image so the binary does not
           # require a newer glibc than the distro the user is on.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
-            rustflags: ""
+            rustflags: -Ctarget-cpu=x86-64-v3
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04-arm
             rustflags: ""
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            rustflags: ""
+            rustflags: -Ctarget-cpu=x86-64-v3
     env:
       # `.cargo/config.toml` compiles for the host CPU, which is wrong for a
       # binary other people download (and impossible when cross-compiling).
-      # RUSTFLAGS takes precedence over the config file, so setting it here -
-      # empty for most targets - is what disables that.
+      # RUSTFLAGS takes precedence over the config file, so setting it here is
+      # what disables that, and what sets the CPU baseline per target.
       RUSTFLAGS: ${{ matrix.rustflags }}
     steps:
       - name: Checkout
