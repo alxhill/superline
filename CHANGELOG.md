@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4](https://github.com/alxhill/superline/compare/v0.10.3...v0.10.4) - 2026-09-08
+
+### Fixed
+
+- *(usage)* use a space instead of a square for 0% in sparkline display ([#65](https://github.com/alxhill/superline/pull/65))
+
 ## [0.10.3](https://github.com/alxhill/superline/compare/v0.10.2...v0.10.3) - 2026-09-08
 
 ### Fixed
