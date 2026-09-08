@@ -43,6 +43,8 @@ pub struct Usage<S> {
     threshold: Option<f64>,
     session_label: String,
     weekly_label: String,
+    show_session_time_remaining: bool,
+    session_time_remaining_only_at_limit: bool,
     scheme: PhantomData<S>,
 }
 
@@ -73,6 +75,8 @@ impl<S: UsageScheme> Usage<S> {
         threshold: Option<f64>,
         session_label: Option<String>,
         weekly_label: Option<String>,
+        show_session_time_remaining: bool,
+        session_time_remaining_only_at_limit: bool,
     ) -> Self {
         Self {
             provider,
@@ -82,6 +86,8 @@ impl<S: UsageScheme> Usage<S> {
             threshold: threshold.filter(|threshold| threshold.is_finite()),
             session_label: session_label.unwrap_or_else(|| DEFAULT_SESSION_LABEL.to_string()),
             weekly_label: weekly_label.unwrap_or_else(|| DEFAULT_WEEKLY_LABEL.to_string()),
+            show_session_time_remaining,
+            session_time_remaining_only_at_limit,
             scheme: PhantomData,
         }
     }
@@ -91,12 +97,14 @@ impl<S: UsageScheme> Usage<S> {
 struct UsageCache {
     session: Option<f64>,
     weekly: Option<f64>,
+    #[serde(default)]
+    session_resets_at: Option<u64>,
     fetched_at: u64,
 }
 
 impl<S: UsageScheme> Module for Usage<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        if !self.show_session && !self.show_weekly {
+        if !self.show_session && !self.show_weekly && !self.show_session_time_remaining {
             return;
         }
 
@@ -124,6 +132,8 @@ impl<S: UsageScheme> Module for Usage<S> {
                     self.display,
                     &self.session_label,
                     &self.weekly_label,
+                    self.show_session_time_remaining,
+                    self.session_time_remaining_only_at_limit,
                 )
             })
             .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
@@ -160,6 +170,8 @@ fn format_usage(
     display: UsageDisplay,
     session_label: &str,
     weekly_label: &str,
+    show_session_time_remaining: bool,
+    session_time_remaining_only_at_limit: bool,
 ) -> String {
     let mut parts = vec![provider_label(provider).to_string(), " ".to_string()];
     if show_session {
@@ -168,7 +180,36 @@ fn format_usage(
     if show_weekly {
         parts.push(format_window(weekly_label, cache.weekly, display));
     }
+    if show_session_time_remaining
+        && cache.session_resets_at.is_some()
+        && (!session_time_remaining_only_at_limit
+            || cache.session.is_some_and(|percent| percent >= 100.0))
+    {
+        parts.push(format!(
+            " ↻ {}",
+            format_time_remaining(cache.session_resets_at)
+        ));
+    }
     parts.join("")
+}
+
+fn format_time_remaining(resets_at: Option<u64>) -> String {
+    let Some(resets_at) = resets_at else {
+        return "–".to_string();
+    };
+    format_remaining_duration(resets_at.saturating_sub(now_secs()))
+}
+
+fn format_remaining_duration(remaining: u64) -> String {
+    let hours = remaining / 3600;
+    let minutes = (remaining % 3600) / 60;
+    if hours > 0 {
+        format!("{hours}h {minutes}m")
+    } else if minutes > 0 {
+        format!("{minutes}m")
+    } else {
+        "now".to_string()
+    }
 }
 
 fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) -> String {
@@ -335,8 +376,11 @@ pub fn refresh_usage(provider: UsageProvider, cache_path: &Path) {
 }
 
 fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
-    let (session, weekly) = match provider {
-        UsageProvider::Claude => parse_claude_usage(&capture_claude_cli()?),
+    let (session, weekly, session_resets_at) = match provider {
+        UsageProvider::Claude => {
+            let (session, weekly) = parse_claude_usage(&capture_claude_cli()?);
+            (session, weekly, None)
+        }
         UsageProvider::Codex => fetch_codex_rate_limits()?,
     };
     session?;
@@ -344,6 +388,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
     Some(UsageCache {
         session,
         weekly,
+        session_resets_at,
         fetched_at: now_secs(),
     })
 }
@@ -353,7 +398,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
 /// needed. The TUI is unsafe to drive: it treats a burst of keystrokes as a
 /// paste and can hand the slash command to the model as a prompt, and its
 /// first `/status` after launch only says "refresh requested".
-fn fetch_codex_rate_limits() -> Option<(Option<f64>, Option<f64>)> {
+fn fetch_codex_rate_limits() -> Option<(Option<f64>, Option<f64>, Option<u64>)> {
     let binary = resolve_binary("codex")?;
     let mut child = Command::new(binary)
         .arg("app-server")
@@ -412,7 +457,7 @@ fn fetch_codex_rate_limits() -> Option<(Option<f64>, Option<f64>)> {
 
 /// Codex reports the five-hour window as `primary` and the weekly window as
 /// `secondary`; the durations settle it when both are present.
-fn parse_codex_rate_limits(message: &Value) -> Option<(Option<f64>, Option<f64>)> {
+fn parse_codex_rate_limits(message: &Value) -> Option<(Option<f64>, Option<f64>, Option<u64>)> {
     let limits = message.get("result")?.get("rateLimits")?;
     let window = |name: &str| {
         let window = limits.get(name)?;
@@ -420,17 +465,19 @@ fn parse_codex_rate_limits(message: &Value) -> Option<(Option<f64>, Option<f64>)
         Some((
             window.get("windowDurationMins").and_then(Value::as_u64),
             used,
+            window.get("resetsAt").and_then(Value::as_u64),
         ))
     };
     let (mut session, mut weekly) = (window("primary"), window("secondary"));
-    if let (Some((Some(short), _)), Some((Some(long), _))) = (session, weekly) {
+    if let (Some((Some(short), _, _)), Some((Some(long), _, _))) = (session, weekly) {
         if short > long {
             std::mem::swap(&mut session, &mut weekly);
         }
     }
     Some((
-        session.map(|(_, used)| used.clamp(0.0, 100.0)),
-        weekly.map(|(_, used)| used.clamp(0.0, 100.0)),
+        session.as_ref().map(|(_, used, _)| used.clamp(0.0, 100.0)),
+        weekly.as_ref().map(|(_, used, _)| used.clamp(0.0, 100.0)),
+        session.and_then(|(_, _, resets_at)| resets_at),
     ))
 }
 
@@ -678,7 +725,7 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&message),
-            Some((Some(17.0), Some(37.0)))
+            Some((Some(17.0), Some(37.0), Some(1)))
         );
 
         let swapped = json!({
@@ -692,7 +739,7 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&swapped),
-            Some((Some(17.0), Some(37.0)))
+            Some((Some(17.0), Some(37.0), None))
         );
 
         let session_only = json!({
@@ -701,7 +748,7 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&session_only),
-            Some((Some(100.0), None))
+            Some((Some(100.0), None, None))
         );
 
         let error = json!({
@@ -729,6 +776,7 @@ mod tests {
         let cache = UsageCache {
             session: Some(12.4),
             weekly: Some(67.8),
+            session_resets_at: None,
             fetched_at: 0,
         };
         assert_eq!(
@@ -740,6 +788,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 DEFAULT_SESSION_LABEL,
                 DEFAULT_WEEKLY_LABEL,
+                false,
+                false,
             ),
             "\u{ec82} 5h 12%"
         );
@@ -752,6 +802,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 DEFAULT_SESSION_LABEL,
                 DEFAULT_WEEKLY_LABEL,
+                false,
+                false,
             ),
             "\u{ec81}  7d 68%"
         );
@@ -764,9 +816,48 @@ mod tests {
                 UsageDisplay::Sparkline,
                 "",
                 "",
+                false,
+                false,
             ),
             "\u{ec82} ▂▆"
         );
+    }
+
+    #[test]
+    fn session_reset_countdown_can_be_limited_to_exhausted_sessions() {
+        let cache = UsageCache {
+            session: Some(99.0),
+            weekly: Some(67.8),
+            session_resets_at: Some(now_secs().saturating_add(3600)),
+            fetched_at: 0,
+        };
+        let format = |cache: &UsageCache| {
+            format_usage(
+                UsageProvider::Codex,
+                cache,
+                true,
+                false,
+                UsageDisplay::Percentage,
+                DEFAULT_SESSION_LABEL,
+                DEFAULT_WEEKLY_LABEL,
+                true,
+                true,
+            )
+        };
+
+        assert!(!format(&cache).contains('↻'));
+        assert!(format(&UsageCache {
+            session: Some(100.0),
+            ..cache
+        })
+        .contains('↻'));
+    }
+
+    #[test]
+    fn remaining_duration_is_compact() {
+        assert_eq!(format_remaining_duration(2 * 3600 + 34 * 60), "2h 34m");
+        assert_eq!(format_remaining_duration(59 * 60), "59m");
+        assert_eq!(format_remaining_duration(59), "now");
     }
 
     #[test]
@@ -803,6 +894,7 @@ mod tests {
         let cache = UsageCache {
             session: Some(81.0),
             weekly: Some(79.0),
+            session_resets_at: None,
             fetched_at: 0,
         };
 

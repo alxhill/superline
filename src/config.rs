@@ -68,6 +68,10 @@ pub enum LineSegment {
         threshold: Option<f64>,
         session_label: Option<String>,
         weekly_label: Option<String>,
+        #[serde(default)]
+        session_time_remaining: bool,
+        #[serde(default)]
+        session_time_remaining_only_at_limit: bool,
     },
     User,
     Cmd,
@@ -134,6 +138,10 @@ enum KnownLineSegment {
         threshold: Option<f64>,
         session_label: Option<String>,
         weekly_label: Option<String>,
+        #[serde(default)]
+        session_time_remaining: bool,
+        #[serde(default)]
+        session_time_remaining_only_at_limit: bool,
     },
     User,
     Cmd,
@@ -182,6 +190,8 @@ impl From<KnownLineSegment> for LineSegment {
                 threshold,
                 session_label,
                 weekly_label,
+                session_time_remaining,
+                session_time_remaining_only_at_limit,
             } => LineSegment::AiUsage {
                 provider,
                 session,
@@ -190,6 +200,8 @@ impl From<KnownLineSegment> for LineSegment {
                 threshold,
                 session_label,
                 weekly_label,
+                session_time_remaining,
+                session_time_remaining_only_at_limit,
             },
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Cmd => LineSegment::Cmd,
@@ -409,6 +421,8 @@ mod tests {
                 threshold: None,
                 session_label: None,
                 weekly_label: None,
+                session_time_remaining: false,
+                session_time_remaining_only_at_limit: false,
             }
         );
     }
@@ -416,7 +430,7 @@ mod tests {
     #[test]
     fn usage_windows_and_display_are_configurable() {
         let parsed: LineSegment = serde_json::from_str(
-            r#"{"ai_usage":{"provider":"codex","session":false,"weekly":true,"display":"sparkline","threshold":80,"session_label":"","weekly_label":"week"}}"#,
+            r#"{"ai_usage":{"provider":"codex","session":false,"weekly":true,"display":"sparkline","threshold":80,"session_label":"","weekly_label":"week","session_time_remaining":true,"session_time_remaining_only_at_limit":true}}"#,
         )
         .expect("configured AI usage module should parse");
 
@@ -430,6 +444,8 @@ mod tests {
                 threshold: Some(80.0),
                 session_label: Some(String::new()),
                 weekly_label: Some("week".to_string()),
+                session_time_remaining: true,
+                session_time_remaining_only_at_limit: true,
             }
         );
     }

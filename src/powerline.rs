@@ -369,6 +369,8 @@ impl Powerline {
                     threshold,
                     session_label,
                     weekly_label,
+                    session_time_remaining,
+                    session_time_remaining_only_at_limit,
                 } => self.add_module(Usage::<T>::new(
                     *provider,
                     *session,
@@ -377,6 +379,8 @@ impl Powerline {
                     *threshold,
                     session_label.clone(),
                     weekly_label.clone(),
+                    *session_time_remaining,
+                    *session_time_remaining_only_at_limit,
                 )),
                 LineSegment::LastCmdDuration { min_run_time } => {
                     self.add_module(LastCmdDuration::<T>::new(

@@ -153,8 +153,10 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   `display` to `"percentage"` (the default), `"bar"` (a five-cell shaded bar), or `"sparkline"` (one glyph per
   window). The values are percent used. Set `threshold` to a percent-used warning level; configure the warning
   background in the theme as `modules.ai_usage.threshold_bg`. It replaces the entire widget background whenever either
-  enabled window crosses the threshold. For example:
-  `{ "ai_usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80 } }`.
+  enabled window crosses the threshold. Set `session_time_remaining` to show the session reset countdown when the
+  provider supplies it (currently Codex); set `session_time_remaining_only_at_limit` to show that countdown only once
+  session usage reaches 100%. For example:
+  `{ "ai_usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80, "session_time_remaining": true, "session_time_remaining_only_at_limit": true } }`.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
 * **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.
