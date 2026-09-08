@@ -53,6 +53,13 @@ jobs:
       - name: Test (libgit backend)
         run: cargo test --no-default-features --features libgit --verbose
 
+  release-assets:
+    name: Release assets (dry run)
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-assets.yml
+
   windows:
     name: Build & test (Windows)
     runs-on: windows-latest

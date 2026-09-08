@@ -58,46 +58,24 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  homebrew-release:
-    name: Build Homebrew release
+  release-assets:
+    name: Release assets
     needs: release-plz-release
     if: needs.release-plz-release.outputs.release_created == 'true'
-    runs-on: macos-latest
     permissions:
       contents: write
+    uses: ./.github/workflows/release-assets.yml
+    with:
+      ref: ${{ needs.release-plz-release.outputs.tag }}
+      version: ${{ needs.release-plz-release.outputs.version }}
+      upload: true
+
+  homebrew-formula:
+    name: Update Homebrew formula
+    needs: [release-plz-release, release-assets]
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout release
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ needs.release-plz-release.outputs.tag }}
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build Apple Silicon binary
-        env:
-          RUSTFLAGS: -Ctarget-cpu=apple-m1
-        run: cargo build --release --locked
-
-      - name: Package binary
-        id: package
-        env:
-          VERSION: ${{ needs.release-plz-release.outputs.version }}
-        run: |
-          asset="superline-${VERSION}-aarch64-apple-darwin.tar.gz"
-          tar -czf "$asset" -C target/release superline
-          echo "asset=$asset" >> "$GITHUB_OUTPUT"
-
-      - name: Upload release asset
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-plz-release.outputs.tag }}
-          ASSET: ${{ steps.package.outputs.asset }}
-        run: gh release upload "$TAG" "$ASSET" --clobber
-
-      # RELEASE_PLZ_TOKEN has access to both this repository and the Homebrew
-      # tap, so the newly uploaded binary can update the formula immediately.
-      - name: Update Homebrew formula
+      - name: Dispatch tap update
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           VERSION: ${{ needs.release-plz-release.outputs.version }}
