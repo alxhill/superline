@@ -317,9 +317,18 @@ impl UsageProvider {
 #[serde(rename_all = "snake_case")]
 pub enum UsageDisplay {
     #[default]
+    #[serde(
+        alias = "percent",
+        alias = "percents",
+        alias = "percentages",
+        alias = "pct"
+    )]
     Percentage,
+    #[serde(alias = "bars")]
     Bar,
+    #[serde(alias = "sparklines", alias = "spark", alias = "sparks")]
     Sparkline,
+    #[serde(alias = "number", alias = "numbers", alias = "num")]
     Numeric,
 }
 
@@ -561,6 +570,33 @@ mod tests {
                 credits_only_when_limited: true,
             }
         );
+    }
+
+    #[test]
+    fn usage_display_accepts_aliases() {
+        let cases = [
+            ("percentage", UsageDisplay::Percentage),
+            ("percent", UsageDisplay::Percentage),
+            ("percents", UsageDisplay::Percentage),
+            ("percentages", UsageDisplay::Percentage),
+            ("pct", UsageDisplay::Percentage),
+            ("bar", UsageDisplay::Bar),
+            ("bars", UsageDisplay::Bar),
+            ("sparkline", UsageDisplay::Sparkline),
+            ("sparklines", UsageDisplay::Sparkline),
+            ("spark", UsageDisplay::Sparkline),
+            ("sparks", UsageDisplay::Sparkline),
+            ("numeric", UsageDisplay::Numeric),
+            ("number", UsageDisplay::Numeric),
+            ("numbers", UsageDisplay::Numeric),
+            ("num", UsageDisplay::Numeric),
+        ];
+
+        for (name, expected) in cases {
+            let parsed: UsageDisplay = serde_json::from_str(&format!(r#""{name}""#))
+                .unwrap_or_else(|_| panic!("{name} should parse as a usage display"));
+            assert_eq!(parsed, expected, "{name}");
+        }
     }
 
     #[test]
