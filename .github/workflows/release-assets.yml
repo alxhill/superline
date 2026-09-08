@@ -1,0 +1,139 @@
+name: Release assets
+
+# Builds the prebuilt binaries that `cargo binstall superline` and the Homebrew
+# tap consume. Called from two places so there is only one definition of what a
+# release binary is:
+#
+#   * `release-plz.yml`, with `upload: true`, to attach them to a new release.
+#   * `ci.yml`, on every pull request, as a dry run that builds and checks the
+#     archives and publishes nothing.
+#
+# The dry run exists because the release path only runs after a version is
+# already tagged and published to crates.io. A cross-compile that stopped
+# working would otherwise surface there, with the release half-finished.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build. Defaults to the ref that triggered the caller.
+        type: string
+        default: ""
+      version:
+        description: Version used in the asset names. Defaults to the Cargo.toml version.
+        type: string
+        default: ""
+      upload:
+        description: Attach the archives to the v{version} GitHub release.
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One unbuildable target should not hide whether the others are fine.
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            # Every Apple silicon Mac is an M1 or later, so this baseline costs
+            # no compatibility.
+            rustflags: -Ctarget-cpu=apple-m1
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            rustflags: ""
+          # Built on the oldest supported runner image so the binary does not
+          # require a newer glibc than the distro the user is on.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            rustflags: ""
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+            rustflags: ""
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            rustflags: ""
+    env:
+      # `.cargo/config.toml` compiles for the host CPU, which is wrong for a
+      # binary other people download (and impossible when cross-compiling).
+      # RUSTFLAGS takes precedence over the config file, so setting it here -
+      # empty for most targets - is what disables that.
+      RUSTFLAGS: ${{ matrix.rustflags }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package and check the archive
+        id: package
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          version="$VERSION"
+          if [[ -z "$version" ]]; then
+            version=$(grep -m1 '^version = ' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          fi
+          bin=superline
+          if [[ "$TARGET" == *windows* ]]; then
+            bin=superline.exe
+          fi
+          asset="superline-${version}-${TARGET}.tar.gz"
+          tar -czf "$asset" -C "target/${TARGET}/release" "$bin"
+
+          # `cargo binstall` builds the download URL from the `pkg-url` template
+          # in Cargo.toml. Nothing else ties that template to the name used
+          # above, so compare them here instead of learning about the drift from
+          # someone's failed install.
+          pkg_url=$(grep -m1 '^pkg-url = ' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          expected=${pkg_url//'{ repo }'/"https://github.com/${GITHUB_REPOSITORY}"}
+          expected=${expected//'{ name }'/superline}
+          expected=${expected//'{ version }'/$version}
+          expected=${expected//'{ target }'/$TARGET}
+          expected=${expected##*/}
+          if [[ "$expected" != "$asset" ]]; then
+            echo "binstall expects '${expected}', this workflow built '${asset}'" >&2
+            exit 1
+          fi
+
+          # And `bin-dir = "{ bin }{ binary-ext }"` means the bare binary sits at
+          # the archive root - no versioned directory wrapping it.
+          contents=$(tar -tzf "$asset")
+          if [[ "$contents" != "$bin" ]]; then
+            echo "archive should hold '${bin}' alone, holds: ${contents}" >&2
+            exit 1
+          fi
+
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release asset
+        if: inputs.upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ inputs.version }}
+          ASSET: ${{ steps.package.outputs.asset }}
+        run: gh release upload "$TAG" "$ASSET" --clobber
+
+      # On a dry run the archive is kept as a build artifact instead. Handy for
+      # trying a PR's binary on a machine you do not build on - the Windows one
+      # especially, given `docs/powershell-testing.md`.
+      - name: Upload dry-run artifact
+        if: ${{ !inputs.upload }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: superline-${{ matrix.target }}
+          path: ${{ steps.package.outputs.asset }}
+          retention-days: 7
