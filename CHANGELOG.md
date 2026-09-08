@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1](https://github.com/alxhill/superline/compare/v0.10.0...v0.10.1) - 2026-09-08
+
+### Added
+
+- *(usage)* accept aliases for ai_usage display styles ([#60](https://github.com/alxhill/superline/pull/60))
+
 ## [0.10.0](https://github.com/alxhill/superline/compare/v0.9.3...v0.10.0) - 2026-09-07
 
 ### Added
