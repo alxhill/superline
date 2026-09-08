@@ -10,3 +10,4 @@
   superline config (`~/.config/superline/config.json`, or the file it points at)
   to use it so it can be tried immediately. If that config lives in a git repo,
   edit it in place but do not commit it.
+- If a prompt starts with "ONESHOT", perform the full branch -> PR -> CI -> merge cycle without requesting further input, unless blocked.
