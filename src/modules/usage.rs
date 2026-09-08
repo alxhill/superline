@@ -24,7 +24,7 @@ const CACHE_TTL: Duration = Duration::from_secs(60);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
 const SPARKLINE: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-const SPARKLINE_EMPTY: char = '□';
+const SPARKLINE_EMPTY: char = ' ';
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 // A stable, disposable Claude CLI probe session prevents creating a new local
@@ -1232,7 +1232,7 @@ mod tests {
     fn sparkline_display_uses_one_glyph_per_window() {
         assert_eq!(
             format_window("5h", Some(0.0), UsageDisplay::Sparkline),
-            "5h□"
+            "5h "
         );
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Sparkline),
