@@ -24,6 +24,7 @@ const CACHE_TTL: Duration = Duration::from_secs(60);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
 const SPARKLINE: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+const SPARKLINE_EMPTY: char = ' ';
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 // A stable, disposable Claude CLI probe session prevents creating a new local
@@ -34,18 +35,107 @@ const CLAUDE_ICON: &str = "\u{ec82}";
 // spaces added manually to allow for compact display
 const DEFAULT_SESSION_LABEL: &str = "5h ";
 const DEFAULT_WEEKLY_LABEL: &str = " 7d ";
+const DEFAULT_FABLE_LABEL: &str = " F ";
+const DEFAULT_CREDITS_LABEL: &str = " C ";
 
 pub struct Usage<S> {
     provider: UsageProvider,
-    show_session: bool,
-    show_weekly: bool,
+    windows: UsageWindows,
     display: UsageDisplay,
     threshold: Option<f64>,
-    session_label: String,
-    weekly_label: String,
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: bool,
     scheme: PhantomData<S>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UsageWindow {
+    pub enabled: bool,
+    pub label: String,
+}
+
+impl UsageWindow {
+    pub fn new(enabled: bool, label: Option<String>, default_label: &str) -> Self {
+        Self {
+            enabled,
+            label: label.unwrap_or_else(|| default_label.to_string()),
+        }
+    }
+}
+
+/// The credits lane has its own display style and can hide itself until a
+/// rate-limit window is exhausted, which is when providers start billing
+/// against credits.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreditsWindow {
+    pub window: UsageWindow,
+    pub display: UsageDisplay,
+    pub only_when_limited: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UsageWindows {
+    pub session: UsageWindow,
+    pub weekly: UsageWindow,
+    pub fable: UsageWindow,
+    pub credits: CreditsWindow,
+}
+
+impl UsageWindows {
+    pub fn new(
+        session: UsageWindow,
+        weekly: UsageWindow,
+        fable: UsageWindow,
+        credits: CreditsWindow,
+        provider: UsageProvider,
+    ) -> Self {
+        Self {
+            session,
+            weekly,
+            // Only the Claude CLI reports a Fable-specific weekly window.
+            fable: UsageWindow {
+                enabled: fable.enabled && provider == UsageProvider::Claude,
+                ..fable
+            },
+            credits,
+        }
+    }
+
+    pub fn credits(
+        enabled: bool,
+        label: Option<String>,
+        display: UsageDisplay,
+        only_when_limited: bool,
+    ) -> CreditsWindow {
+        CreditsWindow {
+            window: UsageWindow::new(enabled, label, DEFAULT_CREDITS_LABEL),
+            display,
+            only_when_limited,
+        }
+    }
+
+    pub fn session(enabled: bool, label: Option<String>) -> UsageWindow {
+        UsageWindow::new(enabled, label, DEFAULT_SESSION_LABEL)
+    }
+
+    pub fn weekly(enabled: bool, label: Option<String>) -> UsageWindow {
+        UsageWindow::new(enabled, label, DEFAULT_WEEKLY_LABEL)
+    }
+
+    pub fn fable(enabled: bool, label: Option<String>) -> UsageWindow {
+        UsageWindow::new(enabled, label, DEFAULT_FABLE_LABEL)
+    }
+
+    fn any_enabled(&self) -> bool {
+        self.session.enabled
+            || self.weekly.enabled
+            || self.fable.enabled
+            || self.credits.window.enabled
+    }
+
+    fn credits_visible(&self, cache: &UsageCache) -> bool {
+        self.credits.window.enabled && (!self.credits.only_when_limited || cache.limit_reached())
+    }
 }
 
 pub trait UsageScheme: DefaultColors {
@@ -69,23 +159,17 @@ pub trait UsageScheme: DefaultColors {
 impl<S: UsageScheme> Usage<S> {
     pub fn new(
         provider: UsageProvider,
-        show_session: bool,
-        show_weekly: bool,
+        windows: UsageWindows,
         display: UsageDisplay,
         threshold: Option<f64>,
-        session_label: Option<String>,
-        weekly_label: Option<String>,
         show_session_time_remaining: bool,
         session_time_remaining_only_at_limit: bool,
     ) -> Self {
         Self {
             provider,
-            show_session,
-            show_weekly,
+            windows,
             display,
             threshold: threshold.filter(|threshold| threshold.is_finite()),
-            session_label: session_label.unwrap_or_else(|| DEFAULT_SESSION_LABEL.to_string()),
-            weekly_label: weekly_label.unwrap_or_else(|| DEFAULT_WEEKLY_LABEL.to_string()),
             show_session_time_remaining,
             session_time_remaining_only_at_limit,
             scheme: PhantomData,
@@ -98,13 +182,64 @@ struct UsageCache {
     session: Option<f64>,
     weekly: Option<f64>,
     #[serde(default)]
+    fable: Option<f64>,
+    #[serde(default)]
+    credits: Option<CreditsUsage>,
+    #[serde(default)]
     session_resets_at: Option<u64>,
     fetched_at: u64,
 }
 
+impl UsageCache {
+    /// Providers bill against credits once any rate-limit window is exhausted.
+    fn limit_reached(&self) -> bool {
+        [self.session, self.weekly, self.fable]
+            .into_iter()
+            .flatten()
+            .any(|percent| percent >= 100.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum CreditsUnit {
+    Dollars,
+    Count,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+struct CreditsUsage {
+    used: f64,
+    limit: f64,
+    unit: CreditsUnit,
+}
+
+impl CreditsUsage {
+    fn percent_used(&self) -> Option<f64> {
+        (self.limit > 0.0).then(|| (self.used / self.limit * 100.0).clamp(0.0, 100.0))
+    }
+
+    fn numeric(&self) -> String {
+        format!(
+            "{}/{}",
+            format_amount(self.used, self.unit),
+            format_amount(self.limit, self.unit)
+        )
+    }
+}
+
+fn format_amount(amount: f64, unit: CreditsUnit) -> String {
+    let amount = amount.max(0.0);
+    match unit {
+        CreditsUnit::Dollars if amount.fract() == 0.0 => format!("${amount:.0}"),
+        CreditsUnit::Dollars => format!("${amount:.2}"),
+        CreditsUnit::Count => format!("{amount:.0}"),
+    }
+}
+
 impl<S: UsageScheme> Module for Usage<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        if !self.show_session && !self.show_weekly && !self.show_session_time_remaining {
+        if !self.windows.any_enabled() && !self.show_session_time_remaining {
             return;
         }
 
@@ -127,11 +262,8 @@ impl<S: UsageScheme> Module for Usage<S> {
                 format_usage(
                     self.provider,
                     cache,
-                    self.show_session,
-                    self.show_weekly,
+                    &self.windows,
                     self.display,
-                    &self.session_label,
-                    &self.weekly_label,
                     self.show_session_time_remaining,
                     self.session_time_remaining_only_at_limit,
                 )
@@ -139,9 +271,7 @@ impl<S: UsageScheme> Module for Usage<S> {
             .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
         let bg = cache
             .as_ref()
-            .filter(|cache| {
-                threshold_reached(cache, self.show_session, self.show_weekly, self.threshold)
-            })
+            .filter(|cache| threshold_reached(cache, &self.windows, self.threshold))
             .map(|_| S::usage_threshold_bg())
             .unwrap_or(bg);
         powerline.add_segment(label, Style::simple(default_fg, bg));
@@ -165,20 +295,27 @@ fn provider_style<S: UsageScheme>(provider: UsageProvider) -> (Color, Color) {
 fn format_usage(
     provider: UsageProvider,
     cache: &UsageCache,
-    show_session: bool,
-    show_weekly: bool,
+    windows: &UsageWindows,
     display: UsageDisplay,
-    session_label: &str,
-    weekly_label: &str,
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: bool,
 ) -> String {
     let mut parts = vec![provider_label(provider).to_string(), " ".to_string()];
-    if show_session {
-        parts.push(format_window(session_label, cache.session, display));
+    for (window, used_percent) in [
+        (&windows.session, cache.session),
+        (&windows.weekly, cache.weekly),
+        (&windows.fable, cache.fable),
+    ] {
+        if window.enabled {
+            parts.push(format_window(&window.label, used_percent, display));
+        }
     }
-    if show_weekly {
-        parts.push(format_window(weekly_label, cache.weekly, display));
+    if windows.credits_visible(cache) {
+        parts.push(format_credits(
+            &windows.credits.window.label,
+            cache.credits.as_ref(),
+            windows.credits.display,
+        ));
     }
     if show_session_time_remaining
         && cache.session_resets_at.is_some()
@@ -212,6 +349,13 @@ fn format_remaining_duration(remaining: u64) -> String {
     }
 }
 
+fn format_credits(label: &str, credits: Option<&CreditsUsage>, display: UsageDisplay) -> String {
+    match (display, credits) {
+        (UsageDisplay::Numeric, Some(credits)) => format!("{label}{}", credits.numeric()),
+        _ => format_window(label, credits.and_then(CreditsUsage::percent_used), display),
+    }
+}
+
 fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) -> String {
     let (prefix, value) = format_window_parts(label, used_percent, display);
     format!("{prefix}{value}")
@@ -232,11 +376,13 @@ fn format_window_parts(
     };
     let percent = percent.clamp(0.0, 100.0);
     let value = match display {
-        UsageDisplay::Percentage => format!("{percent:.0}%"),
+        // Rate-limit windows only report a percentage, so numeric falls back to it.
+        UsageDisplay::Percentage | UsageDisplay::Numeric => format!("{percent:.0}%"),
         UsageDisplay::Bar => {
             let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
             format!("{}{}", "▓".repeat(filled), "░".repeat(BAR_WIDTH - filled))
         }
+        UsageDisplay::Sparkline if percent == 0.0 => SPARKLINE_EMPTY.to_string(),
         UsageDisplay::Sparkline => {
             let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
             SPARKLINE[index].to_string()
@@ -245,14 +391,15 @@ fn format_window_parts(
     (prefix, value)
 }
 
-fn threshold_reached(
-    cache: &UsageCache,
-    show_session: bool,
-    show_weekly: bool,
-    threshold: Option<f64>,
-) -> bool {
-    (show_session && exceeds_threshold(cache.session, threshold))
-        || (show_weekly && exceeds_threshold(cache.weekly, threshold))
+fn threshold_reached(cache: &UsageCache, windows: &UsageWindows, threshold: Option<f64>) -> bool {
+    (windows.session.enabled && exceeds_threshold(cache.session, threshold))
+        || (windows.weekly.enabled && exceeds_threshold(cache.weekly, threshold))
+        || (windows.fable.enabled && exceeds_threshold(cache.fable, threshold))
+        || (windows.credits_visible(cache)
+            && exceeds_threshold(
+                cache.credits.as_ref().and_then(CreditsUsage::percent_used),
+                threshold,
+            ))
 }
 
 fn exceeds_threshold(percent: Option<f64>, threshold: Option<f64>) -> bool {
@@ -376,19 +523,18 @@ pub fn refresh_usage(provider: UsageProvider, cache_path: &Path) {
 }
 
 fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
-    let (session, weekly, session_resets_at) = match provider {
-        UsageProvider::Claude => {
-            let (session, weekly) = parse_claude_usage(&capture_claude_cli()?);
-            (session, weekly, None)
-        }
+    let parsed = match provider {
+        UsageProvider::Claude => parse_claude_usage(&capture_claude_cli()?),
         UsageProvider::Codex => fetch_codex_rate_limits()?,
     };
-    session?;
+    parsed.session?;
 
     Some(UsageCache {
-        session,
-        weekly,
-        session_resets_at,
+        session: parsed.session,
+        weekly: parsed.weekly,
+        fable: parsed.fable,
+        credits: parsed.credits,
+        session_resets_at: parsed.session_resets_at,
         fetched_at: now_secs(),
     })
 }
@@ -398,7 +544,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
 /// needed. The TUI is unsafe to drive: it treats a burst of keystrokes as a
 /// paste and can hand the slash command to the model as a prompt, and its
 /// first `/status` after launch only says "refresh requested".
-fn fetch_codex_rate_limits() -> Option<(Option<f64>, Option<f64>, Option<u64>)> {
+fn fetch_codex_rate_limits() -> Option<ParsedUsage> {
     let binary = resolve_binary("codex")?;
     let mut child = Command::new(binary)
         .arg("app-server")
@@ -456,8 +602,9 @@ fn fetch_codex_rate_limits() -> Option<(Option<f64>, Option<f64>, Option<u64>)> 
 }
 
 /// Codex reports the five-hour window as `primary` and the weekly window as
-/// `secondary`; the durations settle it when both are present.
-fn parse_codex_rate_limits(message: &Value) -> Option<(Option<f64>, Option<f64>, Option<u64>)> {
+/// `secondary`; the durations settle it when both are present. Credits come
+/// from `individualLimit`, the per-seat credit budget, as a plain count.
+fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
     let limits = message.get("result")?.get("rateLimits")?;
     let window = |name: &str| {
         let window = limits.get(name)?;
@@ -474,11 +621,29 @@ fn parse_codex_rate_limits(message: &Value) -> Option<(Option<f64>, Option<f64>,
             std::mem::swap(&mut session, &mut weekly);
         }
     }
-    Some((
-        session.as_ref().map(|(_, used, _)| used.clamp(0.0, 100.0)),
-        weekly.as_ref().map(|(_, used, _)| used.clamp(0.0, 100.0)),
-        session.and_then(|(_, _, resets_at)| resets_at),
-    ))
+    let credits = limits.get("individualLimit").and_then(|limit| {
+        Some(CreditsUsage {
+            used: number_field(limit, "used")?,
+            limit: number_field(limit, "limit")?,
+            unit: CreditsUnit::Count,
+        })
+    });
+    Some(ParsedUsage {
+        session: session.map(|(_, used, _)| used.clamp(0.0, 100.0)),
+        weekly: weekly.map(|(_, used, _)| used.clamp(0.0, 100.0)),
+        fable: None,
+        credits,
+        session_resets_at: session.and_then(|(_, _, resets_at)| resets_at),
+    })
+}
+
+/// Codex serialises the credit budget figures as strings.
+fn number_field(value: &Value, key: &str) -> Option<f64> {
+    match value.get(key)? {
+        Value::Number(number) => number.as_f64(),
+        Value::String(text) => text.trim().parse().ok(),
+        _ => None,
+    }
 }
 
 /// Claude renders its quota panel only when connected to a terminal, so run it
@@ -573,8 +738,8 @@ fn capture_claude_cli() -> Option<String> {
                 let _ = writer.write_all(b"\x1b[1;1R");
             }
             let text = String::from_utf8_lossy(&output);
-            let (session, weekly) = parse_claude_usage(&text);
-            if session.is_some() && weekly.is_some() {
+            let parsed = parse_claude_usage(&text);
+            if parsed.session.is_some() && parsed.weekly.is_some() {
                 parsed_at.get_or_insert_with(Instant::now);
             }
         }
@@ -662,15 +827,44 @@ fn resolve_binary(name: &str) -> Option<PathBuf> {
     None
 }
 
-fn parse_claude_usage(text: &str) -> (Option<f64>, Option<f64>) {
+#[derive(Debug, PartialEq)]
+struct ParsedUsage {
+    session: Option<f64>,
+    weekly: Option<f64>,
+    fable: Option<f64>,
+    credits: Option<CreditsUsage>,
+    session_resets_at: Option<u64>,
+}
+
+fn parse_claude_usage(text: &str) -> ParsedUsage {
     let clean = strip_terminal_sequences(text);
-    (
-        percent_near_label(&clean, r"current\s*session"),
-        percent_near_label(
+    ParsedUsage {
+        session: percent_near_label(&clean, r"current\s*session"),
+        weekly: percent_near_label(
             &clean,
             r"current\s*week\s*\(\s*all\s*m\s*o\s*d\s*e\s*l\s*s\s*\)",
         ),
+        fable: percent_near_label(&clean, r"current\s*week\s*\(\s*f\s*a\s*b\s*l\s*e\s*\)"),
+        credits: parse_claude_credits(&clean),
+        session_resets_at: None,
+    }
+}
+
+/// The credits row reads `Usage credits … $12.50 / $500.00 spent`.
+fn parse_claude_credits(text: &str) -> Option<CreditsUsage> {
+    let pattern = Regex::new(
+        r"(?is)usage\s*credits.{0,500}?\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*/\s*\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*(spent|used)",
     )
+    .ok()?;
+    let captures = pattern.captures_iter(text).last()?;
+    let amount = |index: usize| -> Option<f64> {
+        captures.get(index)?.as_str().replace(',', "").parse().ok()
+    };
+    Some(CreditsUsage {
+        used: amount(1)?,
+        limit: amount(2)?,
+        unit: CreditsUnit::Dollars,
+    })
 }
 
 fn percent_near_label(text: &str, label: &str) -> Option<f64> {
@@ -725,7 +919,13 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&message),
-            Some((Some(17.0), Some(37.0), Some(1)))
+            Some(ParsedUsage {
+                session: Some(17.0),
+                weekly: Some(37.0),
+                fable: None,
+                credits: None,
+                session_resets_at: Some(1),
+            })
         );
 
         let swapped = json!({
@@ -739,7 +939,13 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&swapped),
-            Some((Some(17.0), Some(37.0), None))
+            Some(ParsedUsage {
+                session: Some(17.0),
+                weekly: Some(37.0),
+                fable: None,
+                credits: None,
+                session_resets_at: None,
+            })
         );
 
         let session_only = json!({
@@ -748,7 +954,33 @@ mod tests {
         });
         assert_eq!(
             parse_codex_rate_limits(&session_only),
-            Some((Some(100.0), None, None))
+            Some(ParsedUsage {
+                session: Some(100.0),
+                weekly: None,
+                fable: None,
+                credits: None,
+                session_resets_at: None,
+            })
+        );
+
+        let with_credits = json!({
+            "id": 2,
+            "result": {
+                "rateLimits": {
+                    "primary": {"usedPercent": 100, "windowDurationMins": 300},
+                    "secondary": {"usedPercent": 29, "windowDurationMins": 10080},
+                    "credits": {"hasCredits": true, "unlimited": false, "balance": null},
+                    "individualLimit": {"limit": "12000", "used": "410.7836902141571", "remainingPercent": 97}
+                }
+            }
+        });
+        assert_eq!(
+            parse_codex_rate_limits(&with_credits).and_then(|parsed| parsed.credits),
+            Some(CreditsUsage {
+                used: 410.7836902141571,
+                limit: 12000.0,
+                unit: CreditsUnit::Count,
+            })
         );
 
         let error = json!({
@@ -762,64 +994,198 @@ mod tests {
     fn parses_claude_used_percentages_from_ansi_output() {
         let text = "\x1b[2JSettings: Usage\nCurrent session\n17% used\nResets 4pm\n\
                     Current week (all models)\n42% used\x1b[0m";
-        assert_eq!(parse_claude_usage(text), (Some(17.0), Some(42.0)));
+        assert_eq!(
+            parse_claude_usage(text),
+            ParsedUsage {
+                session: Some(17.0),
+                weekly: Some(42.0),
+                fable: None,
+                credits: None,
+                session_resets_at: None,
+            }
+        );
     }
 
     #[test]
     fn parses_claude_weekly_label_split_by_terminal_repaints() {
         let text = "Current session 5% used\nCurrent week (all m odels) 10% used";
-        assert_eq!(parse_claude_usage(text), (Some(5.0), Some(10.0)));
+        assert_eq!(
+            parse_claude_usage(text),
+            ParsedUsage {
+                session: Some(5.0),
+                weekly: Some(10.0),
+                fable: None,
+                credits: None,
+                session_resets_at: None,
+            }
+        );
     }
 
     #[test]
-    fn percentage_display_can_select_windows() {
-        let cache = UsageCache {
-            session: Some(12.4),
-            weekly: Some(67.8),
+    fn parses_claude_fable_window_when_present() {
+        let text = "Current session\n███████ 14%used\nResets 2:50pm\n\
+                    Current week (all models)\n██████▌ 13% used\nResets Sep 7 at 8pm\n\
+                    Current week (Fable)\n████████ 16% used\nResets Sep 7 at 8pm";
+        assert_eq!(
+            parse_claude_usage(text),
+            ParsedUsage {
+                session: Some(14.0),
+                weekly: Some(13.0),
+                fable: Some(16.0),
+                credits: None,
+                session_resets_at: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claude_usage_credits_row() {
+        let text = "Current session\n████ 25%used\nResets 3:30pm\n\
+                    Current week (all models)\n████ 32%used\n\
+                    Current week (Fable)\n████ 39%used\n\
+                    Usage credits                     3%used\
+                    $12.50 / $500.00 spent · Resets Oct 1 (America/New_York)";
+        assert_eq!(
+            parse_claude_usage(text),
+            ParsedUsage {
+                session: Some(25.0),
+                weekly: Some(32.0),
+                fable: Some(39.0),
+                credits: Some(CreditsUsage {
+                    used: 12.5,
+                    limit: 500.0,
+                    unit: CreditsUnit::Dollars,
+                }),
+                session_resets_at: None,
+            }
+        );
+    }
+
+    #[test]
+    fn cache_without_fable_field_still_loads() {
+        let cache: UsageCache =
+            serde_json::from_str(r#"{"session":12.0,"weekly":13.0,"fetched_at":1}"#)
+                .expect("pre-fable cache should deserialize");
+        assert_eq!(cache.fable, None);
+        assert_eq!(cache.credits, None);
+    }
+
+    fn windows(
+        provider: UsageProvider,
+        session: bool,
+        weekly: bool,
+        fable: bool,
+        labels: Option<&str>,
+    ) -> UsageWindows {
+        let label = labels.map(str::to_string);
+        UsageWindows::new(
+            UsageWindows::session(session, label.clone()),
+            UsageWindows::weekly(weekly, label.clone()),
+            UsageWindows::fable(fable, label),
+            UsageWindows::credits(false, None, UsageDisplay::Numeric, false),
+            provider,
+        )
+    }
+
+    fn with_credits(
+        mut windows: UsageWindows,
+        display: UsageDisplay,
+        only_when_limited: bool,
+    ) -> UsageWindows {
+        windows.credits = UsageWindows::credits(true, None, display, only_when_limited);
+        windows
+    }
+
+    fn cache(session: f64, credits: Option<CreditsUsage>) -> UsageCache {
+        UsageCache {
+            session: Some(session),
+            weekly: Some(20.0),
+            fable: None,
+            credits,
             session_resets_at: None,
             fetched_at: 0,
-        };
+        }
+    }
+
+    const DOLLARS: CreditsUsage = CreditsUsage {
+        used: 50.0,
+        limit: 100.0,
+        unit: CreditsUnit::Dollars,
+    };
+
+    #[test]
+    fn credits_display_is_configured_separately_from_the_windows() {
+        let windows = with_credits(
+            windows(UsageProvider::Claude, true, false, false, None),
+            UsageDisplay::Numeric,
+            false,
+        );
         assert_eq!(
             format_usage(
                 UsageProvider::Claude,
-                &cache,
-                true,
-                false,
-                UsageDisplay::Percentage,
-                DEFAULT_SESSION_LABEL,
-                DEFAULT_WEEKLY_LABEL,
+                &cache(12.0, Some(DOLLARS)),
+                &windows,
+                UsageDisplay::Sparkline,
                 false,
                 false,
             ),
-            "\u{ec82} 5h 12%"
+            "\u{ec82} 5h ▂ C $50/$100"
+        );
+
+        let count = CreditsUsage {
+            used: 410.78,
+            limit: 12000.0,
+            unit: CreditsUnit::Count,
+        };
+        assert_eq!(
+            format_credits("", Some(&count), UsageDisplay::Numeric),
+            "411/12000"
+        );
+        assert_eq!(
+            format_credits("", Some(&DOLLARS), UsageDisplay::Percentage),
+            "50%"
+        );
+        assert_eq!(
+            format_credits("", Some(&DOLLARS), UsageDisplay::Bar),
+            "▓▓▓░░"
+        );
+        assert_eq!(
+            format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
+            "▅"
+        );
+        assert_eq!(format_credits("C", None, UsageDisplay::Numeric), "C–");
+        assert_eq!(format_amount(12.5, CreditsUnit::Dollars), "$12.50");
+        assert_eq!(format_amount(1234.0, CreditsUnit::Dollars), "$1234");
+    }
+
+    #[test]
+    fn credits_can_be_hidden_until_a_window_is_exhausted() {
+        let windows = with_credits(
+            windows(UsageProvider::Codex, true, false, false, Some("")),
+            UsageDisplay::Numeric,
+            true,
         );
         assert_eq!(
             format_usage(
                 UsageProvider::Codex,
-                &cache,
-                false,
-                true,
+                &cache(40.0, Some(DOLLARS)),
+                &windows,
                 UsageDisplay::Percentage,
-                DEFAULT_SESSION_LABEL,
-                DEFAULT_WEEKLY_LABEL,
                 false,
                 false,
             ),
-            "\u{ec81}  7d 68%"
+            "\u{ec81} 40%"
         );
         assert_eq!(
             format_usage(
-                UsageProvider::Claude,
-                &cache,
-                true,
-                true,
-                UsageDisplay::Sparkline,
-                "",
-                "",
+                UsageProvider::Codex,
+                &cache(100.0, Some(DOLLARS)),
+                &windows,
+                UsageDisplay::Percentage,
                 false,
                 false,
             ),
-            "\u{ec82} ▂▆"
+            "\u{ec81} 100% C $50/$100"
         );
     }
 
@@ -828,18 +1194,18 @@ mod tests {
         let cache = UsageCache {
             session: Some(99.0),
             weekly: Some(67.8),
+            fable: None,
+            credits: None,
             session_resets_at: Some(now_secs().saturating_add(3600)),
             fetched_at: 0,
         };
+        let windows = windows(UsageProvider::Codex, true, false, false, None);
         let format = |cache: &UsageCache| {
             format_usage(
                 UsageProvider::Codex,
                 cache,
-                true,
-                false,
+                &windows,
                 UsageDisplay::Percentage,
-                DEFAULT_SESSION_LABEL,
-                DEFAULT_WEEKLY_LABEL,
                 true,
                 true,
             )
@@ -861,6 +1227,108 @@ mod tests {
     }
 
     #[test]
+    fn numeric_display_falls_back_to_percentage_for_rate_limit_windows() {
+        assert_eq!(
+            format_window("5h", Some(61.0), UsageDisplay::Numeric),
+            "5h61%"
+        );
+    }
+
+    #[test]
+    fn threshold_considers_visible_credits() {
+        let windows = with_credits(
+            windows(UsageProvider::Claude, true, false, false, None),
+            UsageDisplay::Numeric,
+            true,
+        );
+        let credits = CreditsUsage {
+            used: 90.0,
+            limit: 100.0,
+            unit: CreditsUnit::Dollars,
+        };
+        assert!(!threshold_reached(
+            &cache(10.0, Some(credits)),
+            &windows,
+            Some(85.0)
+        ));
+        assert!(threshold_reached(
+            &cache(100.0, Some(credits)),
+            &windows,
+            Some(85.0)
+        ));
+    }
+
+    #[test]
+    fn percentage_display_can_select_windows() {
+        let cache = UsageCache {
+            session: Some(12.4),
+            weekly: Some(67.8),
+            fable: Some(33.3),
+            credits: None,
+            session_resets_at: None,
+            fetched_at: 0,
+        };
+        assert_eq!(
+            format_usage(
+                UsageProvider::Claude,
+                &cache,
+                &windows(UsageProvider::Claude, true, false, false, None),
+                UsageDisplay::Percentage,
+                false,
+                false,
+            ),
+            "\u{ec82} 5h 12%"
+        );
+        assert_eq!(
+            format_usage(
+                UsageProvider::Codex,
+                &cache,
+                &windows(UsageProvider::Codex, false, true, false, None),
+                UsageDisplay::Percentage,
+                false,
+                false,
+            ),
+            "\u{ec81}  7d 68%"
+        );
+        assert_eq!(
+            format_usage(
+                UsageProvider::Claude,
+                &cache,
+                &windows(UsageProvider::Claude, true, true, true, None),
+                UsageDisplay::Percentage,
+                false,
+                false,
+            ),
+            "\u{ec82} 5h 12% 7d 68% F 33%"
+        );
+        assert_eq!(
+            format_usage(
+                UsageProvider::Claude,
+                &cache,
+                &windows(UsageProvider::Claude, true, true, false, Some("")),
+                UsageDisplay::Sparkline,
+                false,
+                false,
+            ),
+            "\u{ec82} ▂▆"
+        );
+    }
+
+    #[test]
+    fn fable_window_is_only_enabled_for_claude() {
+        assert!(
+            !windows(UsageProvider::Codex, true, true, true, None)
+                .fable
+                .enabled
+        );
+        assert!(
+            windows(UsageProvider::Claude, true, true, true, None)
+                .fable
+                .enabled
+        );
+    }
+
+    #[test]
     fn bar_display_is_clamped_and_fixed_width() {
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Bar),
@@ -877,7 +1345,7 @@ mod tests {
     fn sparkline_display_uses_one_glyph_per_window() {
         assert_eq!(
             format_window("5h", Some(0.0), UsageDisplay::Sparkline),
-            "5h▁"
+            "5h "
         );
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Sparkline),
@@ -894,13 +1362,38 @@ mod tests {
         let cache = UsageCache {
             session: Some(81.0),
             weekly: Some(79.0),
+            fable: Some(95.0),
+            credits: None,
             session_resets_at: None,
             fetched_at: 0,
         };
 
-        assert!(threshold_reached(&cache, true, false, Some(80.0)));
-        assert!(!threshold_reached(&cache, false, true, Some(80.0)));
-        assert!(threshold_reached(&cache, true, true, Some(80.0)));
+        let claude = UsageProvider::Claude;
+        assert!(threshold_reached(
+            &cache,
+            &windows(claude, true, false, false, None),
+            Some(80.0)
+        ));
+        assert!(!threshold_reached(
+            &cache,
+            &windows(claude, false, true, false, None),
+            Some(80.0)
+        ));
+        assert!(threshold_reached(
+            &cache,
+            &windows(claude, true, true, false, None),
+            Some(80.0)
+        ));
+        assert!(threshold_reached(
+            &cache,
+            &windows(claude, false, false, true, None),
+            Some(80.0)
+        ));
+        assert!(!threshold_reached(
+            &cache,
+            &windows(claude, false, true, false, None),
+            Some(90.0)
+        ));
     }
 
     #[test]

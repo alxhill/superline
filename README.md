@@ -37,7 +37,24 @@ seems to fix some character alignment issues.
 
 ![iTerm2 Profile configuration](https://raw.githubusercontent.com/alxhill/superline/main/iterm_config.png)
 
-To install the package, just run the following:
+Install with Homebrew:
+
+```bash
+brew install alxhill/superline/superline
+superline install <shell name>
+```
+
+Or download a prebuilt binary with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) — no Rust
+toolchain needed to compile, and no waiting for one:
+
+```bash
+cargo binstall superline
+superline install <shell name>
+```
+
+Prebuilt binaries are published for macOS (Apple Silicon only), Linux (x86-64 and arm64) and Windows (x86-64).
+
+You can also install directly from crates.io via cargo:
 
 ```bash
 cargo install superline
@@ -50,7 +67,7 @@ PowerShell profile (`$PROFILE`), creating it if necessary. PowerShell compiles f
 behind `src/platform.rs`) but isn't yet runtime-tested there — see
 [`docs/powershell-testing.md`](docs/powershell-testing.md) for the cross-platform testing plan and Windows caveats.
 
-Cargo's bin directory must be in your `$PATH` for the `superline` command to be available.
+When installing with Cargo, its bin directory must be in your `$PATH` for the `superline` command to be available.
 
 ### Git backends
 
@@ -150,12 +167,25 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   `provider` to `"claude"` or `"codex"`, choose the five-hour and weekly lanes with `session` / `weekly` (both
   default to `true`), label them with `session_label` / `weekly_label` (defaulting to `"5h"` / `"7d"`; use an empty
   string to omit a label), and set
+  `fable` to `true` to also show the Claude-only weekly Fable window (labelled with `fable_label`, defaulting to
+  `"F"`; ignored for `"codex"`). Set
   `display` to `"percentage"` (the default), `"bar"` (a five-cell shaded bar), or `"sparkline"` (one glyph per
-  window). The values are percent used. Set `threshold` to a percent-used warning level; configure the warning
+  window). The values are percent used. Each style also accepts a few aliases: `"percent"`, `"percents"`,
+  `"percentages"` and `"pct"`; `"bars"`; `"sparklines"`, `"spark"` and `"sparks"`; `"number"`, `"numbers"` and
+  `"num"` for `"numeric"`. Set `threshold` to a percent-used warning level; configure the warning
   background in the theme as `modules.ai_usage.threshold_bg`. It replaces the entire widget background whenever either
-  enabled window crosses the threshold. Set `session_time_remaining` to show the session reset countdown when the
-  provider supplies it (currently Codex); set `session_time_remaining_only_at_limit` to show that countdown only once
-  session usage reaches 100%. For example:
+  enabled window crosses the threshold. For example:
+  `{ "ai_usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80 } }`.
+  Set `credits` to `true` to add a usage-credits lane: Claude reports the dollars spent against the account's credit
+  limit and Codex reports the per-seat credit budget as a plain count. It has its own `credits_label` (defaulting to
+  `"C"`) and `credits_display`, which accepts the same styles as `display` plus `"numeric"` for the raw figures, e.g.
+  `$50/$100` or `411/12000` (for the rate-limit windows, `"numeric"` behaves like `"percentage"`); when unset it
+  follows `display`. Set `credits_only_when_limited` to `true` to show the lane only once a session or weekly window
+  has hit 100%, which is when the provider starts drawing from credits. The credits lane counts towards `threshold`
+  whenever it is visible. For example:
+  `{ "ai_usage": { "provider": "claude", "display": "sparkline", "credits": true, "credits_display": "numeric", "credits_only_when_limited": true } }`.
+  Set `session_time_remaining` to show the session reset countdown when the provider supplies it (currently Codex);
+  set `session_time_remaining_only_at_limit` to show that countdown only once session usage reaches 100%. For example:
   `{ "ai_usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80, "session_time_remaining": true, "session_time_remaining_only_at_limit": true } }`.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.

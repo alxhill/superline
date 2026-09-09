@@ -64,10 +64,19 @@ pub enum LineSegment {
         #[serde(default = "default_true")]
         weekly: bool,
         #[serde(default)]
+        fable: bool,
+        #[serde(default)]
         display: UsageDisplay,
         threshold: Option<f64>,
         session_label: Option<String>,
         weekly_label: Option<String>,
+        fable_label: Option<String>,
+        #[serde(default)]
+        credits: bool,
+        credits_display: Option<UsageDisplay>,
+        credits_label: Option<String>,
+        #[serde(default)]
+        credits_only_when_limited: bool,
         #[serde(default)]
         session_time_remaining: bool,
         #[serde(default)]
@@ -134,10 +143,19 @@ enum KnownLineSegment {
         #[serde(default = "default_true")]
         weekly: bool,
         #[serde(default)]
+        fable: bool,
+        #[serde(default)]
         display: UsageDisplay,
         threshold: Option<f64>,
         session_label: Option<String>,
         weekly_label: Option<String>,
+        fable_label: Option<String>,
+        #[serde(default)]
+        credits: bool,
+        credits_display: Option<UsageDisplay>,
+        credits_label: Option<String>,
+        #[serde(default)]
+        credits_only_when_limited: bool,
         #[serde(default)]
         session_time_remaining: bool,
         #[serde(default)]
@@ -186,20 +204,32 @@ impl From<KnownLineSegment> for LineSegment {
                 provider,
                 session,
                 weekly,
+                fable,
                 display,
                 threshold,
                 session_label,
                 weekly_label,
+                fable_label,
+                credits,
+                credits_display,
+                credits_label,
+                credits_only_when_limited,
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
             } => LineSegment::AiUsage {
                 provider,
                 session,
                 weekly,
+                fable,
                 display,
                 threshold,
                 session_label,
                 weekly_label,
+                fable_label,
+                credits,
+                credits_display,
+                credits_label,
+                credits_only_when_limited,
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
             },
@@ -299,9 +329,19 @@ impl UsageProvider {
 #[serde(rename_all = "snake_case")]
 pub enum UsageDisplay {
     #[default]
+    #[serde(
+        alias = "percent",
+        alias = "percents",
+        alias = "percentages",
+        alias = "pct"
+    )]
     Percentage,
+    #[serde(alias = "bars")]
     Bar,
+    #[serde(alias = "sparklines", alias = "spark", alias = "sparks")]
     Sparkline,
+    #[serde(alias = "number", alias = "numbers", alias = "num")]
+    Numeric,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -332,6 +372,42 @@ impl Default for Config {
                             status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                         },
                         LineSegment::Pr { status: true },
+                        LineSegment::Padding(2),
+                        LineSegment::AiUsage {
+                            provider: UsageProvider::Claude,
+                            session: true,
+                            weekly: true,
+                            fable: true,
+                            display: UsageDisplay::Sparkline,
+                            threshold: None,
+                            session_label: None,
+                            weekly_label: None,
+                            fable_label: None,
+                            credits: true,
+                            credits_display: Some(UsageDisplay::Numeric),
+                            credits_label: None,
+                            credits_only_when_limited: true,
+                            session_time_remaining: false,
+                            session_time_remaining_only_at_limit: false,
+                        },
+                        LineSegment::Padding(1),
+                        LineSegment::AiUsage {
+                            provider: UsageProvider::Codex,
+                            session: true,
+                            weekly: true,
+                            fable: false,
+                            display: UsageDisplay::Sparkline,
+                            threshold: None,
+                            session_label: None,
+                            weekly_label: None,
+                            fable_label: None,
+                            credits: true,
+                            credits_display: Some(UsageDisplay::Numeric),
+                            credits_label: None,
+                            credits_only_when_limited: true,
+                            session_time_remaining: false,
+                            session_time_remaining_only_at_limit: false,
+                        },
                     ],
                     right: Some(vec![]),
                 },
@@ -417,10 +493,16 @@ mod tests {
                 provider: UsageProvider::Claude,
                 session: true,
                 weekly: true,
+                fable: false,
                 display: UsageDisplay::Percentage,
                 threshold: None,
                 session_label: None,
                 weekly_label: None,
+                fable_label: None,
+                credits: false,
+                credits_display: None,
+                credits_label: None,
+                credits_only_when_limited: false,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: false,
             }
@@ -440,14 +522,105 @@ mod tests {
                 provider: UsageProvider::Codex,
                 session: false,
                 weekly: true,
+                fable: false,
                 display: UsageDisplay::Sparkline,
                 threshold: Some(80.0),
                 session_label: Some(String::new()),
                 weekly_label: Some("week".to_string()),
+                fable_label: None,
+                credits: false,
+                credits_display: None,
+                credits_label: None,
+                credits_only_when_limited: false,
                 session_time_remaining: true,
                 session_time_remaining_only_at_limit: true,
             }
         );
+    }
+
+    #[test]
+    fn usage_fable_window_is_configurable() {
+        let parsed: LineSegment = serde_json::from_str(
+            r#"{"ai_usage":{"provider":"claude","fable":true,"fable_label":"fable "}}"#,
+        )
+        .expect("AI usage module with fable window should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::AiUsage {
+                provider: UsageProvider::Claude,
+                session: true,
+                weekly: true,
+                fable: true,
+                display: UsageDisplay::Percentage,
+                threshold: None,
+                session_label: None,
+                weekly_label: None,
+                fable_label: Some("fable ".to_string()),
+                credits: false,
+                credits_display: None,
+                credits_label: None,
+                credits_only_when_limited: false,
+                session_time_remaining: false,
+                session_time_remaining_only_at_limit: false,
+            }
+        );
+    }
+
+    #[test]
+    fn usage_credits_window_is_configurable() {
+        let parsed: LineSegment = serde_json::from_str(
+            r#"{"ai_usage":{"provider":"codex","credits":true,"credits_display":"numeric","credits_label":"","credits_only_when_limited":true}}"#,
+        )
+        .expect("AI usage module with credits window should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::AiUsage {
+                provider: UsageProvider::Codex,
+                session: true,
+                weekly: true,
+                fable: false,
+                display: UsageDisplay::Percentage,
+                threshold: None,
+                session_label: None,
+                weekly_label: None,
+                fable_label: None,
+                credits: true,
+                credits_display: Some(UsageDisplay::Numeric),
+                credits_label: Some(String::new()),
+                credits_only_when_limited: true,
+                session_time_remaining: false,
+                session_time_remaining_only_at_limit: false,
+            }
+        );
+    }
+
+    #[test]
+    fn usage_display_accepts_aliases() {
+        let cases = [
+            ("percentage", UsageDisplay::Percentage),
+            ("percent", UsageDisplay::Percentage),
+            ("percents", UsageDisplay::Percentage),
+            ("percentages", UsageDisplay::Percentage),
+            ("pct", UsageDisplay::Percentage),
+            ("bar", UsageDisplay::Bar),
+            ("bars", UsageDisplay::Bar),
+            ("sparkline", UsageDisplay::Sparkline),
+            ("sparklines", UsageDisplay::Sparkline),
+            ("spark", UsageDisplay::Sparkline),
+            ("sparks", UsageDisplay::Sparkline),
+            ("numeric", UsageDisplay::Numeric),
+            ("number", UsageDisplay::Numeric),
+            ("numbers", UsageDisplay::Numeric),
+            ("num", UsageDisplay::Numeric),
+        ];
+
+        for (name, expected) in cases {
+            let parsed: UsageDisplay = serde_json::from_str(&format!(r#""{name}""#))
+                .unwrap_or_else(|_| panic!("{name} should parse as a usage display"));
+            assert_eq!(parsed, expected, "{name}");
+        }
     }
 
     #[test]

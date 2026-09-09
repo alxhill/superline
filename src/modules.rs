@@ -38,7 +38,7 @@ pub use shell_name::{ShellName, ShellScheme};
 pub use spacer::{Spacer, SpacerScheme};
 pub use time::{Time, TimeScheme};
 pub use unknown::{Unknown, UnknownScheme};
-pub use usage::{refresh_usage, Usage, UsageScheme};
+pub use usage::{refresh_usage, Usage, UsageScheme, UsageWindow, UsageWindows};
 pub use user::{User, UserScheme};
 
 pub trait Module {

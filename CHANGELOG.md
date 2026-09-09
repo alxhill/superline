@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4](https://github.com/alxhill/superline/compare/v0.10.3...v0.10.4) - 2026-09-08
+
+### Fixed
+
+- *(usage)* use a space instead of a square for 0% in sparkline display ([#65](https://github.com/alxhill/superline/pull/65))
+
+## [0.10.3](https://github.com/alxhill/superline/compare/v0.10.2...v0.10.3) - 2026-09-08
+
+### Fixed
+
+- *(usage)* render an empty square for 0% in sparkline display ([#63](https://github.com/alxhill/superline/pull/63))
+
+## [0.10.2](https://github.com/alxhill/superline/compare/v0.10.1...v0.10.2) - 2026-09-08
+
+### Other
+
+- update agents
+
+## [0.10.1](https://github.com/alxhill/superline/compare/v0.10.0...v0.10.1) - 2026-09-08
+
+### Added
+
+- *(usage)* accept aliases for ai_usage display styles ([#60](https://github.com/alxhill/superline/pull/60))
+
+## [0.10.0](https://github.com/alxhill/superline/compare/v0.9.3...v0.10.0) - 2026-09-07
+
+### Added
+
+- *(usage)* show claude and codex usage credits ([#58](https://github.com/alxhill/superline/pull/58))
+
+## [0.9.3](https://github.com/alxhill/superline/compare/v0.9.2...v0.9.3) - 2026-09-04
+
+### Added
+
+- add homebrew installation ([#56](https://github.com/alxhill/superline/pull/56))
+
+## [0.9.2](https://github.com/alxhill/superline/compare/v0.9.1...v0.9.2) - 2026-09-04
+
+### Other
+
+- queue the release PR to auto-merge once CI passes ([#55](https://github.com/alxhill/superline/pull/55))
+- open the release PR with a PAT so its checks run ([#53](https://github.com/alxhill/superline/pull/53))
+
+## [0.9.1](https://github.com/alxhill/superline/compare/v0.9.0...v0.9.1) - 2026-09-04
+
+### Added
+
+- *(config)* show claude and codex usage in the default config ([#49](https://github.com/alxhill/superline/pull/49))
+
+## [0.9.0](https://github.com/alxhill/superline/compare/v0.8.3...v0.9.0) - 2026-09-03
+
+### Added
+
+- *(usage)* add fable option to the Claude usage widget ([#47](https://github.com/alxhill/superline/pull/47))
+
+### Fixed
+
+- *(usage)* read codex rate limits over the app-server protocol ([#46](https://github.com/alxhill/superline/pull/46))
+
 ## [0.8.3](https://github.com/alxhill/superline/compare/v0.8.2...v0.8.3) - 2026-09-02
 
 ### Added

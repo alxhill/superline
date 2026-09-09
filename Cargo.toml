@@ -1,12 +1,17 @@
 [package]
 name = "superline"
-version = "0.8.3"
+version = "0.10.4"
 authors = ["alxhill <me@alxhill.com>", "cirho <me@cirho.com>"]
 edition = "2021"
 description = "Configurable Powerline implementation in pure Rust."
 license = "MIT"
 repository = "https://github.com/alxhill/superline"
 readme = "README.md"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "{ bin }{ binary-ext }"
 
 [dependencies]
 hostname = "0.3"

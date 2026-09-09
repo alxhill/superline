@@ -7,7 +7,7 @@ use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::modules::{
     Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Nvm, Pr, PythonEnv,
-    ReadOnly, ShellName, Spacer, Time, Unknown, Usage, User,
+    ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
 };
 use crate::terminal::*;
 use crate::themes::CompleteTheme;
@@ -365,20 +365,34 @@ impl Powerline {
                     provider,
                     session,
                     weekly,
+                    fable,
                     display,
                     threshold,
                     session_label,
                     weekly_label,
+                    fable_label,
+                    credits,
+                    credits_display,
+                    credits_label,
+                    credits_only_when_limited,
                     session_time_remaining,
                     session_time_remaining_only_at_limit,
                 } => self.add_module(Usage::<T>::new(
                     *provider,
-                    *session,
-                    *weekly,
+                    UsageWindows::new(
+                        UsageWindows::session(*session, session_label.clone()),
+                        UsageWindows::weekly(*weekly, weekly_label.clone()),
+                        UsageWindows::fable(*fable, fable_label.clone()),
+                        UsageWindows::credits(
+                            *credits,
+                            credits_label.clone(),
+                            credits_display.unwrap_or(*display),
+                            *credits_only_when_limited,
+                        ),
+                        *provider,
+                    ),
                     *display,
                     *threshold,
-                    session_label.clone(),
-                    weekly_label.clone(),
                     *session_time_remaining,
                     *session_time_remaining_only_at_limit,
                 )),

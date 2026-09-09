@@ -19,6 +19,10 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release-plz.outputs.releases_created }}
+      version: ${{ steps.release-metadata.outputs.version }}
+      tag: ${{ steps.release-metadata.outputs.tag }}
     # Runs in the `cargo` deployment environment - the crates.io trusted
     # publisher is scoped to this environment name, so the OIDC token is only
     # accepted for jobs that declare it.
@@ -34,14 +38,65 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+        id: release-plz
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Read release metadata
+        if: steps.release-plz.outputs.releases_created == 'true'
+        id: release-metadata
+        env:
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+        run: |
+          version=$(jq -r '.[] | select(.package_name == "superline") | .version' <<<"$RELEASES")
+          tag=$(jq -r '.[] | select(.package_name == "superline") | .tag' <<<"$RELEASES")
+          test -n "$version"
+          test -n "$tag"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  release-assets:
+    name: Release assets
+    needs: release-plz-release
+    if: needs.release-plz-release.outputs.release_created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-assets.yml
+    with:
+      ref: ${{ needs.release-plz-release.outputs.tag }}
+      version: ${{ needs.release-plz-release.outputs.version }}
+      upload: true
+
+  homebrew-formula:
+    name: Update Homebrew formula
+    needs: [release-plz-release, release-assets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch tap update
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          VERSION: ${{ needs.release-plz-release.outputs.version }}
+        run: |
+          gh workflow run update.yml \
+            --repo alxhill/homebrew-superline \
+            --ref main \
+            --field version="$VERSION"
+
   # Open/update the "release" PR that bumps the version and updates the
   # changelog based on the conventional commits merged since the last release.
+  #
+  # This job needs a token that is NOT `secrets.GITHUB_TOKEN`. GitHub refuses to
+  # start workflow runs for events raised by `GITHUB_TOKEN` - a recursion guard -
+  # so a release PR opened with it gets no CI and cannot satisfy the required
+  # checks on `main` without someone pressing "Approve and run" by hand.
+  # `RELEASE_PLZ_TOKEN` is a non-expiring fine-grained PAT with Contents and Pull
+  # requests read/write, which makes the PR look like it came from a real account
+  # so `pull_request` fires normally. Deliberately no `|| GITHUB_TOKEN` fallback:
+  # if the secret is ever missing this job fails loudly, rather than quietly
+  # going back to a release PR that nobody notices has no CI.
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-latest
@@ -56,8 +111,23 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+        id: release-plz
         uses: release-plz/action@v0.5
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      # Queue the release PR to merge itself once CI is green, so cutting a
+      # release needs no clicks at all. `--auto` merges straight away if the
+      # checks have already passed.
+      #
+      # This must use `RELEASE_PLZ_TOKEN` rather than `GITHUB_TOKEN`, for the
+      # same reason the PR itself does: merging pushes to `main`, and a push
+      # made by `GITHUB_TOKEN` would not start the `release` job above - the
+      # release PR would merge and then silently never publish.
+      - name: Queue the release PR to auto-merge
+        if: steps.release-plz.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          PR: ${{ steps.release-plz.outputs.pr }}
+        run: gh pr merge --squash --auto --repo '${{ github.repository }}' "$(jq -r .number <<<"$PR")"
