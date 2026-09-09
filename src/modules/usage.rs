@@ -1,9 +1,10 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write as _};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
+use std::str::Chars;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -31,6 +32,13 @@ const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 // A stable, disposable Claude CLI probe session prevents creating a new local
 // conversation on every refresh; its transcript is removed after each probe.
 const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
+// A terminal that speaks VT answers a Device Status Report by reporting the
+// cursor position. Windows' ConPTY asks as soon as the child starts and holds
+// back every byte of the child's output until it gets an answer, so the reply
+// has to come from the moment the pty opens rather than once the interaction
+// below starts. Unix pty backends never ask, but Claude's own TUI does.
+const CURSOR_POSITION_REQUEST: &[u8] = b"\x1b[6n";
+const CURSOR_POSITION_REPORT: &[u8] = b"\x1b[1;1R";
 const OPENAI_ICON: &str = "\u{ec81}";
 const CLAUDE_ICON: &str = "\u{ec82}";
 // spaces added manually to allow for compact display
@@ -648,6 +656,41 @@ fn number_field(value: &Value, key: &str) -> Option<f64> {
     }
 }
 
+/// The pty is written to from two places - the reader thread answers cursor
+/// queries while the main thread drives the slash command - so the single
+/// writer the master hands out is shared.
+type PtyWriter = Arc<Mutex<Box<dyn Write + Send>>>;
+
+fn pty_write(writer: &PtyWriter, bytes: &[u8]) -> bool {
+    let Ok(mut writer) = writer.lock() else {
+        return false;
+    };
+    writer.write_all(bytes).is_ok() && writer.flush().is_ok()
+}
+
+/// Spots cursor queries in a stream that arrives in arbitrary chunks, keeping
+/// just enough of each chunk to still recognise one split across two reads.
+#[derive(Default)]
+struct CursorQueryScanner {
+    tail: Vec<u8>,
+}
+
+impl CursorQueryScanner {
+    fn sees_request(&mut self, chunk: &[u8]) -> bool {
+        self.tail.extend_from_slice(chunk);
+        let seen = self
+            .tail
+            .windows(CURSOR_POSITION_REQUEST.len())
+            .any(|window| window == CURSOR_POSITION_REQUEST);
+        let consumed = self
+            .tail
+            .len()
+            .saturating_sub(CURSOR_POSITION_REQUEST.len() - 1);
+        self.tail.drain(..consumed);
+        seen
+    }
+}
+
 /// Claude renders its quota panel only when connected to a terminal, so run it
 /// in a small pseudo-terminal and issue the slash command
 fn capture_claude_cli() -> Option<String> {
@@ -684,15 +727,21 @@ fn capture_claude_cli() -> Option<String> {
     let mut child = pair.slave.spawn_command(command).ok()?;
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader().ok()?;
-    let mut writer = pair.master.take_writer().ok()?;
+    let writer: PtyWriter = Arc::new(Mutex::new(pair.master.take_writer().ok()?));
+    let cursor_writer = Arc::clone(&writer);
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let mut buffer = [0_u8; 8192];
+        let mut cursor_queries = CursorQueryScanner::default();
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) | Err(_) => break,
                 Ok(count) => {
-                    if sender.send(buffer[..count].to_vec()).is_err() {
+                    let chunk = &buffer[..count];
+                    if cursor_queries.sees_request(chunk) {
+                        pty_write(&cursor_writer, CURSOR_POSITION_REPORT);
+                    }
+                    if sender.send(chunk.to_vec()).is_err() {
                         break;
                     }
                 }
@@ -708,7 +757,7 @@ fn capture_claude_cli() -> Option<String> {
     // A fresh, private probe directory may show Claude's one-time trust
     // prompt. Only accept it when the captured screen proves that exact prompt
     // is active; this directory contains no user project files.
-    let initial_screen = strip_terminal_sequences(&String::from_utf8_lossy(&output));
+    let initial_screen = render_terminal_output(&String::from_utf8_lossy(&output));
     let normalized_initial: String = initial_screen
         .chars()
         .filter(|character| !character.is_whitespace())
@@ -717,14 +766,14 @@ fn capture_claude_cli() -> Option<String> {
     if normalized_initial.contains("quicksafetycheck:") {
         // The first row is "No, exit" and the second is "Yes, I trust this
         // folder". Move to the latter before confirming.
-        if writer.write_all(b"\x1b[B\r").is_err() || writer.flush().is_err() {
+        if !pty_write(&writer, b"\x1b[B\r") {
             let _ = child.kill();
             let _ = child.wait();
             return None;
         }
         thread::sleep(Duration::from_millis(500));
     }
-    if writer.write_all(b"/usage\r").is_err() || writer.flush().is_err() {
+    if !pty_write(&writer, b"/usage\r") {
         let _ = child.kill();
         let _ = child.wait();
         return None;
@@ -736,9 +785,6 @@ fn capture_claude_cli() -> Option<String> {
     while Instant::now() < deadline && output.len() < MAX_CAPTURE_BYTES {
         if let Ok(chunk) = receiver.recv_timeout(Duration::from_millis(100)) {
             output.extend_from_slice(&chunk);
-            if chunk.windows(4).any(|window| window == b"\x1b[6n") {
-                let _ = writer.write_all(b"\x1b[1;1R");
-            }
             let text = String::from_utf8_lossy(&output);
             let parsed = parse_claude_usage(&text);
             if parsed.session.is_some() && parsed.weekly.is_some() {
@@ -747,8 +793,7 @@ fn capture_claude_cli() -> Option<String> {
         }
 
         if last_enter.elapsed() >= Duration::from_millis(800) {
-            let _ = writer.write_all(b"\r");
-            let _ = writer.flush();
+            pty_write(&writer, b"\r");
             last_enter = Instant::now();
         }
         if parsed_at.is_some_and(|at| at.elapsed() >= Duration::from_millis(750)) {
@@ -756,8 +801,7 @@ fn capture_claude_cli() -> Option<String> {
         }
     }
 
-    let _ = writer.write_all(b"/exit\r");
-    let _ = writer.flush();
+    pty_write(&writer, b"/exit\r");
     let _ = child.kill();
     let _ = child.wait();
     cleanup_claude_probe_sessions(&probe_directory);
@@ -839,7 +883,7 @@ struct ParsedUsage {
 }
 
 fn parse_claude_usage(text: &str) -> ParsedUsage {
-    let clean = strip_terminal_sequences(text);
+    let clean = render_terminal_output(text);
     ParsedUsage {
         session: percent_near_label(&clean, r"current\s*session"),
         weekly: percent_near_label(
@@ -932,11 +976,173 @@ fn percent_near_label(text: &str, label: &str) -> Option<f64> {
     Some(used.clamp(0.0, 100.0))
 }
 
-fn strip_terminal_sequences(text: &str) -> String {
-    let osc = Regex::new(r"\x1b\][^\x07]*(?:\x07|\x1b\\)").expect("valid OSC regex");
-    let csi = Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").expect("valid CSI regex");
-    let without_osc = osc.replace_all(text, "");
-    csi.replace_all(&without_osc, "").into_owned()
+/// Replay a terminal capture onto a screen and read the text back off it.
+///
+/// Dropping the escape sequences and keeping the printable bytes is not enough.
+/// Claude's TUI repaints by moving the cursor rather than reprinting whole
+/// lines, and Windows' ConPTY goes further: it diffs every frame against the
+/// one before it and replaces each unchanged cell with a cursor jump. The frame
+/// that draws `Current session` over the `Loading usage data…` it replaces
+/// arrives as `Curre`, a one-column skip across the `n` the two words share,
+/// then `t session` - so the labels the parsers look for only exist on the
+/// screen, never in the byte stream.
+fn render_terminal_output(text: &str) -> String {
+    let mut screen = Screen::default();
+    let mut characters = text.chars();
+    while let Some(character) = characters.next() {
+        match character {
+            '\x1b' => apply_escape(&mut characters, &mut screen),
+            '\r' => screen.column = 0,
+            '\n' => screen.move_to(screen.row + 1, screen.column),
+            '\x08' => screen.column = screen.column.saturating_sub(1),
+            '\t' => screen.move_to(screen.row, (screen.column / 8 + 1) * 8),
+            // Every other control byte is either handled above or invisible.
+            character if (character as u32) < 0x20 || character == '\x7f' => {}
+            character => screen.put(character),
+        }
+    }
+    screen.into_text()
+}
+
+fn apply_escape(characters: &mut Chars, screen: &mut Screen) {
+    match characters.next() {
+        Some('[') => {
+            let mut sequence = String::new();
+            for character in characters.by_ref() {
+                sequence.push(character);
+                if ('@'..='~').contains(&character) {
+                    break;
+                }
+            }
+            apply_csi(&sequence, screen);
+        }
+        // OSC and the other string escapes (hyperlinks, window titles) run to a
+        // bell or a string terminator and put nothing on the screen.
+        Some(']' | 'P' | 'X' | '^' | '_') => {
+            let mut previous = '\0';
+            for character in characters.by_ref() {
+                if character == '\x07' || (previous == '\x1b' && character == '\\') {
+                    break;
+                }
+                previous = character;
+            }
+        }
+        // Two-byte escapes such as the character-set selectors.
+        Some('(' | ')' | '*' | '+' | '#') => {
+            characters.next();
+        }
+        _ => {}
+    }
+}
+
+fn apply_csi(sequence: &str, screen: &mut Screen) {
+    let Some(final_byte) = sequence.chars().last() else {
+        return;
+    };
+    let body = &sequence[..sequence.len() - final_byte.len_utf8()];
+    // Private sequences - `\x1b[?25l`, `\x1b[>4;2m` and friends - never move the
+    // cursor or erase anything.
+    if body.starts_with(['?', '>', '<', '=']) {
+        return;
+    }
+    let parameters: Vec<Option<usize>> = body
+        .split(';')
+        .map(|parameter| parameter.trim().parse().ok())
+        .collect();
+    let parameter = |index: usize| parameters.get(index).copied().flatten();
+    // A missing or zero count means one, and screen coordinates are 1-based.
+    let count = |index: usize| parameter(index).unwrap_or(1).max(1);
+    let coordinate = |index: usize| count(index) - 1;
+
+    match final_byte {
+        'A' => screen.move_to(screen.row.saturating_sub(count(0)), screen.column),
+        'B' => screen.move_to(screen.row + count(0), screen.column),
+        'C' => screen.move_to(screen.row, screen.column + count(0)),
+        'D' => screen.move_to(screen.row, screen.column.saturating_sub(count(0))),
+        'E' => screen.move_to(screen.row + count(0), 0),
+        'F' => screen.move_to(screen.row.saturating_sub(count(0)), 0),
+        'G' => screen.move_to(screen.row, coordinate(0)),
+        'H' | 'f' => screen.move_to(coordinate(0), coordinate(1)),
+        'J' => screen.erase_in_display(parameter(0).unwrap_or(0)),
+        'K' => screen.erase_in_line(parameter(0).unwrap_or(0)),
+        _ => {}
+    }
+}
+
+/// Bounds that keep a stray cursor jump from allocating wildly. The probe pty
+/// is 60x200, so these leave plenty of room.
+const MAX_SCREEN_ROWS: usize = 1000;
+const MAX_SCREEN_COLUMNS: usize = 1000;
+
+/// The screen a capture is replayed onto. It grows to fit whatever the child
+/// draws, up to those bounds.
+#[derive(Default)]
+struct Screen {
+    rows: Vec<Vec<char>>,
+    row: usize,
+    column: usize,
+}
+
+impl Screen {
+    fn move_to(&mut self, row: usize, column: usize) {
+        self.row = row.min(MAX_SCREEN_ROWS - 1);
+        self.column = column.min(MAX_SCREEN_COLUMNS - 1);
+    }
+
+    fn put(&mut self, character: char) {
+        let (row, column) = (self.row, self.column);
+        if self.rows.len() <= row {
+            self.rows.resize_with(row + 1, Vec::new);
+        }
+        let line = &mut self.rows[row];
+        if line.len() <= column {
+            line.resize(column + 1, ' ');
+        }
+        line[column] = character;
+        self.move_to(row, column + 1);
+    }
+
+    fn erase_in_line(&mut self, mode: usize) {
+        let (row, column) = (self.row, self.column);
+        let Some(line) = self.rows.get_mut(row) else {
+            return;
+        };
+        match mode {
+            // Cursor to end of line.
+            0 => line.truncate(column),
+            // Start of line to cursor.
+            1 => line
+                .iter_mut()
+                .take(column + 1)
+                .for_each(|cell| *cell = ' '),
+            _ => line.clear(),
+        }
+    }
+
+    fn erase_in_display(&mut self, mode: usize) {
+        let row = self.row;
+        match mode {
+            // Cursor to end of screen.
+            0 => {
+                self.erase_in_line(0);
+                self.rows.truncate(row + 1);
+            }
+            // Start of screen to cursor.
+            1 => {
+                self.rows.iter_mut().take(row).for_each(Vec::clear);
+                self.erase_in_line(1);
+            }
+            _ => self.rows.clear(),
+        }
+    }
+
+    fn into_text(self) -> String {
+        self.rows
+            .into_iter()
+            .map(String::from_iter)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 fn write_cache(path: &Path, cache: &UsageCache) {
@@ -1109,6 +1315,73 @@ mod tests {
                 session_resets_at: None,
             }
         );
+    }
+
+    #[test]
+    fn parses_claude_usage_from_a_conpty_style_differential_repaint() {
+        // What ConPTY actually sends on Windows: each frame is a diff against
+        // the previous one, so the cells a repaint shares with what it replaces
+        // arrive as cursor jumps rather than as characters. Here the panel
+        // overwrites `Loading usage data…` with `Current session`, and the `n`
+        // the two share never reaches the stream. Cursor jumps also stand in
+        // for the spaces between words.
+        let text = concat!(
+            "\x1b[2J",
+            "\x1b[14;1HLoading\x1b[1Cusage\x1b[1Cdata\u{2026}",
+            "\x1b[16;1HEsc\x1b[1Cto\x1b[1Ccancel",
+            "\x1b[14;1HCurre\x1b[1Ct\x1b[1Csession\x1b[K",
+            "\x1b[15;1H\u{2588}\u{2588}\u{2588}\x1b[37C28%\x1b[1Cused",
+            "\x1b[16;1HRese\x1b[1Cs\x1b[1C3:20pm\x1b[1C(America/New_York)\x1b[K",
+            "\x1b[18;1HCurrent\x1b[1Cweek\x1b[1C(all\x1b[1Cmodels)",
+            "\x1b[19;1H\u{2588}\u{2588}\x1b[46C9%\x1b[1Cused",
+            "\x1b[22;1HCurrent\x1b[1Cweek\x1b[1C(Fable)",
+            "\x1b[23;1H\u{2588}\u{2588}\u{2588}\x1b[44C13%\x1b[1Cused",
+        );
+        let parsed = parse_claude_usage(text);
+        assert_eq!(parsed.session, Some(28.0));
+        assert_eq!(parsed.weekly, Some(9.0));
+        assert_eq!(parsed.fable, Some(13.0));
+    }
+
+    #[test]
+    fn a_repaint_only_keeps_what_the_erase_sequences_leave_behind() {
+        // A shorter line drawn over a longer one clears the tail it no longer
+        // covers, and a screen clear drops everything before it.
+        assert_eq!(
+            render_terminal_output("\x1b[1;1Hstale text\x1b[1;1Hfresh\x1b[K"),
+            "fresh"
+        );
+        assert_eq!(
+            render_terminal_output("\x1b[1;1Hprevious panel\x1b[2J\x1b[1;1Hnew"),
+            "new"
+        );
+    }
+
+    #[test]
+    fn hyperlinks_and_private_sequences_leave_only_their_text() {
+        // The OSC 8 hyperlink Claude wraps its security link in ends with a
+        // string terminator rather than a bell, and the synchronised-output and
+        // cursor-visibility toggles around it move nothing.
+        assert_eq!(
+            render_terminal_output(
+                "\x1b[?2026h\x1b]8;;https://example.com\x1b\\Security guide\x1b]8;;\x1b\\\x1b[?25h"
+            ),
+            "Security guide"
+        );
+    }
+
+    #[test]
+    fn a_cursor_query_split_across_reads_is_still_answered_once() {
+        let mut scanner = CursorQueryScanner::default();
+        assert!(!scanner.sees_request(b"\x1b[?25l"));
+        // ConPTY asks for the cursor position as soon as the child starts and
+        // withholds every byte of its output until it is answered.
+        assert!(scanner.sees_request(b"\x1b[6n"));
+        assert!(!scanner.sees_request(b"some output"));
+        // The same request arriving in two reads still has to be spotted.
+        assert!(!scanner.sees_request(b"\x1b[6"));
+        assert!(scanner.sees_request(b"n\x1b[2J"));
+        assert!(!scanner.sees_request(b"more output"));
     }
 
     #[test]
