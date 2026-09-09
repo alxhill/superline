@@ -39,6 +39,10 @@ const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
 // below starts. Unix pty backends never ask, but Claude's own TUI does.
 const CURSOR_POSITION_REQUEST: &[u8] = b"\x1b[6n";
 const CURSOR_POSITION_REPORT: &[u8] = b"\x1b[1;1R";
+// Shown in place of a reading: the first refresh has yet to land, or the
+// provider CLI the reading comes from is not on `PATH` at all.
+const LOADING_MARKER: char = '\u{2026}';
+const NOT_INSTALLED_MARKER: char = '?';
 const OPENAI_ICON: &str = "\u{ec81}";
 const CLAUDE_ICON: &str = "\u{ec82}";
 // spaces added manually to allow for compact display
@@ -256,10 +260,15 @@ impl<S: UsageScheme> Module for Usage<S> {
             return;
         };
         let cache = read_cache(&cache_path);
+        // Only walk `PATH` when there is nothing to show yet. That separates a
+        // missing provider CLI from a first refresh still in flight, and a
+        // refresh without the CLI could only have failed anyway.
+        let installed = cache.is_some() || provider_is_installed(self.provider);
 
-        if cache
-            .as_ref()
-            .is_none_or(|cache| is_stale(cache.fetched_at))
+        if installed
+            && cache
+                .as_ref()
+                .is_none_or(|cache| is_stale(cache.fetched_at))
         {
             spawn_refresh(self.provider, &cache_path);
         }
@@ -277,7 +286,14 @@ impl<S: UsageScheme> Module for Usage<S> {
                     self.session_time_remaining_only_at_limit,
                 )
             })
-            .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
+            .unwrap_or_else(|| {
+                let marker = if installed {
+                    LOADING_MARKER
+                } else {
+                    NOT_INSTALLED_MARKER
+                };
+                format!("{} {marker}", provider_label(self.provider))
+            });
         let bg = cache
             .as_ref()
             .filter(|cache| threshold_reached(cache, &self.windows, self.threshold))
@@ -853,6 +869,10 @@ fn cleanup_claude_probe_sessions(probe_directory: &Path) {
             let _ = fs::remove_file(path);
         }
     }
+}
+
+fn provider_is_installed(provider: UsageProvider) -> bool {
+    resolve_binary(provider.as_str()).is_some()
 }
 
 fn resolve_binary(name: &str) -> Option<PathBuf> {
