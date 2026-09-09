@@ -79,8 +79,7 @@ pub enum LineSegment {
         credits_only_when_limited: bool,
         #[serde(default)]
         session_time_remaining: bool,
-        #[serde(default)]
-        session_time_remaining_only_at_limit: bool,
+        session_time_remaining_only_at_limit: f64,
     },
     User,
     Cmd,
@@ -102,6 +101,17 @@ fn default_true() -> bool {
 
 fn default_git_status_timeout_ms() -> u64 {
     DEFAULT_GIT_STATUS_TIMEOUT_MS
+}
+
+fn deserialize_unit_interval<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = f64::deserialize(deserializer)?;
+    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+        return Err(de::Error::custom("must be a finite number from 0 to 1"));
+    }
+    Ok(value)
 }
 
 #[derive(Debug, Deserialize)]
@@ -158,8 +168,8 @@ enum KnownLineSegment {
         credits_only_when_limited: bool,
         #[serde(default)]
         session_time_remaining: bool,
-        #[serde(default)]
-        session_time_remaining_only_at_limit: bool,
+        #[serde(default, deserialize_with = "deserialize_unit_interval")]
+        session_time_remaining_only_at_limit: f64,
     },
     User,
     Cmd,
@@ -388,7 +398,7 @@ impl Default for Config {
                             credits_label: None,
                             credits_only_when_limited: true,
                             session_time_remaining: false,
-                            session_time_remaining_only_at_limit: false,
+                            session_time_remaining_only_at_limit: 0.0,
                         },
                         LineSegment::Padding(1),
                         LineSegment::AiUsage {
@@ -406,7 +416,7 @@ impl Default for Config {
                             credits_label: None,
                             credits_only_when_limited: true,
                             session_time_remaining: false,
-                            session_time_remaining_only_at_limit: false,
+                            session_time_remaining_only_at_limit: 0.0,
                         },
                     ],
                     right: Some(vec![]),
@@ -504,7 +514,7 @@ mod tests {
                 credits_label: None,
                 credits_only_when_limited: false,
                 session_time_remaining: false,
-                session_time_remaining_only_at_limit: false,
+                session_time_remaining_only_at_limit: 0.0,
             }
         );
     }
@@ -512,7 +522,7 @@ mod tests {
     #[test]
     fn usage_windows_and_display_are_configurable() {
         let parsed: LineSegment = serde_json::from_str(
-            r#"{"ai_usage":{"provider":"codex","session":false,"weekly":true,"display":"sparkline","threshold":80,"session_label":"","weekly_label":"week","session_time_remaining":true,"session_time_remaining_only_at_limit":true}}"#,
+            r#"{"ai_usage":{"provider":"codex","session":false,"weekly":true,"display":"sparkline","threshold":80,"session_label":"","weekly_label":"week","session_time_remaining":true,"session_time_remaining_only_at_limit":0.8}}"#,
         )
         .expect("configured AI usage module should parse");
 
@@ -533,9 +543,25 @@ mod tests {
                 credits_label: None,
                 credits_only_when_limited: false,
                 session_time_remaining: true,
-                session_time_remaining_only_at_limit: true,
+                session_time_remaining_only_at_limit: 0.8,
             }
         );
+    }
+
+    #[test]
+    fn usage_session_reset_threshold_is_a_unit_interval() {
+        for value in ["0", "1"] {
+            let config = format!(
+                r#"{{"ai_usage":{{"provider":"codex","session_time_remaining_only_at_limit":{value}}}}}"#
+            );
+            assert!(serde_json::from_str::<LineSegment>(&config).is_ok());
+        }
+        for value in ["-0.1", "1.1"] {
+            let config = format!(
+                r#"{{"ai_usage":{{"provider":"codex","session_time_remaining_only_at_limit":{value}}}}}"#
+            );
+            assert!(serde_json::from_str::<LineSegment>(&config).is_err());
+        }
     }
 
     #[test]
@@ -562,7 +588,7 @@ mod tests {
                 credits_label: None,
                 credits_only_when_limited: false,
                 session_time_remaining: false,
-                session_time_remaining_only_at_limit: false,
+                session_time_remaining_only_at_limit: 0.0,
             }
         );
     }
@@ -591,7 +617,7 @@ mod tests {
                 credits_label: Some(String::new()),
                 credits_only_when_limited: true,
                 session_time_remaining: false,
-                session_time_remaining_only_at_limit: false,
+                session_time_remaining_only_at_limit: 0.0,
             }
         );
     }
