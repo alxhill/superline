@@ -375,6 +375,8 @@ impl Powerline {
                     credits_display,
                     credits_label,
                     credits_only_when_limited,
+                    session_time_remaining,
+                    session_time_remaining_only_at_limit,
                 } => self.add_module(Usage::<T>::new(
                     *provider,
                     UsageWindows::new(
@@ -391,6 +393,8 @@ impl Powerline {
                     ),
                     *display,
                     *threshold,
+                    *session_time_remaining,
+                    *session_time_remaining_only_at_limit,
                 )),
                 LineSegment::LastCmdDuration { min_run_time } => {
                     self.add_module(LastCmdDuration::<T>::new(

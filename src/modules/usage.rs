@@ -7,6 +7,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use chrono::{DateTime, Local, LocalResult, TimeZone};
 use fs2::FileExt;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use regex::Regex;
@@ -43,6 +44,8 @@ pub struct Usage<S> {
     windows: UsageWindows,
     display: UsageDisplay,
     threshold: Option<f64>,
+    show_session_time_remaining: bool,
+    session_time_remaining_only_at_limit: f64,
     scheme: PhantomData<S>,
 }
 
@@ -160,12 +163,16 @@ impl<S: UsageScheme> Usage<S> {
         windows: UsageWindows,
         display: UsageDisplay,
         threshold: Option<f64>,
+        show_session_time_remaining: bool,
+        session_time_remaining_only_at_limit: f64,
     ) -> Self {
         Self {
             provider,
             windows,
             display,
             threshold: threshold.filter(|threshold| threshold.is_finite()),
+            show_session_time_remaining,
+            session_time_remaining_only_at_limit,
             scheme: PhantomData,
         }
     }
@@ -179,6 +186,8 @@ struct UsageCache {
     fable: Option<f64>,
     #[serde(default)]
     credits: Option<CreditsUsage>,
+    #[serde(default)]
+    session_resets_at: Option<u64>,
     fetched_at: u64,
 }
 
@@ -231,7 +240,7 @@ fn format_amount(amount: f64, unit: CreditsUnit) -> String {
 
 impl<S: UsageScheme> Module for Usage<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        if !self.windows.any_enabled() {
+        if !self.windows.any_enabled() && !self.show_session_time_remaining {
             return;
         }
 
@@ -250,7 +259,16 @@ impl<S: UsageScheme> Module for Usage<S> {
         let (default_fg, bg) = provider_style::<S>(self.provider);
         let label = cache
             .as_ref()
-            .map(|cache| format_usage(self.provider, cache, &self.windows, self.display))
+            .map(|cache| {
+                format_usage(
+                    self.provider,
+                    cache,
+                    &self.windows,
+                    self.display,
+                    self.show_session_time_remaining,
+                    self.session_time_remaining_only_at_limit,
+                )
+            })
             .unwrap_or_else(|| format!("{} …", provider_label(self.provider)));
         let bg = cache
             .as_ref()
@@ -280,6 +298,8 @@ fn format_usage(
     cache: &UsageCache,
     windows: &UsageWindows,
     display: UsageDisplay,
+    show_session_time_remaining: bool,
+    session_time_remaining_only_at_limit: f64,
 ) -> String {
     let mut parts = vec![provider_label(provider).to_string(), " ".to_string()];
     for (window, used_percent) in [
@@ -298,7 +318,37 @@ fn format_usage(
             windows.credits.display,
         ));
     }
+    if show_session_time_remaining
+        && cache.session_resets_at.is_some()
+        && cache
+            .session
+            .is_some_and(|percent| percent >= session_time_remaining_only_at_limit * 100.0)
+    {
+        parts.push(format!(
+            " ↻ {}",
+            format_time_remaining(cache.session_resets_at)
+        ));
+    }
     parts.join("")
+}
+
+fn format_time_remaining(resets_at: Option<u64>) -> String {
+    let Some(resets_at) = resets_at else {
+        return "–".to_string();
+    };
+    format_remaining_duration(resets_at.saturating_sub(now_secs()))
+}
+
+fn format_remaining_duration(remaining: u64) -> String {
+    let hours = remaining / 3600;
+    let minutes = (remaining % 3600) / 60;
+    if hours > 0 {
+        format!("{hours}h {minutes}m")
+    } else if minutes > 0 {
+        format!("{minutes}m")
+    } else {
+        "now".to_string()
+    }
 }
 
 fn format_credits(label: &str, credits: Option<&CreditsUsage>, display: UsageDisplay) -> String {
@@ -486,6 +536,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
         weekly: parsed.weekly,
         fable: parsed.fable,
         credits: parsed.credits,
+        session_resets_at: parsed.session_resets_at,
         fetched_at: now_secs(),
     })
 }
@@ -563,10 +614,11 @@ fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
         Some((
             window.get("windowDurationMins").and_then(Value::as_u64),
             used,
+            window.get("resetsAt").and_then(Value::as_u64),
         ))
     };
     let (mut session, mut weekly) = (window("primary"), window("secondary"));
-    if let (Some((Some(short), _)), Some((Some(long), _))) = (session, weekly) {
+    if let (Some((Some(short), _, _)), Some((Some(long), _, _))) = (session, weekly) {
         if short > long {
             std::mem::swap(&mut session, &mut weekly);
         }
@@ -579,10 +631,11 @@ fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
         })
     });
     Some(ParsedUsage {
-        session: session.map(|(_, used)| used.clamp(0.0, 100.0)),
-        weekly: weekly.map(|(_, used)| used.clamp(0.0, 100.0)),
+        session: session.map(|(_, used, _)| used.clamp(0.0, 100.0)),
+        weekly: weekly.map(|(_, used, _)| used.clamp(0.0, 100.0)),
         fable: None,
         credits,
+        session_resets_at: session.and_then(|(_, _, resets_at)| resets_at),
     })
 }
 
@@ -782,6 +835,7 @@ struct ParsedUsage {
     weekly: Option<f64>,
     fable: Option<f64>,
     credits: Option<CreditsUsage>,
+    session_resets_at: Option<u64>,
 }
 
 fn parse_claude_usage(text: &str) -> ParsedUsage {
@@ -794,7 +848,56 @@ fn parse_claude_usage(text: &str) -> ParsedUsage {
         ),
         fable: percent_near_label(&clean, r"current\s*week\s*\(\s*f\s*a\s*b\s*l\s*e\s*\)"),
         credits: parse_claude_credits(&clean),
+        session_resets_at: parse_claude_session_reset(&clean),
     }
+}
+
+/// Claude reports the session reset as a local clock time (for example,
+/// `Resets 2:50pm`). A clock-only value is the next matching local time.
+fn parse_claude_session_reset(text: &str) -> Option<u64> {
+    parse_claude_session_reset_at(text, Local::now())
+}
+
+fn parse_claude_session_reset_at(text: &str, now: DateTime<Local>) -> Option<u64> {
+    let session_section = Regex::new(
+        r"(?is)current\s*session(?P<section>.{0,500}?)(?:current\s*week|usage\s*credits|$)",
+    )
+    .ok()?
+    .captures_iter(text)
+    .last()?
+    .name("section")?
+    .as_str();
+    let reset =
+        Regex::new(r"(?is)resets\s+(?:at\s+)?([0-9]{1,2})(?::([0-9]{2}))?\s*([ap])\.?m\.?").ok()?;
+    let captures = reset.captures_iter(session_section).last()?;
+    let hour: u32 = captures.get(1)?.as_str().parse().ok()?;
+    let minute: u32 = captures
+        .get(2)
+        .map_or(Some(0), |capture| capture.as_str().parse().ok())?;
+    if !(1..=12).contains(&hour) || minute >= 60 {
+        return None;
+    }
+    let hour = match captures.get(3)?.as_str().to_ascii_lowercase().as_str() {
+        "a" if hour == 12 => 0,
+        "a" => hour,
+        "p" if hour == 12 => 12,
+        "p" => hour + 12,
+        _ => return None,
+    };
+    let timestamp_for = |date: chrono::NaiveDate| match Local
+        .from_local_datetime(&date.and_hms_opt(hour, minute, 0)?)
+    {
+        LocalResult::Single(reset) => Some(reset.timestamp()),
+        LocalResult::Ambiguous(first, _) => Some(first.timestamp()),
+        LocalResult::None => None,
+    };
+    let reset = timestamp_for(now.date_naive())?;
+    let reset = if reset <= now.timestamp() {
+        timestamp_for(now.date_naive().succ_opt()?)?
+    } else {
+        reset
+    };
+    u64::try_from(reset).ok()
 }
 
 /// The credits row reads `Usage credits … $12.50 / $500.00 spent`.
@@ -871,6 +974,7 @@ mod tests {
                 weekly: Some(37.0),
                 fable: None,
                 credits: None,
+                session_resets_at: Some(1),
             })
         );
 
@@ -890,6 +994,7 @@ mod tests {
                 weekly: Some(37.0),
                 fable: None,
                 credits: None,
+                session_resets_at: None,
             })
         );
 
@@ -904,6 +1009,7 @@ mod tests {
                 weekly: None,
                 fable: None,
                 credits: None,
+                session_resets_at: None,
             })
         );
 
@@ -936,7 +1042,7 @@ mod tests {
 
     #[test]
     fn parses_claude_used_percentages_from_ansi_output() {
-        let text = "\x1b[2JSettings: Usage\nCurrent session\n17% used\nResets 4pm\n\
+        let text = "\x1b[2JSettings: Usage\nCurrent session\n17% used\n\
                     Current week (all models)\n42% used\x1b[0m";
         assert_eq!(
             parse_claude_usage(text),
@@ -945,6 +1051,7 @@ mod tests {
                 weekly: Some(42.0),
                 fable: None,
                 credits: None,
+                session_resets_at: None,
             }
         );
     }
@@ -959,15 +1066,16 @@ mod tests {
                 weekly: Some(10.0),
                 fable: None,
                 credits: None,
+                session_resets_at: None,
             }
         );
     }
 
     #[test]
     fn parses_claude_fable_window_when_present() {
-        let text = "Current session\n███████ 14%used\nResets 2:50pm\n\
-                    Current week (all models)\n██████▌ 13% used\nResets Sep 7 at 8pm\n\
-                    Current week (Fable)\n████████ 16% used\nResets Sep 7 at 8pm";
+        let text = "Current session\n███████ 14%used\n\
+                    Current week (all models)\n██████▌ 13% used\n\
+                    Current week (Fable)\n████████ 16% used";
         assert_eq!(
             parse_claude_usage(text),
             ParsedUsage {
@@ -975,13 +1083,14 @@ mod tests {
                 weekly: Some(13.0),
                 fable: Some(16.0),
                 credits: None,
+                session_resets_at: None,
             }
         );
     }
 
     #[test]
     fn parses_claude_usage_credits_row() {
-        let text = "Current session\n████ 25%used\nResets 3:30pm\n\
+        let text = "Current session\n████ 25%used\n\
                     Current week (all models)\n████ 32%used\n\
                     Current week (Fable)\n████ 39%used\n\
                     Usage credits                     3%used\
@@ -997,8 +1106,36 @@ mod tests {
                     limit: 500.0,
                     unit: CreditsUnit::Dollars,
                 }),
+                session_resets_at: None,
             }
         );
+    }
+
+    #[test]
+    fn parses_claude_session_reset_as_the_next_local_clock_time() {
+        let now = Local
+            .with_ymd_and_hms(2026, 9, 9, 10, 0, 0)
+            .single()
+            .expect("valid local test time");
+        let text = "Current session\n17% used\nResets 2:50pm\n\
+                    Current week (all models)\n42% used\nResets 8pm";
+        let expected = Local
+            .with_ymd_and_hms(2026, 9, 9, 14, 50, 0)
+            .single()
+            .expect("valid local test time")
+            .timestamp() as u64;
+        assert_eq!(parse_claude_session_reset_at(text, now), Some(expected));
+
+        let now = Local
+            .with_ymd_and_hms(2026, 9, 9, 18, 0, 0)
+            .single()
+            .expect("valid local test time");
+        let expected = Local
+            .with_ymd_and_hms(2026, 9, 10, 14, 50, 0)
+            .single()
+            .expect("valid local test time")
+            .timestamp() as u64;
+        assert_eq!(parse_claude_session_reset_at(text, now), Some(expected));
     }
 
     #[test]
@@ -1042,6 +1179,7 @@ mod tests {
             weekly: Some(20.0),
             fable: None,
             credits,
+            session_resets_at: None,
             fetched_at: 0,
         }
     }
@@ -1065,6 +1203,8 @@ mod tests {
                 &cache(12.0, Some(DOLLARS)),
                 &windows,
                 UsageDisplay::Sparkline,
+                false,
+                0.0,
             ),
             "\u{ec82} 5h ▂ C $50/$100"
         );
@@ -1108,6 +1248,8 @@ mod tests {
                 &cache(40.0, Some(DOLLARS)),
                 &windows,
                 UsageDisplay::Percentage,
+                false,
+                0.0,
             ),
             "\u{ec81} 40%"
         );
@@ -1117,9 +1259,48 @@ mod tests {
                 &cache(100.0, Some(DOLLARS)),
                 &windows,
                 UsageDisplay::Percentage,
+                false,
+                0.0,
             ),
             "\u{ec81} 100% C $50/$100"
         );
+    }
+
+    #[test]
+    fn session_reset_countdown_can_be_limited_to_a_fullness_threshold() {
+        let cache = UsageCache {
+            session: Some(79.0),
+            weekly: Some(67.8),
+            fable: None,
+            credits: None,
+            session_resets_at: Some(now_secs().saturating_add(3600)),
+            fetched_at: 0,
+        };
+        let windows = windows(UsageProvider::Codex, true, false, false, None);
+        let format = |cache: &UsageCache| {
+            format_usage(
+                UsageProvider::Codex,
+                cache,
+                &windows,
+                UsageDisplay::Percentage,
+                true,
+                0.8,
+            )
+        };
+
+        assert!(!format(&cache).contains('↻'));
+        assert!(format(&UsageCache {
+            session: Some(80.0),
+            ..cache
+        })
+        .contains('↻'));
+    }
+
+    #[test]
+    fn remaining_duration_is_compact() {
+        assert_eq!(format_remaining_duration(2 * 3600 + 34 * 60), "2h 34m");
+        assert_eq!(format_remaining_duration(59 * 60), "59m");
+        assert_eq!(format_remaining_duration(59), "now");
     }
 
     #[test]
@@ -1161,6 +1342,7 @@ mod tests {
             weekly: Some(67.8),
             fable: Some(33.3),
             credits: None,
+            session_resets_at: None,
             fetched_at: 0,
         };
         assert_eq!(
@@ -1169,6 +1351,8 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Claude, true, false, false, None),
                 UsageDisplay::Percentage,
+                false,
+                0.0,
             ),
             "\u{ec82} 5h 12%"
         );
@@ -1178,6 +1362,8 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Codex, false, true, false, None),
                 UsageDisplay::Percentage,
+                false,
+                0.0,
             ),
             "\u{ec81}  7d 68%"
         );
@@ -1187,6 +1373,8 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Claude, true, true, true, None),
                 UsageDisplay::Percentage,
+                false,
+                0.0,
             ),
             "\u{ec82} 5h 12% 7d 68% F 33%"
         );
@@ -1196,6 +1384,8 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Claude, true, true, false, Some("")),
                 UsageDisplay::Sparkline,
+                false,
+                0.0,
             ),
             "\u{ec82} ▂▆"
         );
@@ -1251,6 +1441,7 @@ mod tests {
             weekly: Some(79.0),
             fable: Some(95.0),
             credits: None,
+            session_resets_at: None,
             fetched_at: 0,
         };
 

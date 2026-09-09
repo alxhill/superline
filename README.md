@@ -184,6 +184,10 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   has hit 100%, which is when the provider starts drawing from credits. The credits lane counts towards `threshold`
   whenever it is visible. For example:
   `{ "ai_usage": { "provider": "claude", "display": "sparkline", "credits": true, "credits_display": "numeric", "credits_only_when_limited": true } }`.
+  Set `session_time_remaining` to show the session reset countdown (for Claude and Codex). Optionally set
+  `session_time_remaining_only_at_limit` to a fraction from `0` to `1` to show it only once the session reaches that
+  fullness (for example, `0.8` shows it at 80% and above). For example:
+  `{ "ai_usage": { "provider": "claude", "session": true, "weekly": true, "display": "bar", "threshold": 80, "session_time_remaining": true, "session_time_remaining_only_at_limit": 0.8 } }`.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
 * **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.
