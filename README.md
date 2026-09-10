@@ -4,8 +4,7 @@
 
 _Forked from [cirho/powerline-rust](https://github.com/cirho/powerline-rust) and adjusted for personal taste_
 
-superline supports git and github natively, and detects rust, python, node and java environments - from
-`.sdkmanrc`, `.nvmrc` and `.python-version`, or from a [mise](https://mise.jdx.dev) config.
+superline supports git and github natively, and detects rust, python, node and java environments.
 
 ![Shell with pyenv showing](https://raw.githubusercontent.com/alxhill/superline/main/with_pyenv.png)
 
@@ -13,9 +12,8 @@ It integrates with the `gh` shell command to provide PR and CI status check disp
 
 ![Shell with PR link and status check](https://raw.githubusercontent.com/alxhill/superline/main/with_status.png)
 
-superline is a pure-rust version of [powerline-SHELL](https://github.com/b-ryan/powerline-shell). It's heavily
-inspired
-by it, but focuses on minimalizing time of execution and supporting a limited subset of features.
+superline started as a pure-rust version of [powerline-SHELL](https://github.com/b-ryan/powerline-shell), but has been
+extended with a number of opinionated (but configurable) widgets and customizable theming.
 
 ## Advantages
 
@@ -327,13 +325,3 @@ fn main() {
     ...
 ```
 
-## TODO
-
-- [x] Support NVM enviroments
-- [x] Support SDKMAN / Java enviroments
-- [x] Switch to cleaner/JSON-first theme structure
-- [x] Add a `superline install` command to auto-modify shell config
-- [x] Change git icon/name based on branch vs commit vs merging
-- [x] Native "right prompt" support on final line (zsh + fish only)
-- [ ] Improve display when there aren't enough columns for the whole prompt (e.g truncate paths, show from left not
-  right)
