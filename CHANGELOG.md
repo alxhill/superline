@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/alxhill/superline/compare/v0.11.0...v0.11.1) - 2026-09-10
+
+### Added
+
+- add clear-caches subcommand ([#72](https://github.com/alxhill/superline/pull/72))
+
+### Fixed
+
+- *(usage)* make the ai_usage widget work on Windows ([#71](https://github.com/alxhill/superline/pull/71))
+
 ## [0.11.0](https://github.com/alxhill/superline/compare/v0.10.5...v0.11.0) - 2026-09-09
 
 ### Added
