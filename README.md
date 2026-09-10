@@ -188,6 +188,7 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   `session_time_remaining_only_at_limit` to a fraction from `0` to `1` to show it only once the session reaches that
   fullness (for example, `0.8` shows it at 80% and above). For example:
   `{ "ai_usage": { "provider": "claude", "session": true, "weekly": true, "display": "bar", "threshold": 80, "session_time_remaining": true, "session_time_remaining_only_at_limit": 0.8 } }`.
+  Until the first reading is cached the widget shows `…`; if the provider CLI isn't on `PATH` it shows `?` instead.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
 * **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.
