@@ -150,6 +150,9 @@ enum PowerlineArgs {
     ShowRight(ShowArgs),
     Install(InstallArgs),
     Config,
+    /// Remove all cached data (git status, PR lookups, AI usage) so the next
+    /// prompt starts from a cold cache.
+    ClearCaches,
     /// Internal: refresh the cached PR lookup for a branch. Spawned in the
     /// background by the `pr` module - not intended to be called by hand.
     #[command(hide = true)]
@@ -266,6 +269,7 @@ fn main() {
         PowerlineArgs::ShowRight(args) => show(args, true),
         PowerlineArgs::Install(args) => install(args),
         PowerlineArgs::Config => open_config(),
+        PowerlineArgs::ClearCaches => clear_caches(),
         PowerlineArgs::RefreshPr(args) => refresh_pr(&args.branch, &args.repo_dir, &args.cache),
         PowerlineArgs::RefreshGit(args) => refresh_git(&args.repo_dir, &args.cache),
         PowerlineArgs::RefreshUsage(args) => {
@@ -275,6 +279,24 @@ fn main() {
                 _ => return,
             };
             refresh_usage(provider, &args.cache);
+        }
+    }
+}
+
+fn clear_caches() {
+    let Some(dir) = superline::platform::cache_dir().map(|base| base.join("superline")) else {
+        eprintln!("Could not determine the cache directory");
+        std::process::exit(1);
+    };
+
+    match std::fs::remove_dir_all(&dir) {
+        Ok(()) => println!("Removed {}", dir.display()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            println!("No caches to remove ({} does not exist)", dir.display())
+        }
+        Err(e) => {
+            eprintln!("Failed to remove {}: {e}", dir.display());
+            std::process::exit(1);
         }
     }
 }
