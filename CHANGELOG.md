@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.4](https://github.com/alxhill/superline/compare/v0.11.3...v0.11.4) - 2026-09-11
+
+### Other
+
+- cancel in-progress runs when newer commits land ([#79](https://github.com/alxhill/superline/pull/79))
+
 ## [0.11.3](https://github.com/alxhill/superline/compare/v0.11.2...v0.11.3) - 2026-09-11
 
 ### Added
