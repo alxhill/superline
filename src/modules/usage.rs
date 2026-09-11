@@ -41,10 +41,10 @@ const CURSOR_POSITION_REQUEST: &[u8] = b"\x1b[6n";
 const CURSOR_POSITION_REPORT: &[u8] = b"\x1b[1;1R";
 // Shown in place of a reading: the first refresh has yet to land, the provider
 // CLI the reading comes from is not on `PATH` at all, or it has no signed-in
-// account to report on (nf-fa-sign_out).
+// account to report on (nf-fa-user_xmark).
 const LOADING_MARKER: char = '\u{2026}';
 const NOT_INSTALLED_MARKER: char = '?';
-const LOGGED_OUT_MARKER: char = '\u{f08b}';
+const LOGGED_OUT_MARKER: char = '\u{f235}';
 const OPENAI_ICON: &str = "\u{ec81}";
 const CLAUDE_ICON: &str = "\u{ec82}";
 // spaces added manually to allow for compact display

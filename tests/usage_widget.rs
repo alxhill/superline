@@ -189,7 +189,7 @@ fn usage_widget_shows_a_logged_out_provider_instead_of_loading() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\u{ec82} \u{f08b}"), "stdout:\n{stdout}");
+    assert!(stdout.contains("\u{ec82} \u{f235}"), "stdout:\n{stdout}");
     assert!(!stdout.contains('\u{2026}'), "stdout:\n{stdout}");
     // A logged-out reading has nothing to measure against the threshold.
     assert!(!stdout.contains("\x1b[48;5;160m"), "stdout:\n{stdout}");
