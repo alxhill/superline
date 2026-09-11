@@ -60,8 +60,10 @@ superline install <shell name>
 ```
 
 Then reload your shell's config. Superline will modify the default config file for the shell you choose - currently,
-`fish`, `zsh`, `bash`, and `pwsh` (PowerShell). For example, `superline install pwsh` appends the loader to your
-PowerShell profile (`$PROFILE`), creating it if necessary. PowerShell compiles for Windows (the Unix-only bits live
+`fish`, `zsh`, `bash`, `pwsh` (PowerShell) and `nu` (nushell). For example, `superline install pwsh` appends the loader
+to your PowerShell profile (`$PROFILE`), creating it if necessary. `superline install nu` appends a loader to
+nushell's `config.nu` (located via `$nu.config-path`) that regenerates `superline init nu` into nushell's vendor
+autoload directory on startup, so it needs nushell 0.96 or newer. PowerShell compiles for Windows (the Unix-only bits live
 behind `src/platform.rs`) but isn't yet runtime-tested there — see
 [`docs/powershell-testing.md`](docs/powershell-testing.md) for the cross-platform testing plan and Windows caveats.
 

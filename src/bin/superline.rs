@@ -141,6 +141,42 @@ const PWSH_INSTALL: &str = r#"
 (& superline init pwsh) -join "`n" | Invoke-Expression
 "#;
 
+const NU_CONF: &str = r#"
+$env.SUPERLINE_NU = 1
+
+# superline draws its own prompt character, so drop nushell's default "> ".
+$env.PROMPT_INDICATOR = ""
+
+# superline renders every row but the last itself and leaves the right side of
+# the last row to the shell. reedline puts the right prompt on the first line
+# by default, which superline has already filled, so move it to the last line.
+$env.config.render_right_prompt_on_last_line = true
+
+def __pl_prompt [subcommand: string]: nothing -> string {
+    let columns = (term size).columns
+    # nushell seeds CMD_DURATION_MS with the placeholder "0823" before the first
+    # command runs; real durations never carry a leading zero.
+    let duration = ($env.CMD_DURATION_MS? | default "0823")
+    if $duration == "0823" {
+        ^superline $subcommand -s $env.LAST_EXIT_CODE -c $columns nu
+    } else {
+        ^superline $subcommand -s $env.LAST_EXIT_CODE -c $columns nu $duration
+    }
+}
+
+$env.PROMPT_COMMAND = {|| __pl_prompt show }
+$env.PROMPT_COMMAND_RIGHT = {|| __pl_prompt show-right }
+"#;
+
+// nushell resolves `source` paths at parse time, so the init output cannot be
+// piped into it directly. Instead the loader regenerates a script in nushell's
+// vendor autoload directory, which nushell sources after config.nu.
+const NU_INSTALL: &str = r#"
+# automatically added by superline
+mkdir ($nu.data-dir | path join "vendor/autoload")
+superline init nu | save -f ($nu.data-dir | path join "vendor/autoload/superline.nu")
+"#;
+
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 enum PowerlineArgs {
@@ -173,6 +209,8 @@ enum ShellSubcommand {
     Zsh,
     Fish,
     Pwsh,
+    #[command(alias = "nushell")]
+    Nu,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -181,6 +219,8 @@ enum ShellArg {
     Zsh,
     Fish,
     Pwsh,
+    #[value(alias = "nushell")]
+    Nu,
 }
 
 impl ShellArg {
@@ -190,6 +230,7 @@ impl ShellArg {
             ShellArg::Zsh => "zsh",
             ShellArg::Fish => "fish",
             ShellArg::Pwsh => "pwsh",
+            ShellArg::Nu => "nu",
         }
     }
 }
@@ -309,6 +350,7 @@ fn install(args: InstallArgs) {
         ShellArg::Zsh => (home_config(".zshrc"), ZSH_INSTALL),
         ShellArg::Bash => (home_config(".bashrc"), BASH_INSTALL),
         ShellArg::Pwsh => (powershell_profile_path(), PWSH_INSTALL),
+        ShellArg::Nu => (nushell_config_path(), NU_INSTALL),
     };
 
     // Skip re-appending when the snippet is already present. This replaces the
@@ -416,6 +458,21 @@ fn invoked_from_powershell_core(ps_module_path: Option<&str>) -> bool {
         .any(|segment| segment.eq_ignore_ascii_case("powershell"))
 }
 
+/// Ask nushell for its config file (`$nu.config-path`): the location is
+/// platform specific (`~/.config/nushell` on Linux, `~/Library/Application
+/// Support/nushell` on macOS, `%APPDATA%\nushell` on Windows) and honours
+/// `XDG_CONFIG_HOME`, so nushell itself is the only reliable source.
+fn nushell_config_path() -> PathBuf {
+    let output = Command::new("nu")
+        .args(["--no-config-file", "--commands", "$nu.config-path"])
+        .output()
+        .expect("could not run nu to locate the config file - is nushell installed and on PATH?");
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert!(!path.is_empty(), "nushell returned an empty config path");
+    PathBuf::from(path)
+}
+
 fn append_conf(conf_path: &Path, conf_contents: &str) {
     if let Some(parent) = conf_path.parent() {
         create_dir_all(parent).unwrap_or_else(|e| {
@@ -458,6 +515,7 @@ fn print_shell_conf(shell: ShellSubcommand) {
         ShellSubcommand::Zsh => println!("{}", ZSH_CONF),
         ShellSubcommand::Fish => println!("{}", FISH_CONF),
         ShellSubcommand::Pwsh => println!("{}", PWSH_CONF),
+        ShellSubcommand::Nu => println!("{}", NU_CONF),
     }
 }
 
@@ -471,6 +529,8 @@ fn show(args: ShowArgs, right_only: bool) {
         // PowerShell's PSReadLine handles raw ANSI escapes itself, so it
         // uses the same bare escapes as fish (no non-printing markers).
         ShellArg::Pwsh => SHELL.set(Shell::Bare),
+        // reedline (nushell's line editor) also parses ANSI escapes itself.
+        ShellArg::Nu => SHELL.set(Shell::Bare),
     }
     .expect("failed to set shell");
 
@@ -693,6 +753,7 @@ mod tests {
         assert!(contents_have_install(ZSH_INSTALL, ShellArg::Zsh));
         assert!(contents_have_install(FISH_INSTALL, ShellArg::Fish));
         assert!(contents_have_install(PWSH_INSTALL, ShellArg::Pwsh));
+        assert!(contents_have_install(NU_INSTALL, ShellArg::Nu));
     }
 
     #[test]

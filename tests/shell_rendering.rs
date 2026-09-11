@@ -4,13 +4,13 @@
 //! computes the prompt width correctly:
 //!   * bash wraps non-printing sequences in `\[ ... \]` readline markers
 //!   * zsh wraps them in `%{ ... %}`
-//!   * fish and PowerShell emit bare ANSI/VT escapes (their line editors parse
-//!     the escapes themselves)
+//!   * fish, PowerShell and nushell emit bare ANSI/VT escapes (their line
+//!     editors parse the escapes themselves)
 //!
-//! These tests pin that behaviour - in particular that PowerShell renders the
-//! same bare escapes as fish - without needing any shell installed. The final
-//! test additionally drives a real `pwsh` end-to-end when one is on PATH, and
-//! skips otherwise so CI without PowerShell still passes.
+//! These tests pin that behaviour - in particular that PowerShell and nushell
+//! render the same bare escapes as fish - without needing any shell installed.
+//! The end-to-end tests additionally drive a real `pwsh` / `nu` when one is on
+//! PATH, and skip otherwise so CI without that shell still passes.
 
 use std::fs;
 use std::path::PathBuf;
@@ -90,6 +90,55 @@ fn powershell_uses_bare_ansi_like_fish() {
         "PowerShell and fish should render identical bare-escape output",
     );
     let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn nushell_uses_bare_ansi_like_fish() {
+    let home = scratch_home("nu-vs-fish");
+    let _ = render_in(&home, "nu"); // warm the config once
+    let nu_render = render_in(&home, "nu");
+    assert!(
+        nu_render.contains(ESC),
+        "nushell prompt should contain raw ANSI escapes"
+    );
+    assert!(
+        !nu_render.contains("\\[") && !nu_render.contains("%{"),
+        "nushell prompt must not use bash or zsh non-printing markers",
+    );
+
+    // Like PowerShell, nushell shares fish's bare-escape mode; only the `shell`
+    // segment's own name differs. Match the name only where it is the segment
+    // text (directly between two escapes), since "nu" can also appear inside a
+    // path or branch name in the cwd/git segments.
+    let nu_render = nu_render.replace("mnu\u{1b}", "m<shell>\u{1b}");
+    let fish_render = render_in(&home, "fish").replace("mfish\u{1b}", "m<shell>\u{1b}");
+    assert_eq!(
+        nu_render, fish_render,
+        "nushell and fish should render identical bare-escape output",
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+/// superline fills every row but the last itself and leaves the last row's
+/// right side to the shell. reedline draws the right prompt on the *first* line
+/// unless told otherwise, where it collides with superline's own right segments
+/// and is dropped. Pin the config flag that moves it to the last line.
+#[test]
+fn nushell_init_renders_right_prompt_on_last_line() {
+    let output = Command::new(BIN)
+        .args(["init", "nu"])
+        .output()
+        .expect("failed to run `superline init nu`");
+    assert!(output.status.success(), "`init nu` exited with failure");
+    let init = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        init.contains("$env.config.render_right_prompt_on_last_line = true"),
+        "nu init must move the right prompt to the last line; got:\n{init}",
+    );
+    assert!(
+        init.contains("$env.PROMPT_COMMAND = ") && init.contains("$env.PROMPT_COMMAND_RIGHT = "),
+        "nu init must set both prompt closures; got:\n{init}",
+    );
 }
 
 #[test]
@@ -206,5 +255,88 @@ fn powershell_prompt_function_renders_end_to_end() {
     assert!(
         output.status.success() && stdout.contains("OK"),
         "pwsh prompt end-to-end failed\nstdout:\n{stdout}\nstderr:\n{stderr}",
+    );
+}
+
+/// Returns true when a working `nu` is on PATH.
+fn have_nu() -> bool {
+    Command::new("nu")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// End-to-end: source the generated init snippet inside a real nushell, invoke
+/// the prompt closure it installs, and confirm the exit code and duration are
+/// threaded through while nushell's "0823" placeholder duration is suppressed.
+/// Skipped (passes) when `nu` is not installed.
+#[test]
+fn nushell_prompt_closure_renders_end_to_end() {
+    if !have_nu() {
+        eprintln!("skipping nushell_prompt_closure_renders_end_to_end: nu not on PATH");
+        return;
+    }
+
+    let home = scratch_home("nu-e2e");
+    let bin_dir = PathBuf::from(BIN)
+        .parent()
+        .expect("binary has a parent dir")
+        .to_path_buf();
+
+    // Pre-create the default config so the one-time "creating default conf"
+    // notice doesn't land in the captured prompt output.
+    let _ = render_in(&home, "nu");
+
+    // `source` only accepts a path known at parse time, so write the init
+    // snippet to a file and reference it literally.
+    let init = Command::new(BIN)
+        .args(["init", "nu"])
+        .output()
+        .expect("failed to run `superline init nu`");
+    assert!(init.status.success());
+    let init_path = home.join("superline.nu");
+    fs::write(&init_path, &init.stdout).expect("write init snippet");
+
+    let script = r#"
+        source '__INIT__'
+        $env.LAST_EXIT_CODE = 7
+        $env.CMD_DURATION_MS = "900"
+        let out = (do $env.PROMPT_COMMAND)
+        if not ($out | str contains "\e") { error make {msg: 'no ANSI escapes in prompt'} }
+        if not ($out | str contains '48;5;160m') { error make {msg: 'failing command did not render a red status segment'} }
+        if not ($out | str contains '900ms') { error make {msg: 'command duration was not rendered'} }
+        $env.CMD_DURATION_MS = "0823"
+        let first = (do $env.PROMPT_COMMAND)
+        if ($first | str contains '823') { error make {msg: 'placeholder duration leaked into the first prompt'} }
+        if not $env.config.render_right_prompt_on_last_line { error make {msg: 'right prompt not moved to the last line'} }
+        print 'OK'
+    "#
+    .replace("__INIT__", &init_path.to_string_lossy());
+
+    // Put the freshly built binary first on PATH so `^superline` in the snippet
+    // resolves to it rather than any installed copy.
+    let path_sep = if cfg!(windows) { ";" } else { ":" };
+    let path = format!(
+        "{}{path_sep}{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let output = Command::new("nu")
+        .args(["--no-config-file", "--commands", &script])
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("PATH", path)
+        .output()
+        .expect("failed to run nu");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let _ = fs::remove_dir_all(&home);
+
+    assert!(
+        output.status.success() && stdout.contains("OK"),
+        "nushell prompt end-to-end failed\nstdout:\n{stdout}\nstderr:\n{stderr}",
     );
 }
