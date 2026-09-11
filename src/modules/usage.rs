@@ -39,10 +39,12 @@ const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
 // below starts. Unix pty backends never ask, but Claude's own TUI does.
 const CURSOR_POSITION_REQUEST: &[u8] = b"\x1b[6n";
 const CURSOR_POSITION_REPORT: &[u8] = b"\x1b[1;1R";
-// Shown in place of a reading: the first refresh has yet to land, or the
-// provider CLI the reading comes from is not on `PATH` at all.
+// Shown in place of a reading: the first refresh has yet to land, the provider
+// CLI the reading comes from is not on `PATH` at all, or it has no signed-in
+// account to report on (nf-fa-sign_out).
 const LOADING_MARKER: char = '\u{2026}';
 const NOT_INSTALLED_MARKER: char = '?';
+const LOGGED_OUT_MARKER: char = '\u{f08b}';
 const OPENAI_ICON: &str = "\u{ec81}";
 const CLAUDE_ICON: &str = "\u{ec82}";
 // spaces added manually to allow for compact display
@@ -200,10 +202,26 @@ struct UsageCache {
     credits: Option<CreditsUsage>,
     #[serde(default)]
     session_resets_at: Option<u64>,
+    // The provider CLI is installed but has no signed-in account, so there is
+    // no reading to show until the user logs in.
+    #[serde(default)]
+    logged_out: bool,
     fetched_at: u64,
 }
 
 impl UsageCache {
+    fn logged_out() -> Self {
+        Self {
+            session: None,
+            weekly: None,
+            fable: None,
+            credits: None,
+            session_resets_at: None,
+            logged_out: true,
+            fetched_at: now_secs(),
+        }
+    }
+
     /// Providers bill against credits once any rate-limit window is exhausted.
     fn limit_reached(&self) -> bool {
         [self.session, self.weekly, self.fable]
@@ -274,29 +292,32 @@ impl<S: UsageScheme> Module for Usage<S> {
         }
 
         let (default_fg, bg) = provider_style::<S>(self.provider);
-        let label = cache
-            .as_ref()
-            .map(|cache| {
-                format_usage(
-                    self.provider,
-                    cache,
-                    &self.windows,
-                    self.display,
-                    self.show_session_time_remaining,
-                    self.session_time_remaining_only_at_limit,
-                )
-            })
-            .unwrap_or_else(|| {
+        let label = match cache.as_ref() {
+            Some(cache) if cache.logged_out => {
+                format!("{} {LOGGED_OUT_MARKER}", provider_label(self.provider))
+            }
+            Some(cache) => format_usage(
+                self.provider,
+                cache,
+                &self.windows,
+                self.display,
+                self.show_session_time_remaining,
+                self.session_time_remaining_only_at_limit,
+            ),
+            None => {
                 let marker = if installed {
                     LOADING_MARKER
                 } else {
                     NOT_INSTALLED_MARKER
                 };
                 format!("{} {marker}", provider_label(self.provider))
-            });
+            }
+        };
         let bg = cache
             .as_ref()
-            .filter(|cache| threshold_reached(cache, &self.windows, self.threshold))
+            .filter(|cache| {
+                !cache.logged_out && threshold_reached(cache, &self.windows, self.threshold)
+            })
             .map(|_| S::usage_threshold_bg())
             .unwrap_or(bg);
         powerline.add_segment(label, Style::simple(default_fg, bg));
@@ -548,10 +569,21 @@ pub fn refresh_usage(provider: UsageProvider, cache_path: &Path) {
     }
 }
 
+/// What a provider refresh produced: a reading, or the discovery that the
+/// provider CLI has no signed-in account to report on.
+enum UsageFetch {
+    Reading(ParsedUsage),
+    LoggedOut,
+}
+
 fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
-    let parsed = match provider {
-        UsageProvider::Claude => parse_claude_usage(&capture_claude_cli()?),
+    let fetch = match provider {
+        UsageProvider::Claude => fetch_claude_usage()?,
         UsageProvider::Codex => fetch_codex_rate_limits()?,
+    };
+    let parsed = match fetch {
+        UsageFetch::Reading(parsed) => parsed,
+        UsageFetch::LoggedOut => return Some(UsageCache::logged_out()),
     };
     parsed.session?;
 
@@ -561,8 +593,68 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
         fable: parsed.fable,
         credits: parsed.credits,
         session_resets_at: parsed.session_resets_at,
+        logged_out: false,
         fetched_at: now_secs(),
     })
+}
+
+/// Claude's `/usage` panel needs a signed-in claude.ai account, and launching
+/// the CLI without one starts its onboarding flow, which opens the browser on
+/// the login page. Ask the non-interactive `claude auth status` first.
+fn fetch_claude_usage() -> Option<UsageFetch> {
+    if !claude_logged_in()? {
+        return Some(UsageFetch::LoggedOut);
+    }
+    Some(UsageFetch::Reading(parse_claude_usage(
+        &capture_claude_cli()?,
+    )))
+}
+
+fn claude_logged_in() -> Option<bool> {
+    let binary = resolve_binary(UsageProvider::Claude.as_str())?;
+    let mut command = Command::new(binary);
+    command
+        .args(["auth", "status", "--json"])
+        .env("DISABLE_AUTOUPDATER", "1")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null());
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("ANTHROPIC_") {
+            command.env_remove(key);
+        }
+    }
+    let output = command.output().ok()?;
+    // `auth status` exits non-zero when logged out, so the answer is in the
+    // JSON. A CLI too old to have the subcommand prints usage text instead;
+    // fall back to the onboarding flag it records once login has finished.
+    Some(
+        parse_claude_auth_status(&String::from_utf8_lossy(&output.stdout))
+            .unwrap_or_else(claude_completed_onboarding),
+    )
+}
+
+fn parse_claude_auth_status(text: &str) -> Option<bool> {
+    serde_json::from_str::<Value>(text)
+        .ok()?
+        .get("loggedIn")?
+        .as_bool()
+}
+
+/// Claude records `hasCompletedOnboarding` in `.claude.json`, kept in
+/// `$CLAUDE_CONFIG_DIR` when set and the home directory otherwise.
+fn claude_completed_onboarding() -> bool {
+    let directory = match std::env::var_os("CLAUDE_CONFIG_DIR") {
+        Some(directory) => PathBuf::from(directory),
+        None => match crate::platform::home_dir() {
+            Some(home) => home,
+            None => return false,
+        },
+    };
+    fs::read_to_string(directory.join(".claude.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|state| state.get("hasCompletedOnboarding")?.as_bool())
+        .unwrap_or(false)
 }
 
 /// Codex exposes the same rate-limit read its `/status` card uses over the
@@ -570,7 +662,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
 /// needed. The TUI is unsafe to drive: it treats a burst of keystrokes as a
 /// paste and can hand the slash command to the model as a prompt, and its
 /// first `/status` after launch only says "refresh requested".
-fn fetch_codex_rate_limits() -> Option<ParsedUsage> {
+fn fetch_codex_rate_limits() -> Option<UsageFetch> {
     let binary = resolve_binary("codex")?;
     let mut child = Command::new(binary)
         .arg("app-server")
@@ -618,13 +710,29 @@ fn fetch_codex_rate_limits() -> Option<ParsedUsage> {
                 continue;
             };
             if message.get("id").and_then(Value::as_u64) == Some(2) {
-                return parse_codex_rate_limits(&message);
+                if codex_requires_login(&message) {
+                    return Some(UsageFetch::LoggedOut);
+                }
+                return parse_codex_rate_limits(&message).map(UsageFetch::Reading);
             }
         }
     })();
     let _ = child.kill();
     let _ = child.wait();
     result
+}
+
+/// Without a signed-in account the app-server answers the read with the error
+/// "codex account authentication required to read rate limits" (-32600).
+fn codex_requires_login(message: &Value) -> bool {
+    message
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(Value::as_str)
+        .is_some_and(|text| {
+            text.to_ascii_lowercase()
+                .contains("authentication required")
+        })
 }
 
 /// Codex reports the five-hour window as `primary` and the weekly window as
@@ -1438,6 +1546,36 @@ mod tests {
                 .expect("pre-fable cache should deserialize");
         assert_eq!(cache.fable, None);
         assert_eq!(cache.credits, None);
+        assert!(!cache.logged_out);
+    }
+
+    #[test]
+    fn codex_auth_error_means_logged_out() {
+        let error = json!({
+            "error": {"code": -32600, "message": "codex account authentication required to read rate limits"},
+            "id": 2
+        });
+        assert!(codex_requires_login(&error));
+        assert!(!codex_requires_login(&json!({
+            "error": {"code": -32603, "message": "failed to fetch codex rate limits"},
+            "id": 2
+        })));
+        assert!(!codex_requires_login(&json!({"id": 2, "result": {}})));
+    }
+
+    #[test]
+    fn claude_auth_status_json_reports_login() {
+        assert_eq!(
+            parse_claude_auth_status(r#"{"loggedIn": true, "authMethod": "claude.ai"}"#),
+            Some(true)
+        );
+        assert_eq!(
+            parse_claude_auth_status(r#"{"loggedIn": false, "authMethod": "none"}"#),
+            Some(false)
+        );
+        // An older CLI without `auth status` prints usage text instead.
+        assert_eq!(parse_claude_auth_status("Usage: claude [options]"), None);
+        assert_eq!(parse_claude_auth_status(""), None);
     }
 
     fn windows(
@@ -1473,6 +1611,7 @@ mod tests {
             fable: None,
             credits,
             session_resets_at: None,
+            logged_out: false,
             fetched_at: 0,
         }
     }
@@ -1567,6 +1706,7 @@ mod tests {
             fable: None,
             credits: None,
             session_resets_at: Some(now_secs().saturating_add(3600)),
+            logged_out: false,
             fetched_at: 0,
         };
         let windows = windows(UsageProvider::Codex, true, false, false, None);
@@ -1636,6 +1776,7 @@ mod tests {
             fable: Some(33.3),
             credits: None,
             session_resets_at: None,
+            logged_out: false,
             fetched_at: 0,
         };
         assert_eq!(
@@ -1735,6 +1876,7 @@ mod tests {
             fable: Some(95.0),
             credits: None,
             session_resets_at: None,
+            logged_out: false,
             fetched_at: 0,
         };
 
