@@ -463,6 +463,7 @@ fn print_shell_conf(shell: ShellSubcommand) {
 
 fn show(args: ShowArgs, right_only: bool) {
     ignore_ctrl_c_for_powershell_prompt(args.shell);
+    superline::cache::prune_stale();
 
     match args.shell {
         ShellArg::Bash => SHELL.set(Shell::Bash),
