@@ -5,6 +5,7 @@ use std::time::Duration;
 use crate::colors::Color;
 use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
+use crate::metadata::Metadata;
 use crate::modules::{
     Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Nvm, Pr, PythonEnv,
     ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
@@ -165,13 +166,14 @@ impl Powerline {
     pub fn from_conf<T: CompleteTheme>(
         conf: &config::CommandLine,
         runtime_data: impl TerminalRuntimeMetadata,
+        metadata: &Metadata,
     ) -> Self {
         let mut powerline = Powerline::new();
-        powerline.add_conf_modules::<T>(&conf.left, &runtime_data);
+        powerline.add_conf_modules::<T>(&conf.left, &runtime_data, metadata);
 
         if let Some(right_modules) = &conf.right {
             powerline.start_right();
-            powerline.add_conf_modules::<T>(right_modules, &runtime_data);
+            powerline.add_conf_modules::<T>(right_modules, &runtime_data, metadata);
         }
 
         powerline
@@ -335,6 +337,7 @@ impl Powerline {
         &mut self,
         modules: &Vec<LineSegment>,
         runtime_data: &impl TerminalRuntimeMetadata,
+        metadata: &Metadata,
     ) {
         for module in modules {
             match module {
@@ -345,10 +348,12 @@ impl Powerline {
                     self.add_module(Cmd::<T>::new(runtime_data.last_command_status()))
                 }
                 LineSegment::Cargo => self.add_module(Cargo::<T>::new()),
-                LineSegment::Git { status_timeout_ms } => self.add_module(
-                    Git::<T>::with_status_timeout(Duration::from_millis(*status_timeout_ms)),
-                ),
-                LineSegment::Pr { status } => self.add_module(Pr::<T>::new(*status)),
+                LineSegment::Git { .. } => {
+                    self.add_module(Git::<T>::with_state(metadata.git.clone()))
+                }
+                LineSegment::Pr { status } => {
+                    self.add_module(Pr::<T>::with_state(*status, metadata.pr.clone()))
+                }
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
                 LineSegment::Host => self.add_module(Host::<T>::new()),
@@ -395,6 +400,7 @@ impl Powerline {
                     *threshold,
                     *session_time_remaining,
                     *session_time_remaining_only_at_limit,
+                    metadata.usage(*provider).clone(),
                 )),
                 LineSegment::LastCmdDuration { min_run_time } => {
                     self.add_module(LastCmdDuration::<T>::new(

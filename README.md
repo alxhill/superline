@@ -163,7 +163,7 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
 * **read_only** - show a lockfile icon if the current directory is read only
 * **time** - show the current time, with an optional "format" - this has to be present, but can be null
 * **ai_usage** - show Claude or Codex subscription usage via the corresponding provider CLI on `PATH`. Superline
-  refreshes it in the background and caches the result, so prompt rendering never waits for a provider request. Set
+  refreshes it in a background metadata server, so prompt rendering never waits for a provider request. Set
   `provider` to `"claude"` or `"codex"`, choose the five-hour and weekly lanes with `session` / `weekly` (both
   default to `true`), label them with `session_label` / `weekly_label` (defaulting to `"5h"` / `"7d"`; use an empty
   string to omit a label), and set
@@ -188,7 +188,7 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   `session_time_remaining_only_at_limit` to a fraction from `0` to `1` to show it only once the session reaches that
   fullness (for example, `0.8` shows it at 80% and above). For example:
   `{ "ai_usage": { "provider": "claude", "session": true, "weekly": true, "display": "bar", "threshold": 80, "session_time_remaining": true, "session_time_remaining_only_at_limit": 0.8 } }`.
-  Until the first reading is cached the widget shows `…`; if the provider CLI isn't on `PATH` it shows `?` instead,
+  Until the first reading is ready the widget shows `…`; if the provider CLI isn't on `PATH` it shows `?` instead,
   and if the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
@@ -203,14 +203,13 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
 * **git** - show the current git branch and status of the repo (modified, staged, and untracked files, plus git remote
   ahead/behind stats). The GitHub logo appears whenever the repo has a remote configured; the ahead/behind counts
   beside it need an upstream tracking ref that still resolves, so they're absent on a branch that was never pushed or
-  whose remote branch has since been deleted. Status collection waits up to `status_timeout_ms` milliseconds (250 by default); if it takes
-  longer, the most recent cached output is shown while the refresh continues in the background for the next prompt.
-  Before the first result is cached, the segment displays `loading…` instead. The string shorthand `"git"` uses the
-  default timeout.
+  whose remote branch has since been deleted. Status is fetched by a background metadata server and kept in
+  memory, so rendering never blocks; the segment shows the latest reading, or `loading…` until the first reading is
+  ready. The string shorthand `"git"` is accepted for the default config.
 * **pr** - show a clickable link to the GitHub PR for the current branch (via the [`gh`](https://cli.github.com)
   CLI), if one exists. The segment colour reflects the PR state (draft, open, merged, closed). When the `status` option
   is enabled (the default), a coloured dot is appended after the PR number reflecting the CI check status - green for
-  success, red for failure, yellow for pending. The lookup runs in the background and is cached, so it never blocks the
+  success, red for failure, yellow for pending. The lookup runs in the background metadata server and never blocks the
   prompt - the link appears on a subsequent prompt once the result is ready. Skipped entirely on `develop`, `main`, and
   `master`. Unlike most segments, `pr` is written as an object so its options can be set:
   `{ "pr": { "status": false } }` shows just the PR number with no check dot.

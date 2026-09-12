@@ -32,6 +32,7 @@ fn default_config_parses_with_compiled_binary() {
         // and Windows (%USERPROFILE%).
         .env("HOME", &home)
         .env("USERPROFILE", &home)
+        .env("SUPERLINE_DISABLE_SERVER", "1")
         .output()
         .expect("failed to run the powerline binary");
 
