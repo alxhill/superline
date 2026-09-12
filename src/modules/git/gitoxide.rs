@@ -93,6 +93,7 @@ pub fn run_git(path: &Path) -> GitStats {
         conflicted,
         remote,
         branch_name,
+        worktree: false,
     }
 }
 

@@ -1,5 +1,5 @@
-use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::fs;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -9,7 +9,6 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local, LocalResult, TimeZone};
-use fs2::FileExt;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -17,13 +16,12 @@ use serde_json::{json, Value};
 
 use crate::colors::Color;
 use crate::config::{UsageDisplay, UsageProvider};
+use crate::metadata::FetchState;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
 use super::Module;
 
-const CACHE_TTL: Duration = Duration::from_secs(60);
-const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
 const SPARKLINE: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const SPARKLINE_EMPTY: char = ' ';
@@ -60,6 +58,7 @@ pub struct Usage<S> {
     threshold: Option<f64>,
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: f64,
+    state: FetchState<UsageStats>,
     scheme: PhantomData<S>,
 }
 
@@ -148,7 +147,7 @@ impl UsageWindows {
             || self.credits.window.enabled
     }
 
-    fn credits_visible(&self, cache: &UsageCache) -> bool {
+    fn credits_visible(&self, cache: &UsageStats) -> bool {
         self.credits.window.enabled && (!self.credits.only_when_limited || cache.limit_reached())
     }
 }
@@ -179,6 +178,7 @@ impl<S: UsageScheme> Usage<S> {
         threshold: Option<f64>,
         show_session_time_remaining: bool,
         session_time_remaining_only_at_limit: f64,
+        state: FetchState<UsageStats>,
     ) -> Self {
         Self {
             provider,
@@ -187,13 +187,14 @@ impl<S: UsageScheme> Usage<S> {
             threshold: threshold.filter(|threshold| threshold.is_finite()),
             show_session_time_remaining,
             session_time_remaining_only_at_limit,
+            state,
             scheme: PhantomData,
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct UsageCache {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UsageStats {
     session: Option<f64>,
     weekly: Option<f64>,
     #[serde(default)]
@@ -209,7 +210,7 @@ struct UsageCache {
     fetched_at: u64,
 }
 
-impl UsageCache {
+impl UsageStats {
     fn logged_out() -> Self {
         Self {
             session: None,
@@ -233,13 +234,13 @@ impl UsageCache {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum CreditsUnit {
+pub enum CreditsUnit {
     Dollars,
     Count,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-struct CreditsUsage {
+pub struct CreditsUsage {
     used: f64,
     limit: f64,
     unit: CreditsUnit,
@@ -274,29 +275,12 @@ impl<S: UsageScheme> Module for Usage<S> {
             return;
         }
 
-        let Some(cache_path) = cache_path_for(self.provider) else {
-            return;
-        };
-        let cache = read_cache(&cache_path);
-        // Only walk `PATH` when there is nothing to show yet. That separates a
-        // missing provider CLI from a first refresh still in flight, and a
-        // refresh without the CLI could only have failed anyway.
-        let installed = cache.is_some() || provider_is_installed(self.provider);
-
-        if installed
-            && cache
-                .as_ref()
-                .is_none_or(|cache| is_stale(cache.fetched_at))
-        {
-            spawn_refresh(self.provider, &cache_path);
-        }
-
         let (default_fg, bg) = provider_style::<S>(self.provider);
-        let label = match cache.as_ref() {
-            Some(cache) if cache.logged_out => {
+        let label = match &self.state {
+            FetchState::Ready(cache) if cache.logged_out => {
                 format!("{} {LOGGED_OUT_MARKER}", provider_label(self.provider))
             }
-            Some(cache) => format_usage(
+            FetchState::Ready(cache) => format_usage(
                 self.provider,
                 cache,
                 &self.windows,
@@ -304,22 +288,21 @@ impl<S: UsageScheme> Module for Usage<S> {
                 self.show_session_time_remaining,
                 self.session_time_remaining_only_at_limit,
             ),
-            None => {
-                let marker = if installed {
-                    LOADING_MARKER
-                } else {
-                    NOT_INSTALLED_MARKER
-                };
-                format!("{} {marker}", provider_label(self.provider))
+            FetchState::Unavailable => {
+                format!("{} {NOT_INSTALLED_MARKER}", provider_label(self.provider))
+            }
+            FetchState::Pending => {
+                format!("{} {LOADING_MARKER}", provider_label(self.provider))
             }
         };
-        let bg = cache
-            .as_ref()
-            .filter(|cache| {
-                !cache.logged_out && threshold_reached(cache, &self.windows, self.threshold)
-            })
-            .map(|_| S::usage_threshold_bg())
-            .unwrap_or(bg);
+        let bg = match &self.state {
+            FetchState::Ready(cache)
+                if !cache.logged_out && threshold_reached(cache, &self.windows, self.threshold) =>
+            {
+                S::usage_threshold_bg()
+            }
+            _ => bg,
+        };
         powerline.add_segment(label, Style::simple(default_fg, bg));
     }
 }
@@ -340,7 +323,7 @@ fn provider_style<S: UsageScheme>(provider: UsageProvider) -> (Color, Color) {
 
 fn format_usage(
     provider: UsageProvider,
-    cache: &UsageCache,
+    cache: &UsageStats,
     windows: &UsageWindows,
     display: UsageDisplay,
     show_session_time_remaining: bool,
@@ -438,7 +421,7 @@ fn format_window_parts(
     (prefix, value)
 }
 
-fn threshold_reached(cache: &UsageCache, windows: &UsageWindows, threshold: Option<f64>) -> bool {
+fn threshold_reached(cache: &UsageStats, windows: &UsageWindows, threshold: Option<f64>) -> bool {
     (windows.session.enabled && exceeds_threshold(cache.session, threshold))
         || (windows.weekly.enabled && exceeds_threshold(cache.weekly, threshold))
         || (windows.fable.enabled && exceeds_threshold(cache.fable, threshold))
@@ -455,118 +438,11 @@ fn exceeds_threshold(percent: Option<f64>, threshold: Option<f64>) -> bool {
     })
 }
 
-fn cache_path_for(provider: UsageProvider) -> Option<PathBuf> {
-    Some(
-        crate::platform::cache_dir()?
-            .join("superline")
-            .join(format!("usage-{}.json", provider.as_str())),
-    )
-}
-
-fn read_cache(path: &Path) -> Option<UsageCache> {
-    serde_json::from_reader(File::open(path).ok()?).ok()
-}
-
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
-}
-
-fn now_millis() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0)
-}
-
-fn is_stale(fetched_at: u64) -> bool {
-    now_secs().saturating_sub(fetched_at) >= CACHE_TTL.as_secs()
-}
-
-#[cfg(test)]
-fn refresh_attempt_is_recent(marker_path: &Path) -> bool {
-    let Ok(timestamp) = fs::read_to_string(marker_path) else {
-        return false;
-    };
-    timestamp
-        .trim()
-        .parse::<u128>()
-        .ok()
-        .is_some_and(|then| now_millis().saturating_sub(then) < REFRESH_INTERVAL.as_millis())
-}
-
-/// Atomically claim this provider's refresh slot. The marker remains after the
-/// child finishes so failed lookups are rate-limited too. Locking the marker
-/// prevents concurrent prompt processes from both winning when it expires.
-fn claim_refresh(marker_path: &Path) -> bool {
-    let Ok(mut marker) = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(marker_path)
-    else {
-        return false;
-    };
-    if FileExt::try_lock_exclusive(&marker).is_err() {
-        return false;
-    }
-
-    let mut timestamp = String::new();
-    if marker.read_to_string(&mut timestamp).is_err() {
-        return false;
-    }
-    let now = now_millis();
-    if timestamp
-        .trim()
-        .parse::<u128>()
-        .ok()
-        .is_some_and(|then| now.saturating_sub(then) < REFRESH_INTERVAL.as_millis())
-    {
-        return false;
-    }
-
-    marker.set_len(0).is_ok()
-        && marker.seek(SeekFrom::Start(0)).is_ok()
-        && write!(marker, "{now}").is_ok()
-}
-
-fn spawn_refresh(provider: UsageProvider, cache_path: &Path) {
-    if let Some(parent) = cache_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let marker_path = cache_path.with_extension("refresh");
-    if !claim_refresh(&marker_path) {
-        return;
-    }
-
-    let Ok(exe) = std::env::current_exe() else {
-        let _ = fs::remove_file(marker_path);
-        return;
-    };
-    if Command::new(exe)
-        .arg("refresh-usage")
-        .args(["--provider", provider.as_str()])
-        .arg("--cache")
-        .arg(cache_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .is_err()
-    {
-        let _ = fs::remove_file(marker_path);
-    }
-}
-
-/// Refresh a provider cache through its own interactive CLI. A failed refresh
-/// leaves the last good cache intact.
-pub fn refresh_usage(provider: UsageProvider, cache_path: &Path) {
-    if let Some(cache) = fetch_usage(provider) {
-        write_cache(cache_path, &cache);
-    }
 }
 
 /// What a provider refresh produced: a reading, or the discovery that the
@@ -576,18 +452,18 @@ enum UsageFetch {
     LoggedOut,
 }
 
-fn fetch_usage(provider: UsageProvider) -> Option<UsageCache> {
+pub(crate) fn fetch_usage(provider: UsageProvider) -> Option<UsageStats> {
     let fetch = match provider {
         UsageProvider::Claude => fetch_claude_usage()?,
         UsageProvider::Codex => fetch_codex_rate_limits()?,
     };
     let parsed = match fetch {
         UsageFetch::Reading(parsed) => parsed,
-        UsageFetch::LoggedOut => return Some(UsageCache::logged_out()),
+        UsageFetch::LoggedOut => return Some(UsageStats::logged_out()),
     };
     parsed.session?;
 
-    Some(UsageCache {
+    Some(UsageStats {
         session: parsed.session,
         weekly: parsed.weekly,
         fable: parsed.fable,
@@ -979,7 +855,7 @@ fn cleanup_claude_probe_sessions(probe_directory: &Path) {
     }
 }
 
-fn provider_is_installed(provider: UsageProvider) -> bool {
+pub(crate) fn provider_is_installed(provider: UsageProvider) -> bool {
     resolve_binary(provider.as_str()).is_some()
 }
 
@@ -1273,18 +1149,6 @@ impl Screen {
     }
 }
 
-fn write_cache(path: &Path, cache: &UsageCache) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let tmp = path.with_extension("tmp");
-    if let Ok(mut file) = File::create(&tmp) {
-        if serde_json::to_writer(&mut file, cache).is_ok() && file.flush().is_ok() {
-            let _ = fs::rename(tmp, path);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1541,7 +1405,7 @@ mod tests {
 
     #[test]
     fn cache_without_fable_field_still_loads() {
-        let cache: UsageCache =
+        let cache: UsageStats =
             serde_json::from_str(r#"{"session":12.0,"weekly":13.0,"fetched_at":1}"#)
                 .expect("pre-fable cache should deserialize");
         assert_eq!(cache.fable, None);
@@ -1604,8 +1468,8 @@ mod tests {
         windows
     }
 
-    fn cache(session: f64, credits: Option<CreditsUsage>) -> UsageCache {
-        UsageCache {
+    fn cache(session: f64, credits: Option<CreditsUsage>) -> UsageStats {
+        UsageStats {
             session: Some(session),
             weekly: Some(20.0),
             fable: None,
@@ -1700,7 +1564,7 @@ mod tests {
 
     #[test]
     fn session_reset_countdown_can_be_limited_to_a_fullness_threshold() {
-        let cache = UsageCache {
+        let cache = UsageStats {
             session: Some(79.0),
             weekly: Some(67.8),
             fable: None,
@@ -1710,7 +1574,7 @@ mod tests {
             fetched_at: 0,
         };
         let windows = windows(UsageProvider::Codex, true, false, false, None);
-        let format = |cache: &UsageCache| {
+        let format = |cache: &UsageStats| {
             format_usage(
                 UsageProvider::Codex,
                 cache,
@@ -1722,7 +1586,7 @@ mod tests {
         };
 
         assert!(!format(&cache).contains('↻'));
-        assert!(format(&UsageCache {
+        assert!(format(&UsageStats {
             session: Some(80.0),
             ..cache
         })
@@ -1770,7 +1634,7 @@ mod tests {
 
     #[test]
     fn percentage_display_can_select_windows() {
-        let cache = UsageCache {
+        let cache = UsageStats {
             session: Some(12.4),
             weekly: Some(67.8),
             fable: Some(33.3),
@@ -1870,7 +1734,7 @@ mod tests {
 
     #[test]
     fn threshold_checks_the_visible_windows() {
-        let cache = UsageCache {
+        let cache = UsageStats {
             session: Some(81.0),
             weekly: Some(79.0),
             fable: Some(95.0),
@@ -1906,38 +1770,5 @@ mod tests {
             &windows(claude, false, true, false, None),
             Some(90.0)
         ));
-    }
-
-    #[test]
-    fn refresh_claim_is_atomic_and_rate_limits_failed_attempts() {
-        let directory = std::env::temp_dir().join(format!(
-            "superline-usage-refresh-test-{}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&directory).expect("create test directory");
-        let marker = directory.join("usage-codex.refresh");
-
-        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
-        let claims = (0..8)
-            .map(|_| {
-                let barrier = barrier.clone();
-                let marker = marker.clone();
-                std::thread::spawn(move || {
-                    barrier.wait();
-                    claim_refresh(&marker)
-                })
-            })
-            .collect::<Vec<_>>();
-        let winners = claims
-            .into_iter()
-            .map(|claim| claim.join().expect("refresh claim thread"))
-            .filter(|claimed| *claimed)
-            .count();
-
-        assert_eq!(winners, 1);
-        assert!(!claim_refresh(&marker));
-        assert!(refresh_attempt_is_recent(&marker));
-
-        let _ = fs::remove_dir_all(directory);
     }
 }

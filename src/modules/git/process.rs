@@ -143,5 +143,6 @@ pub fn run_git(_: &Path) -> GitStats {
         conflicted,
         remote,
         branch_name,
+        worktree: false,
     }
 }

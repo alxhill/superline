@@ -35,6 +35,9 @@ fn render_in(home: &PathBuf, shell: &str) -> String {
         // Home lookup keys off $HOME on Unix and %USERPROFILE% on Windows.
         .env("HOME", home)
         .env("USERPROFILE", home)
+        // Rendering tests don't need the metadata daemon; disable it so no
+        // background server is spawned and the prompt stays deterministic.
+        .env("SUPERLINE_DISABLE_SERVER", "1")
         .output()
         .expect("failed to run the superline binary");
     assert!(
@@ -215,6 +218,7 @@ fn powershell_prompt_function_renders_end_to_end() {
         .args(["show", "pwsh", "-s", "0", "-c", "80"])
         .env("HOME", &home)
         .env("USERPROFILE", &home)
+        .env("SUPERLINE_DISABLE_SERVER", "1")
         .output()
         .expect("warm up config");
     assert!(warm.status.success());
@@ -245,6 +249,7 @@ fn powershell_prompt_function_renders_end_to_end() {
         .env("HOME", &home)
         .env("USERPROFILE", &home)
         .env("SLBIN", &bin_dir)
+        .env("SUPERLINE_DISABLE_SERVER", "1")
         .output()
         .expect("failed to run pwsh");
 
@@ -328,6 +333,7 @@ fn nushell_prompt_closure_renders_end_to_end() {
         .env("HOME", &home)
         .env("USERPROFILE", &home)
         .env("PATH", path)
+        .env("SUPERLINE_DISABLE_SERVER", "1")
         .output()
         .expect("failed to run nu");
 

@@ -15,6 +15,7 @@ fn run_show(config: &Path) -> Output {
     Command::new(BIN)
         .args(["show", "fish", "-s", "0", "-c", "80", "--config"])
         .arg(config)
+        .env("SUPERLINE_DISABLE_SERVER", "1")
         .output()
         .expect("failed to run superline")
 }

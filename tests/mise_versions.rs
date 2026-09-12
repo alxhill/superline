@@ -34,6 +34,7 @@ fn run(cwd: &Path, home: &Path, subcommand: &str) -> String {
         .current_dir(cwd)
         .env("HOME", home)
         .env("USERPROFILE", home)
+        .env("SUPERLINE_DISABLE_SERVER", "1")
         // sdkman's auto-env exports this; clear it so only mise is in play.
         .env_remove("SDKMAN_ENV")
         .output()

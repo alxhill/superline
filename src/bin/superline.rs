@@ -2,6 +2,7 @@ extern crate superline;
 
 use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -10,8 +11,8 @@ use std::{env, io};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
-use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata, UsageProvider};
-use superline::modules::{refresh_git, refresh_pr, refresh_usage};
+use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
+use superline::metadata::Metadata;
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
 use superline::Powerline;
@@ -186,21 +187,14 @@ enum PowerlineArgs {
     ShowRight(ShowArgs),
     Install(InstallArgs),
     Config,
-    /// Remove all cached data (git status, PR lookups, AI usage) so the next
-    /// prompt starts from a cold cache.
+    /// Stop the metadata server (if one is running) and remove its control
+    /// file. The next prompt starts a fresh server with a cold in-memory
+    /// cache.
     ClearCaches,
-    /// Internal: refresh the cached PR lookup for a branch. Spawned in the
-    /// background by the `pr` module - not intended to be called by hand.
+    /// Run the metadata server. Normally started automatically by `show`; run
+    /// this by hand only to debug or to keep the server alive across shells.
     #[command(hide = true)]
-    RefreshPr(RefreshPrArgs),
-    /// Internal: refresh cached git status after a render timeout. Spawned in
-    /// the background by the `git` module - not intended to be called by hand.
-    #[command(hide = true)]
-    RefreshGit(RefreshGitArgs),
-    /// Internal: refresh cached Claude/Codex usage. Spawned in the background
-    /// by the `ai_usage` module - not intended to be called by hand.
-    #[command(hide = true)]
-    RefreshUsage(RefreshUsageArgs),
+    Server,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -250,32 +244,6 @@ struct ShowArgs {
 }
 
 #[derive(Debug, Args)]
-struct RefreshPrArgs {
-    #[arg(long)]
-    branch: String,
-    #[arg(long)]
-    repo_dir: PathBuf,
-    #[arg(long)]
-    cache: PathBuf,
-}
-
-#[derive(Debug, Args)]
-struct RefreshGitArgs {
-    #[arg(long)]
-    repo_dir: PathBuf,
-    #[arg(long)]
-    cache: PathBuf,
-}
-
-#[derive(Debug, Args)]
-struct RefreshUsageArgs {
-    #[arg(long)]
-    provider: String,
-    #[arg(long)]
-    cache: PathBuf,
-}
-
-#[derive(Debug, Args)]
 struct InstallArgs {
     #[arg(value_enum)]
     shell: ShellArg,
@@ -311,32 +279,50 @@ fn main() {
         PowerlineArgs::Install(args) => install(args),
         PowerlineArgs::Config => open_config(),
         PowerlineArgs::ClearCaches => clear_caches(),
-        PowerlineArgs::RefreshPr(args) => refresh_pr(&args.branch, &args.repo_dir, &args.cache),
-        PowerlineArgs::RefreshGit(args) => refresh_git(&args.repo_dir, &args.cache),
-        PowerlineArgs::RefreshUsage(args) => {
-            let provider = match args.provider.as_str() {
-                "claude" => UsageProvider::Claude,
-                "codex" => UsageProvider::Codex,
-                _ => return,
-            };
-            refresh_usage(provider, &args.cache);
-        }
+        PowerlineArgs::Server => superline::server::run_server(),
     }
 }
 
 fn clear_caches() {
-    let Some(dir) = superline::platform::cache_dir().map(|base| base.join("superline")) else {
+    let Some(control) = superline::server::read_control() else {
+        let Some(path) = superline::server::control_path() else {
+            eprintln!("Could not determine the cache directory");
+            std::process::exit(1);
+        };
+        match std::fs::remove_file(&path) {
+            Ok(()) => println!("Removed {}", path.display()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                println!("No metadata server running")
+            }
+            Err(e) => {
+                eprintln!("Failed to remove {}: {e}", path.display());
+                std::process::exit(1);
+            }
+        }
+        return;
+    };
+
+    // Ask the running server to stop. It holds all of its state in memory, so
+    // stopping it is a true cold start.
+    if let Ok(mut stream) = TcpStream::connect(control.addr()) {
+        let _ = stream.write_all(b"shutdown\n");
+        let _ = stream.flush();
+    }
+
+    let Some(path) = superline::server::control_path() else {
         eprintln!("Could not determine the cache directory");
         std::process::exit(1);
     };
 
-    match std::fs::remove_dir_all(&dir) {
-        Ok(()) => println!("Removed {}", dir.display()),
+    // The server removes the file as it exits; if it already has, removing it
+    // again just means the shutdown landed.
+    match std::fs::remove_file(&path) {
+        Ok(()) => println!("Stopped the metadata server"),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            println!("No caches to remove ({} does not exist)", dir.display())
+            println!("Stopped the metadata server")
         }
         Err(e) => {
-            eprintln!("Failed to remove {}: {e}", dir.display());
+            eprintln!("Failed to remove {}: {e}", path.display());
             std::process::exit(1);
         }
     }
@@ -521,7 +507,6 @@ fn print_shell_conf(shell: ShellSubcommand) {
 
 fn show(args: ShowArgs, right_only: bool) {
     ignore_ctrl_c_for_powershell_prompt(args.shell);
-    superline::cache::prune_stale();
 
     match args.shell {
         ShellArg::Bash => SHELL.set(Shell::Bash),
@@ -569,25 +554,32 @@ fn ignore_ctrl_c_for_powershell_prompt(shell: ShellArg) {
 fn ignore_ctrl_c_for_powershell_prompt(_shell: ShellArg) {}
 
 fn render_prompt(args: &ShowArgs, conf: Config, theme: LoadedTheme, right_only: bool) {
+    let metadata = fetch_metadata(&conf);
     if right_only {
-        render_right(args, conf, theme);
+        render_right(args, conf, theme, &metadata);
     } else {
-        render_normal(args, conf, theme);
+        render_normal(args, conf, theme, &metadata);
     }
 }
 
-fn render_right(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
+fn fetch_metadata(conf: &Config) -> Metadata {
+    let providers = conf.metadata_kinds();
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    superline::client::fetch_metadata(&cwd, &providers)
+}
+
+fn render_right(args: &ShowArgs, conf: Config, theme: LoadedTheme, metadata: &Metadata) {
     if let Some(prompt) = conf.rows.last() {
-        let powerline = powerline_from_conf(prompt, args, theme);
+        let powerline = powerline_from_conf(prompt, args, theme, metadata);
         powerline.print_right();
     }
 }
 
-fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
+fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme, metadata: &Metadata) {
     let mut powerlines = conf
         .rows
         .into_iter()
-        .map(|prompt| powerline_from_conf(&prompt, args, theme))
+        .map(|prompt| powerline_from_conf(&prompt, args, theme, metadata))
         .collect::<Vec<Powerline>>();
 
     if let Some((last, all_bar_last)) = powerlines.split_last_mut() {
@@ -625,11 +617,16 @@ fn load_theme(conf: &Config, conf_root: &Path) -> Result<LoadedTheme, PowerlineE
     }
 }
 
-fn powerline_from_conf(prompt: &CommandLine, args: &ShowArgs, theme: LoadedTheme) -> Powerline {
+fn powerline_from_conf(
+    prompt: &CommandLine,
+    args: &ShowArgs,
+    theme: LoadedTheme,
+    metadata: &Metadata,
+) -> Powerline {
     match theme {
-        LoadedTheme::Rainbow => Powerline::from_conf::<RainbowTheme>(prompt, args),
-        LoadedTheme::Simple => Powerline::from_conf::<SimpleTheme>(prompt, args),
-        LoadedTheme::Custom => Powerline::from_conf::<CustomTheme>(prompt, args),
+        LoadedTheme::Rainbow => Powerline::from_conf::<RainbowTheme>(prompt, args, metadata),
+        LoadedTheme::Simple => Powerline::from_conf::<SimpleTheme>(prompt, args, metadata),
+        LoadedTheme::Custom => Powerline::from_conf::<CustomTheme>(prompt, args, metadata),
     }
 }
 
