@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.6](https://github.com/alxhill/superline/compare/v0.11.5...v0.11.6) - 2026-09-14
+
+### Fixed
+
+- *(usage)* drop the underscore glyph from the sparkline ramp ([#84](https://github.com/alxhill/superline/pull/84))
+
 ## [0.11.5](https://github.com/alxhill/superline/compare/v0.11.4...v0.11.5) - 2026-09-14
 
 ### Added
