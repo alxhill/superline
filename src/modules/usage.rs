@@ -1636,7 +1636,7 @@ mod tests {
                 false,
                 0.0,
             ),
-            "\u{ec82} 5h ▂ C $50/$100"
+            "\u{ec82} 5h _ C $50/$100"
         );
 
         let count = CreditsUsage {
@@ -1658,7 +1658,7 @@ mod tests {
         );
         assert_eq!(
             format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
-            "▅"
+            "▄"
         );
         assert_eq!(format_credits("C", None, UsageDisplay::Numeric), "C–");
         assert_eq!(format_amount(12.5, CreditsUnit::Dollars), "$12.50");
@@ -1819,7 +1819,7 @@ mod tests {
                 false,
                 0.0,
             ),
-            "\u{ec82} ▂▆"
+            "\u{ec82} _▅"
         );
     }
 
@@ -1858,7 +1858,7 @@ mod tests {
         );
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Sparkline),
-            "5h▅"
+            "5h▄"
         );
         assert_eq!(
             format_window("7d", Some(100.0), UsageDisplay::Sparkline),
