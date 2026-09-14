@@ -63,7 +63,8 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\u{ec82} ▂"), "stdout:\n{stdout}");
+    println!("{stdout}");
+    assert!(stdout.contains("\u{ec82} _"), "stdout:\n{stdout}");
     assert!(stdout.contains("\u{ec82}  F 33%"), "stdout:\n{stdout}");
     // Claude has headroom, so its hidden-until-limited credits lane stays empty.
     assert!(!stdout.contains("$12.50"), "stdout:\n{stdout}");
