@@ -25,8 +25,7 @@ use super::Module;
 const CACHE_TTL: Duration = Duration::from_secs(60);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
-const SPARKLINE: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-const SPARKLINE_EMPTY: char = ' ';
+const SPARKLINE: [char; 10] = [' ', '_', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 // A stable, disposable Claude CLI probe session prevents creating a new local
@@ -429,7 +428,6 @@ fn format_window_parts(
             let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
             format!("{}{}", "▓".repeat(filled), "░".repeat(BAR_WIDTH - filled))
         }
-        UsageDisplay::Sparkline if percent == 0.0 => SPARKLINE_EMPTY.to_string(),
         UsageDisplay::Sparkline => {
             let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
             SPARKLINE[index].to_string()
