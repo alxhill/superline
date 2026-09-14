@@ -25,8 +25,7 @@ use super::Module;
 const CACHE_TTL: Duration = Duration::from_secs(60);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
-const SPARKLINE: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-const SPARKLINE_EMPTY: char = ' ';
+const SPARKLINE: [char; 10] = [' ', '_', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 // A stable, disposable Claude CLI probe session prevents creating a new local
@@ -429,7 +428,6 @@ fn format_window_parts(
             let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
             format!("{}{}", "▓".repeat(filled), "░".repeat(BAR_WIDTH - filled))
         }
-        UsageDisplay::Sparkline if percent == 0.0 => SPARKLINE_EMPTY.to_string(),
         UsageDisplay::Sparkline => {
             let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
             SPARKLINE[index].to_string()
@@ -1638,7 +1636,7 @@ mod tests {
                 false,
                 0.0,
             ),
-            "\u{ec82} 5h ▂ C $50/$100"
+            "\u{ec82} 5h _ C $50/$100"
         );
 
         let count = CreditsUsage {
@@ -1660,7 +1658,7 @@ mod tests {
         );
         assert_eq!(
             format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
-            "▅"
+            "▄"
         );
         assert_eq!(format_credits("C", None, UsageDisplay::Numeric), "C–");
         assert_eq!(format_amount(12.5, CreditsUnit::Dollars), "$12.50");
@@ -1821,7 +1819,7 @@ mod tests {
                 false,
                 0.0,
             ),
-            "\u{ec82} ▂▆"
+            "\u{ec82} _▅"
         );
     }
 
@@ -1860,7 +1858,7 @@ mod tests {
         );
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Sparkline),
-            "5h▅"
+            "5h▄"
         );
         assert_eq!(
             format_window("7d", Some(100.0), UsageDisplay::Sparkline),
