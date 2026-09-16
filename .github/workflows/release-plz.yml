@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - main
-  # Adding the `autorelease` label to an open release PR queues it to merge
-  # (see the `autorelease` job).
-  pull_request:
-    types:
-      - labeled
 
 # Avoid two release-plz runs racing on overlapping git history.
 concurrency:
@@ -23,7 +18,6 @@ jobs:
   # manually; trusted publishing only works once the crate exists on crates.io.
   release-plz-release:
     name: Release-plz release
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release-plz.outputs.releases_created }}
@@ -105,7 +99,6 @@ jobs:
   # going back to a release PR that nobody notices has no CI.
   release-plz-pr:
     name: Release-plz PR
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -126,8 +119,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
       # Queue the release PR to merge itself once CI is green, but only when it
       # carries the `autorelease` label. An unlabelled release PR stays open
-      # until someone merges it by hand or adds the label. `--auto` merges
-      # straight away if the checks have already passed.
+      # until someone merges it by hand or adds the label (`autorelease.yml`
+      # picks up the label being added later). `--auto` merges straight away if
+      # the checks have already passed.
       #
       # This must use `RELEASE_PLZ_TOKEN` rather than `GITHUB_TOKEN`, for the
       # same reason the PR itself does: merging pushes to `main`, and a push
@@ -146,21 +140,3 @@ jobs:
           else
             echo "PR #$number has no 'autorelease' label, leaving it to be merged by hand"
           fi
-
-  # The job above only sees the label if it was already on the PR when `main`
-  # was pushed to. Adding the label to an existing release PR fires this job
-  # instead, so labelling is enough to get a hands-off release.
-  autorelease:
-    name: Queue labelled release PR to auto-merge
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.label.name == 'autorelease' &&
-      startsWith(github.event.pull_request.head.ref, 'release-plz-')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Queue the release PR to auto-merge
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
-          REPO: ${{ github.repository }}
-          NUMBER: ${{ github.event.pull_request.number }}
-        run: gh pr merge --squash --auto --repo "$REPO" "$NUMBER"
