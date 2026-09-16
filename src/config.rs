@@ -393,6 +393,10 @@ pub enum UsageDisplay {
     Percentage,
     #[serde(alias = "bars")]
     Bar,
+    #[serde(alias = "capped_bars", alias = "capped")]
+    CappedBar,
+    #[serde(alias = "blocks")]
+    Block,
     #[serde(alias = "sparklines", alias = "spark", alias = "sparks")]
     Sparkline,
     #[serde(alias = "number", alias = "numbers", alias = "num")]
@@ -683,6 +687,11 @@ mod tests {
             ("pct", UsageDisplay::Percentage),
             ("bar", UsageDisplay::Bar),
             ("bars", UsageDisplay::Bar),
+            ("capped_bar", UsageDisplay::CappedBar),
+            ("capped_bars", UsageDisplay::CappedBar),
+            ("capped", UsageDisplay::CappedBar),
+            ("block", UsageDisplay::Block),
+            ("blocks", UsageDisplay::Block),
             ("sparkline", UsageDisplay::Sparkline),
             ("sparklines", UsageDisplay::Sparkline),
             ("spark", UsageDisplay::Sparkline),

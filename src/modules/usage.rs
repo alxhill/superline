@@ -25,6 +25,12 @@ use super::Module;
 const CACHE_TTL: Duration = Duration::from_secs(60);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
+const BAR_LEFT_CAP: char = '▗';
+const BAR_RIGHT_CAP: char = '▖';
+const BAR_EMPTY: char = '▁';
+const BAR_FILLED: char = '▄';
+const BLOCK_EMPTY: char = '░';
+const BLOCK_FILLED: char = '█';
 const SPARKLINE: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
@@ -424,9 +430,14 @@ fn format_window_parts(
     let value = match display {
         // Rate-limit windows only report a percentage, so numeric falls back to it.
         UsageDisplay::Percentage | UsageDisplay::Numeric => format!("{percent:.0}%"),
-        UsageDisplay::Bar => {
-            let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
-            format!("{}{}", "▓".repeat(filled), "░".repeat(BAR_WIDTH - filled))
+        UsageDisplay::Bar => format_bar(percent, false),
+        UsageDisplay::CappedBar => format_bar(percent, true),
+        UsageDisplay::Block => {
+            let filled = filled_cells(percent);
+            let mut block = String::with_capacity(BAR_WIDTH * 3);
+            block.extend(std::iter::repeat_n(BLOCK_FILLED, filled));
+            block.extend(std::iter::repeat_n(BLOCK_EMPTY, BAR_WIDTH - filled));
+            block
         }
         UsageDisplay::Sparkline => {
             let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
@@ -434,6 +445,27 @@ fn format_window_parts(
         }
     };
     (prefix, value)
+}
+
+/// The bar is a half-height baseline that fills left to right one whole cell
+/// at a time. With caps it gains half-height end stubs that a full bar merges
+/// with into one solid block.
+fn format_bar(percent: f64, capped: bool) -> String {
+    let filled = filled_cells(percent);
+    let mut bar = String::with_capacity(BAR_WIDTH + 2);
+    if capped {
+        bar.push(BAR_LEFT_CAP);
+    }
+    bar.extend(std::iter::repeat_n(BAR_FILLED, filled));
+    bar.extend(std::iter::repeat_n(BAR_EMPTY, BAR_WIDTH - filled));
+    if capped {
+        bar.push(BAR_RIGHT_CAP);
+    }
+    bar
+}
+
+fn filled_cells(percent: f64) -> usize {
+    ((percent / 100.0) * BAR_WIDTH as f64).round() as usize
 }
 
 fn threshold_reached(cache: &UsageCache, windows: &UsageWindows, threshold: Option<f64>) -> bool {
@@ -1654,7 +1686,7 @@ mod tests {
         );
         assert_eq!(
             format_credits("", Some(&DOLLARS), UsageDisplay::Bar),
-            "▓▓▓░░"
+            "▄▄▄▁▁"
         );
         assert_eq!(
             format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
@@ -1839,15 +1871,54 @@ mod tests {
 
     #[test]
     fn bar_display_is_clamped_and_fixed_width() {
+        assert_eq!(format_window("5h", Some(0.0), UsageDisplay::Bar), "5h▁▁▁▁▁");
+        assert_eq!(
+            format_window("5h", Some(10.0), UsageDisplay::Bar),
+            "5h▄▁▁▁▁"
+        );
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Bar),
-            "5h▓▓▓░░"
+            "5h▄▄▄▁▁"
         );
         assert_eq!(
             format_window("7d", Some(120.0), UsageDisplay::Bar),
-            "7d▓▓▓▓▓"
+            "7d▄▄▄▄▄"
         );
         assert_eq!(format_window("7d", None, UsageDisplay::Bar), "7d–");
+    }
+
+    #[test]
+    fn block_display_shades_the_empty_cells() {
+        assert_eq!(
+            format_window("5h", Some(0.0), UsageDisplay::Block),
+            "5h░░░░░"
+        );
+        assert_eq!(
+            format_window("5h", Some(61.0), UsageDisplay::Block),
+            "5h███░░"
+        );
+        assert_eq!(
+            format_window("7d", Some(120.0), UsageDisplay::Block),
+            "7d█████"
+        );
+        assert_eq!(format_window("7d", None, UsageDisplay::Block), "7d–");
+    }
+
+    #[test]
+    fn capped_bar_display_wraps_the_bar_in_end_caps() {
+        assert_eq!(
+            format_window("5h", Some(0.0), UsageDisplay::CappedBar),
+            "5h▗▁▁▁▁▁▖"
+        );
+        assert_eq!(
+            format_window("5h", Some(61.0), UsageDisplay::CappedBar),
+            "5h▗▄▄▄▁▁▖"
+        );
+        assert_eq!(
+            format_window("7d", Some(100.0), UsageDisplay::CappedBar),
+            "7d▗▄▄▄▄▄▖"
+        );
+        assert_eq!(format_window("7d", None, UsageDisplay::CappedBar), "7d–");
     }
 
     #[test]
