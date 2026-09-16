@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/alxhill/superline/compare/v0.12.0...v0.13.0) - 2026-09-16
+
+### Added
+
+- *(usage)* redraw the bar display and add capped_bar and block variants ([#86](https://github.com/alxhill/superline/pull/86))
+
 ## [0.12.0](https://github.com/alxhill/superline/compare/v0.11.6...v0.12.0) - 2026-09-16
 
 ### Added
