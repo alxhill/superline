@@ -255,7 +255,11 @@ fn python_version_can_be_hidden() {
     let mise = "[tools]\npython = \"3.13.3\"\n";
 
     let shown = render("python-default", r#""python_env""#, mise, &[]);
-    assert_shown(&shown, "3.13.3", "the python version");
+    assert_shown(
+        &shown,
+        &format!("{MISE_ICON} {PYTHON_ICON} 3.13.3"),
+        "the python version in the same segment as the icon",
+    );
 
     let hidden = render(
         "python-no-version",

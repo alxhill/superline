@@ -123,23 +123,21 @@ impl<S: PythonEnvScheme> Module for PythonEnv<S> {
             });
 
             if py_ver.is_some() || cwd.join("pyproject.toml").exists() {
-                let source_icon = if mise_ver.is_some() {
-                    format!("{} ", S::mise_icon())
-                } else {
-                    String::new()
-                };
+                // One segment, unlike the venv path: without an env name there
+                // is nothing for the version to be set apart from.
+                let py_ver = py_ver.filter(|_| self.show_version);
+                let label = [
+                    mise_ver.map(|_| S::mise_icon()),
+                    Some(pylogo.as_str()),
+                    py_ver.as_deref().map(str::trim),
+                ]
+                .into_iter()
+                .flatten()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
 
-                powerline.add_short_segment(
-                    format!("{}{} ", source_icon, pylogo),
-                    Style::simple(S::pyenv_fg(), S::pyenv_bg()),
-                );
-
-                if let Some(py_ver) = py_ver.filter(|_| self.show_version) {
-                    powerline.add_segment(
-                        py_ver.trim().to_string(),
-                        Style::simple(S::pyver_fg(), S::pyenv_bg()),
-                    );
-                }
+                powerline.add_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
             }
         }
     }
