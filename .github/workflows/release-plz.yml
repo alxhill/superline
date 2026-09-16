@@ -137,8 +137,11 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           # PRs are squash-merged, so the pushed commit maps back to exactly the
-          # PR it came from.
-          if gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].labels[].name' | grep -qx autorelease; then
+          # PR it came from. If the lookup fails or finds no PR (e.g. a direct
+          # push to main), treat it as unlabelled rather than failing the job.
+          if ! labels=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].labels[].name'); then
+            echo "could not look up the PR for $SHA, leaving the release PR to be merged by hand"
+          elif grep -qx autorelease <<<"$labels"; then
             gh pr merge --squash --auto --repo "$REPO" "$(jq -r .number <<<"$PR")"
           else
             echo "the PR merged as $SHA has no 'autorelease' label, leaving the release PR to be merged by hand"
