@@ -25,6 +25,9 @@ use super::Module;
 const CACHE_TTL: Duration = Duration::from_secs(60);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
+const BAR_LEFT_EDGE: char = '▕';
+const BAR_RIGHT_EDGE: char = '▏';
+const BAR_FILL: [char; 9] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
 const SPARKLINE: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
@@ -424,16 +427,34 @@ fn format_window_parts(
     let value = match display {
         // Rate-limit windows only report a percentage, so numeric falls back to it.
         UsageDisplay::Percentage | UsageDisplay::Numeric => format!("{percent:.0}%"),
-        UsageDisplay::Bar => {
-            let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
-            format!("{}{}", "▓".repeat(filled), "░".repeat(BAR_WIDTH - filled))
-        }
+        UsageDisplay::Bar => format_bar(percent),
         UsageDisplay::Sparkline => {
             let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
             SPARKLINE[index].to_string()
         }
     };
     (prefix, value)
+}
+
+/// The bar is an outline with thin side edges that fills left to right in
+/// eighth-cell steps, so an empty bar shows only the edges and a full one is a
+/// solid block.
+fn format_bar(percent: f64) -> String {
+    let steps = BAR_FILL.len() - 1;
+    let eighths = ((percent / 100.0) * (BAR_WIDTH * steps) as f64).round() as usize;
+    let (full, partial) = (eighths / steps, eighths % steps);
+    let mut bar = String::with_capacity(BAR_WIDTH + 2);
+    bar.push(BAR_LEFT_EDGE);
+    bar.extend(std::iter::repeat_n(BAR_FILL[steps], full));
+    if partial > 0 {
+        bar.push(BAR_FILL[partial]);
+    }
+    bar.extend(std::iter::repeat_n(
+        BAR_FILL[0],
+        BAR_WIDTH - full - usize::from(partial > 0),
+    ));
+    bar.push(BAR_RIGHT_EDGE);
+    bar
 }
 
 fn threshold_reached(cache: &UsageCache, windows: &UsageWindows, threshold: Option<f64>) -> bool {
@@ -1654,7 +1675,7 @@ mod tests {
         );
         assert_eq!(
             format_credits("", Some(&DOLLARS), UsageDisplay::Bar),
-            "▓▓▓░░"
+            "▕██▌  ▏"
         );
         assert_eq!(
             format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
@@ -1840,12 +1861,24 @@ mod tests {
     #[test]
     fn bar_display_is_clamped_and_fixed_width() {
         assert_eq!(
+            format_window("5h", Some(0.0), UsageDisplay::Bar),
+            "5h▕     ▏"
+        );
+        assert_eq!(
+            format_window("5h", Some(10.0), UsageDisplay::Bar),
+            "5h▕▌    ▏"
+        );
+        assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Bar),
-            "5h▓▓▓░░"
+            "5h▕███  ▏"
+        );
+        assert_eq!(
+            format_window("5h", Some(70.0), UsageDisplay::Bar),
+            "5h▕███▌ ▏"
         );
         assert_eq!(
             format_window("7d", Some(120.0), UsageDisplay::Bar),
-            "7d▓▓▓▓▓"
+            "7d▕█████▏"
         );
         assert_eq!(format_window("7d", None, UsageDisplay::Bar), "7d–");
     }
