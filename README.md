@@ -2,9 +2,9 @@
 
 [![crates.io](https://img.shields.io/crates/v/superline.svg)](https://crates.io/crates/superline)
 
-A fast, configurable powerline-style prompt written in Rust. It understands git and GitHub, detects Rust, Python,
-Node and Java project environments, and can show your Claude or Codex subscription usage - all without slowing the
-prompt down.
+A fast, opinionated powerline-style prompt written in Rust. It understands git and GitHub, detects Rust, Python,
+Node and Java project environments, and can show your Claude or Codex subscription usage, with async rendering
+support for the slower lookups.
 
 ![Shell with pyenv showing](https://raw.githubusercontent.com/alxhill/superline/main/with_pyenv.png)
 
@@ -19,14 +19,14 @@ configurable modules and themes.
 
 ## Highlights
 
-- **Fast**: around 15ms per prompt from a config file, 9ms as a compiled binary.
+- **Fast**: around 15ms per prompt, git status included.
 - **Lazy**: backends only run when needed, so there is no git cost outside a git repo and no Python cost outside a
   project.
 - **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
   served from a cache.
 - **Flexible layout**: multiple rows, plus right-aligned segments on any row but the last.
 - **Themeable**: two built-in themes, or point at your own theme JSON file.
-- **Library too**: build a fully compiled prompt in Rust for the fastest possible render (see `examples/`).
+- **Any shell**: fish, zsh, bash, PowerShell and nushell are all supported by `superline install`.
 
 ## Installation
 
@@ -36,8 +36,8 @@ superline relies on [Nerd Font](https://www.nerdfonts.com/) glyphs. Configure yo
 most segments will not render correctly. Meslo LG S is recommended and can be downloaded in patched form
 [here](https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Meslo.zip).
 
-iTerm2 users should also enable "Use built-in Powerline glyphs", even with a Nerd Font, as it fixes some alignment
-issues:
+If you run into alignment issues in iTerm2, try enabling "Use built-in Powerline glyphs" in the profile's text
+settings, even when using a Nerd Font:
 
 ![iTerm2 Profile configuration](https://raw.githubusercontent.com/alxhill/superline/main/iterm_config.png)
 
@@ -80,25 +80,6 @@ The command appends a loader to the shell's default config file and is safe to r
 
 If you'd rather manage the loader yourself, `superline init <shell>` prints the snippet without touching any files.
 
-### Git backends
-
-The `git` module can be powered by one of three interchangeable backends, selected at compile time. They produce
-identical output but differ in build dependencies and speed:
-
-| Backend | Cargo feature | Notes |
-|---------|---------------|-------|
-| gitoxide | `gitoxide` (default) | Pure Rust via the [`gix`](https://crates.io/crates/gix) crate, no C dependencies. |
-| libgit2 | `libgit` | Uses the `git2` bindings. |
-| git CLI | none | Fallback when no backend feature is enabled; shells out to `git` on `$PATH`. |
-
-When more than one feature is enabled, precedence is `gitoxide` > `libgit` > CLI.
-
-```bash
-cargo install superline                                         # gitoxide (default)
-cargo install superline --no-default-features --features libgit # libgit2
-cargo install superline --no-default-features                   # git CLI fallback
-```
-
 ## Configuration
 
 On first run superline writes a default config to `$HOME/.config/superline/config.json`. Edits take effect on the
@@ -111,8 +92,24 @@ A config has a `theme` and a list of `rows`:
 {
   "theme": "rainbow",
   "rows": [
-    { "left": ["read_only", { "cwd": { "max_length": 60, "wanted_seg_num": 5 } }, "git", "pr"], "right": [] },
-    { "left": ["shell", "cmd"] }
+    {
+      "left": [
+        "read_only",
+        { "cwd": { "max_length": 60, "wanted_seg_num": 5 } },
+        "git",
+        "pr"
+      ],
+      "right": [
+        "python_env",
+        "cargo"
+      ]
+    },
+    {
+      "left": [
+        "shell",
+        "cmd"
+      ]
+    }
   ]
 }
 ```
@@ -251,8 +248,9 @@ once the result is ready. The module is skipped entirely on `main`, `master` and
 
 Claude or Codex subscription usage, read via the provider's CLI on `PATH`. superline refreshes it in the background
 and caches the result, so rendering never waits on a provider request. Add the module more than once to show both
-providers, or the same provider with different windows and styles. Provider labels use the Nerd Font OpenAI
-(`U+EC81`) and Claude (`U+EC82`) glyphs.
+providers, or the same provider with different windows and styles. Provider labels use the Nerd Font
+[`cod-openai`](https://www.nerdfonts.com/cheat-sheet?q=cod-openai) (`U+EC81`) and
+[`cod-claude`](https://www.nerdfonts.com/cheat-sheet?q=cod-claude) (`U+EC82`) glyphs.
 
 `provider` is required and is `"claude"` or `"codex"`. Everything else is optional.
 
@@ -264,18 +262,16 @@ providers, or the same provider with different windows and styles. Provider labe
 { "ai_usage": { "provider": "claude", "fable": true, "session_label": "" } }
 ```
 
-**Display styles.** `display` is one of:
+**Display styles.** `display` picks how each window is drawn. The examples show the five-hour window at 61% used.
 
-| Style | Rendering |
-|-------|-----------|
-| `"percentage"` (default) | Percent used as a number. |
-| `"bar"` | A five-cell half-height bar that fills left to right. |
-| `"capped_bar"` | The same bar with end caps. |
-| `"block"` | Five full-height cells, shaded when empty. |
-| `"sparkline"` | One glyph per window. |
-
-Aliases are accepted too: `percent`, `percents`, `percentages`, `pct`; `bars`; `capped_bars`, `capped`; `blocks`;
-`sparklines`, `spark`, `sparks`; and `number`, `numbers`, `num` for `numeric`.
+| Style | Aliases | Example | Rendering |
+|-------|---------|---------|-----------|
+| `"percentage"` (default) | `percent`, `percents`, `percentages`, `pct` | `5h 61%` | Percent used as a number. |
+| `"bar"` | `bars` | `5h▄▄▄▁▁` | A five-cell half-height bar that fills left to right. |
+| `"capped_bar"` | `capped_bars`, `capped` | `5h▗▄▄▄▁▁▖` | The same bar with end caps. |
+| `"block"` | `blocks` | `5h███░░` | Five full-height cells, shaded when empty. |
+| `"sparkline"` | `sparklines`, `spark`, `sparks` | `5h▅` | One glyph per window. |
+| `"numeric"` | `number`, `numbers`, `num` | `5h 61%` | Raw figures for the credits lane; same as `percentage` for the rate-limit windows. |
 
 ```json
 { "ai_usage": { "provider": "codex", "display": "bar" } }
@@ -327,7 +323,9 @@ upwards with the nearest declaration winning. A mise version beats one from a la
 deliberately ignored: these modules report what a project pins, and a global `python` entry would otherwise light
 them up in every directory.
 
-A `󱁤` marker follows any version that came from mise. Themes can change or hide it with each module's `mise_icon`
+A `󱁤` marker (the Nerd Font
+[`md-tools`](https://www.nerdfonts.com/cheat-sheet?q=md-tools) glyph, `U+F1064`) follows any version that came
+from mise. Themes can change or hide it with each module's `mise_icon`
 property. The marker stays even when `version` is `false`, since it says who manages the tool rather than which
 one is pinned.
 
@@ -402,6 +400,7 @@ module name and property.
 |---------|--------------|
 | `superline install <shell>` | Append the prompt loader to the shell's config file. |
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
+| `superline config` | Open the config file in `$EDITOR`. |
 | `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
 
 ## Using superline as a library
