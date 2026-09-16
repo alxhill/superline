@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1](https://github.com/alxhill/superline/compare/v0.13.0...v0.13.1) - 2026-09-16
+
+### Other
+
+- restructure README with per-module sections and short config snippets ([#90](https://github.com/alxhill/superline/pull/90))
+
 ## [0.13.0](https://github.com/alxhill/superline/compare/v0.12.0...v0.13.0) - 2026-09-16
 
 ### Added
