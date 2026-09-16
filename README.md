@@ -255,6 +255,8 @@ providers, or the same provider with different windows and styles. Provider labe
 [`cod-openai`](https://www.nerdfonts.com/cheat-sheet?q=cod-openai) (`U+EC81`) and
 [`cod-claude`](https://www.nerdfonts.com/cheat-sheet?q=cod-claude) (`U+EC82`) glyphs.
 
+![Claude and Codex usage widgets using the sparkline display](https://raw.githubusercontent.com/alxhill/superline/main/ai_usage.png)
+
 `provider` is required and is `"claude"` or `"codex"`. Everything else is optional.
 
 **Windows.** `session` and `weekly` (both default `true`) toggle the five-hour and seven-day rate-limit windows.
