@@ -2,105 +2,92 @@
 
 [![crates.io](https://img.shields.io/crates/v/superline.svg)](https://crates.io/crates/superline)
 
-_Forked from [cirho/powerline-rust](https://github.com/cirho/powerline-rust) and adjusted for personal taste_
-
-superline supports git and github natively, and detects rust, python, node and java environments.
+A fast, opinionated powerline-style prompt written in Rust. It understands git and GitHub, detects Rust, Python,
+Node and Java project environments, and can show your Claude or Codex subscription usage, with async rendering
+support for the slower lookups.
 
 ![Shell with pyenv showing](https://raw.githubusercontent.com/alxhill/superline/main/with_pyenv.png)
 
-It integrates with the `gh` shell command to provide PR and CI status check display as well.
+With the [`gh`](https://cli.github.com) CLI installed, it also links to the current branch's pull request and shows
+its CI status:
 
 ![Shell with PR link and status check](https://raw.githubusercontent.com/alxhill/superline/main/with_status.png)
 
-superline started as a pure-rust version of [powerline-SHELL](https://github.com/b-ryan/powerline-shell), but has been
-extended with a number of opinionated (but configurable) widgets and customizable theming.
+superline started as a fork of [cirho/powerline-rust](https://github.com/cirho/powerline-rust), itself a pure-Rust
+take on [powerline-shell](https://github.com/b-ryan/powerline-shell), and has since grown a set of opinionated but
+configurable modules and themes.
 
-## Advantages
+## Highlights
 
-- blazing fast (~15ms when reading from a config file, 9ms for a compiled binary)
-- runs backends only when needed (huge time improvements when not in a git repo or python venv)
-- optional caching git results in memory or file
-- supports fully compiled prompts (see `examples/rainbow.rs`) or can read from a provided config file.
-- new themes and modules can be added easily (currently only Rainbow and Simple are included)
-- supports multiline prompts as well as showing info on the right hand side of the terminal.
+- **Fast**: around 15ms per prompt, git status included.
+- **Lazy**: backends only run when needed, so there is no git cost outside a git repo and no Python cost outside a
+  project.
+- **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
+  served from a cache.
+- **Flexible layout**: multiple rows, each with an optional right-aligned side.
+- **Themeable**: two built-in themes, or point at your own theme JSON file.
+- **Any shell**: fish, zsh, bash, PowerShell and nushell are all supported by `superline install`.
 
 ## Installation
 
-superline relies on [Nerd Font](https://www.nerdfonts.com/) unicode characters - configure your terminal to use a
-Nerd Font, otherwise most segments will not render correctly. Meslo LG S is recommended and can be
-downloaded in patched form [here](https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Meslo.zip).
+### 1. Install a Nerd Font
 
-iTerm2 users are recommended to enable the "Use builtin Powerline glyphs" option even when using a Nerd Font as this
-seems to fix some character alignment issues.
+superline relies on [Nerd Font](https://www.nerdfonts.com/) glyphs. Configure your terminal to use one, otherwise
+most segments will not render correctly. Meslo LG S is recommended and can be downloaded in patched form
+[here](https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Meslo.zip).
+
+If you run into alignment issues in iTerm2, try enabling "Use built-in Powerline glyphs" in the profile's text
+settings, even when using a Nerd Font:
 
 ![iTerm2 Profile configuration](https://raw.githubusercontent.com/alxhill/superline/main/iterm_config.png)
 
-Install with Homebrew:
+### 2. Install the binary
+
+With Homebrew:
 
 ```bash
 brew install alxhill/superline/superline
-superline install <shell name>
 ```
 
-Or download a prebuilt binary with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) — no Rust
-toolchain needed to compile, and no waiting for one:
+With [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), which downloads a prebuilt binary and needs no
+Rust toolchain:
 
 ```bash
 cargo binstall superline
-superline install <shell name>
 ```
 
-Prebuilt binaries are published for macOS (Apple Silicon only), Linux (x86-64 and arm64) and Windows (x86-64).
+Prebuilt binaries are published for macOS (Apple Silicon), Linux (x86-64 and arm64) and Windows (x86-64).
 
-You can also install directly from crates.io via cargo:
+Or build from source via crates.io (cargo's bin directory must be on your `$PATH`):
 
 ```bash
 cargo install superline
-superline install <shell name>
 ```
 
-Then reload your shell's config. Superline will modify the default config file for the shell you choose - currently,
-`fish`, `zsh`, `bash`, `pwsh` (PowerShell) and `nu` (nushell). For example, `superline install pwsh` appends the loader
-to your PowerShell profile (`$PROFILE`), creating it if necessary. `superline install nu` appends a loader to
-nushell's `config.nu` (located via `$nu.config-path`) that regenerates `superline init nu` into nushell's vendor
-autoload directory on startup, so it needs nushell 0.96 or newer. PowerShell compiles for Windows (the Unix-only bits live
-behind `src/platform.rs`) but isn't yet runtime-tested there — see
-[`docs/powershell-testing.md`](docs/powershell-testing.md) for the cross-platform testing plan and Windows caveats.
-
-When installing with Cargo, its bin directory must be in your `$PATH` for the `superline` command to be available.
-
-### Git backends
-
-The `git` segment can be powered by one of three interchangeable backends, selected at compile time via cargo
-features. They produce identical output but have different performance and build-dependency trade-offs:
-
-- **`gitoxide`** (default) — uses the pure-Rust [`gix`](https://crates.io/crates/gix) crate, with no C dependencies.
-- **`libgit`** — uses the `git2` bindings to `libgit2`.
-- **the `git` CLI** — the fallback when no backend feature is enabled; shells out to the `git` binary on `$PATH`.
-
-When more than one backend feature is enabled the precedence is `gitoxide` > `libgit` > the CLI fallback. To build
-against a specific backend:
+### 3. Hook it into your shell
 
 ```bash
-cargo install superline                                        # gitoxide (default)
-cargo install superline --no-default-features --features libgit # libgit2
-cargo install superline --no-default-features                   # git CLI fallback
+superline install <shell>
 ```
 
-## Customization
+Then reload your shell config. Supported shells are `fish`, `zsh`, `bash`, `pwsh` (PowerShell) and `nu` (nushell).
+The command appends a loader to the shell's default config file and is safe to run more than once.
 
-Superline will create a default config file at `$HOME/.config/superline/config.json`. You can edit it to make
-changes, which will be reflected immediately.
+- **PowerShell** - appends to `$PROFILE`, creating it if needed. Windows PowerShell works but sees far less testing
+  than the Unix shells and Git Bash, so expect rougher edges; [`docs/powershell-testing.md`](docs/powershell-testing.md)
+  lists the known caveats.
+- **nushell** - appends a loader to `config.nu` (found via `$nu.config-path`) that regenerates the prompt script into
+  nushell's vendor autoload directory on startup. Requires nushell 0.96 or newer.
 
-### Config file
+If you'd rather manage the loader yourself, `superline init <shell>` prints the snippet without touching any files.
 
-`config.rs` has the full definition of all valid types in the config directory, `example_config.json` shows a complete
-configuration setup.
+## Configuration
 
-Two themes are built in, "rainbow" and "simple" (the latter is not recommended). You can also point `theme` at a
-custom theme JSON file - see [Themes](#themes) below.
+On first run superline writes a default config to `$HOME/.config/superline/config.json`. Edits take effect on the
+next prompt - no reload needed. [`example_config.json`](example_config.json) shows a complete setup and
+`src/config.rs` is the authoritative definition of every option.
 
-The example_config.json shows most of the options available:
+A config has a `theme` and a list of `rows`:
 
 ```json
 {
@@ -108,40 +95,19 @@ The example_config.json shows most of the options available:
   "rows": [
     {
       "left": [
-        "small_spacer",
-        {
-          "cwd": {
-            "max_length": 60,
-            "wanted_seg_num": 4,
-            "resolve_symlinks": false
-          }
-        },
         "read_only",
-        "small_spacer",
-        {
-          "git": {
-            "status_timeout_ms": 250
-          }
-        },
-        { "pr": { "status": true } }
+        { "cwd": { "max_length": 60, "wanted_seg_num": 5 } },
+        "git",
+        "pr"
       ],
       "right": [
-        {
-          "separator": "round"
-        },
         "python_env",
-        {
-          "padding": 0
-        }
+        "cargo"
       ]
     },
     {
       "left": [
-        {
-          "last_cmd_duration": {
-            "min_run_time": "0ms"
-          }
-        },
+        "shell",
         "cmd"
       ]
     }
@@ -149,109 +115,266 @@ The example_config.json shows most of the options available:
 }
 ```
 
-You can add as many rows as desired. Each row has `left` and `right` properties for adding new segments - `left` is
-required, while `right` is optional. The final row should have only a `left` property so the cursor can show next to
-it - it's not currently possible to have a value showing on the right side next to a one-line prompt.
+Each row has a required `left` array and an optional `right` array of segments. superline prints every row but the
+last in full, left and right. The last row's `right` is drawn by the shell's own right-prompt mechanism
+(`fish_right_prompt`, `RPS1` in zsh, `PROMPT_COMMAND_RIGHT` in nushell), so it stays put as you type. Bash and
+PowerShell have no right prompt, so on those shells the last row's `right` is not shown.
 
-Inside the `left` and `right` arrays, you can add the following sections to for showing content:
+Every module can be written either as a bare string or as an object with options, so `"git"` and `{ "git": {} }`
+are equivalent. Modules with required options (`cwd`, `last_cmd_duration`, `ai_usage`, `padding`, `separator`) must
+use the object form.
 
-* **cmd** - show `>` before user input. Turns red and shows the error code if the previous command fails.
-* **cwd** - show the current working directory, with configurable size and max segments.
-* **cmd_duration** - show the time taken by the last command if it takes longer than `min_run_time`
-* **host** - the hostname
-* **user** - the current user
-* **read_only** - show a lockfile icon if the current directory is read only
-* **time** - show the current time, with an optional "format" - this has to be present, but can be null
-* **ai_usage** - show Claude or Codex subscription usage via the corresponding provider CLI on `PATH`. Superline
-  refreshes it in the background and caches the result, so prompt rendering never waits for a provider request. Set
-  `provider` to `"claude"` or `"codex"`, choose the five-hour and weekly lanes with `session` / `weekly` (both
-  default to `true`), label them with `session_label` / `weekly_label` (defaulting to `"5h"` / `"7d"`; use an empty
-  string to omit a label), and set
-  `fable` to `true` to also show the Claude-only weekly Fable window (labelled with `fable_label`, defaulting to
-  `"F"`; ignored for `"codex"`). Set
-  `display` to `"percentage"` (the default), `"bar"` (a five-cell half-height bar that fills left to right), `"capped_bar"` (the same bar with
-  end caps), `"block"` (five full-height cells, shaded when empty), or `"sparkline"` (one glyph per window). The values are percent used. Each style also accepts a few aliases: `"percent"`, `"percents"`,
-  `"percentages"` and `"pct"`; `"bars"`; `"capped_bars"` and `"capped"`; `"blocks"`; `"sparklines"`, `"spark"` and `"sparks"`; `"number"`, `"numbers"` and
-  `"num"` for `"numeric"`. Set `threshold` to a percent-used warning level; configure the warning
-  background in the theme as `modules.ai_usage.threshold_bg`. It replaces the entire widget background whenever either
-  enabled window crosses the threshold. For example:
-  `{ "ai_usage": { "provider": "codex", "session": true, "weekly": true, "display": "bar", "threshold": 80 } }`.
-  Set `credits` to `true` to add a usage-credits lane: Claude reports the dollars spent against the account's credit
-  limit and Codex reports the per-seat credit budget as a plain count. It has its own `credits_label` (defaulting to
-  `"C"`) and `credits_display`, which accepts the same styles as `display` plus `"numeric"` for the raw figures, e.g.
-  `$50/$100` or `411/12000` (for the rate-limit windows, `"numeric"` behaves like `"percentage"`); when unset it
-  follows `display`. Set `credits_only_when_limited` to `true` to show the lane only once a session or weekly window
-  has hit 100%, which is when the provider starts drawing from credits. The credits lane counts towards `threshold`
-  whenever it is visible. For example:
-  `{ "ai_usage": { "provider": "claude", "display": "sparkline", "credits": true, "credits_display": "numeric", "credits_only_when_limited": true } }`.
-  Set `session_time_remaining` to show the session reset countdown (for Claude and Codex). Optionally set
-  `session_time_remaining_only_at_limit` to a fraction from `0` to `1` to show it only once the session reaches that
-  fullness (for example, `0.8` shows it at 80% and above). For example:
-  `{ "ai_usage": { "provider": "claude", "session": true, "weekly": true, "display": "bar", "threshold": 80, "session_time_remaining": true, "session_time_remaining_only_at_limit": 0.8 } }`.
-  Until the first reading is cached the widget shows `…`; if the provider CLI isn't on `PATH` it shows `?` instead,
-  and if the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
-  Add the module more than once to show both providers or different windows/display styles. Provider labels use the
-  Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
-* **python_env** - if a virtual env (venv, conda, mamba) is active, show its name. Otherwise, show a python icon
-  in any directory pinned by a mise config or `.python-version` or containing a `pyproject.toml`. Set `version` to
-  `true` to also show the interpreter version: the pinned one outside a venv, or the active interpreter's inside one.
-  It is off by default because the latter means spawning `python` on every prompt. Set `venv` to `false` to hide the
-  virtual env name: `{ "python_env": { "version": true, "venv": false } }`
-* **nvm** - show the active node version, falling back to the version pinned by a mise config or `.nvmrc`. Set
-  `version` to `false` to show just the node icon: `{ "nvm": { "version": false } }`
-* **java** - show the java version and distribution pinned by a mise config or `.sdkmanrc`. Also accepted under its
-  former name, `sdkman`. Set `version` to `false` to hide the major version and `jdk` to `false` to hide the
-  distribution (corretto, Temurin, ...); with both off only the icon is shown: `{ "java": { "jdk": false } }`
-* **cargo** - show a crab icon if a `Cargo.toml` file is present in the current dir, plus the toolchain version if a
-  mise config or a `rust-toolchain.toml` (or legacy `rust-toolchain`) file pins one. The toolchain file is searched
-  from the current directory upwards, as rustup does, so workspace members pick up the pin at the workspace root.
-  Set `version` to `false` to always show just the icon: `{ "cargo": { "version": false } }`
-* **git** - show the current git branch and status of the repo (modified, staged, and untracked files, plus git remote
-  ahead/behind stats). The GitHub logo appears whenever the repo has a remote configured; the ahead/behind counts
-  beside it need an upstream tracking ref that still resolves, so they're absent on a branch that was never pushed or
-  whose remote branch has since been deleted. Status collection waits up to `status_timeout_ms` milliseconds (250 by default); if it takes
-  longer, the most recent cached output is shown while the refresh continues in the background for the next prompt.
-  Before the first result is cached, the segment displays `loading…` instead. The string shorthand `"git"` uses the
-  default timeout; the same goes for every segment with options, so `"java"` and `{ "java": {} }` are equivalent.
-* **pr** - show a clickable link to the GitHub PR for the current branch (via the [`gh`](https://cli.github.com)
-  CLI), if one exists. The segment colour reflects the PR state (draft, open, merged, closed). When the `status` option
-  is enabled (the default), a coloured dot is appended after the PR number reflecting the CI check status - green for
-  success, red for failure, yellow for pending. The lookup runs in the background and is cached, so it never blocks the
-  prompt - the link appears on a subsequent prompt once the result is ready. Skipped entirely on `develop`, `main`, and
-  `master`. Write it as an object to set its options: `{ "pr": { "status": false } }` shows just the PR number
-  with no check dot.
+### Layout
 
-#### mise
+Three special segments control how modules are grouped and joined. They can appear anywhere in a `left` or `right`
+array.
 
-The `java`, `nvm`, `python_env` and `cargo` segments read tool versions from [mise](https://mise.jdx.dev) configs
-(`mise.toml`, `.mise.toml`, `.config/mise/config.toml`, `.tool-versions`, and the `.local` variants). Configs are
-searched from the current directory upwards, with the nearest declaration of a tool winning, and a version from mise
-takes precedence over one from a language-specific file such as `.sdkmanrc` or `rust-toolchain.toml`, since mise is
-what actually puts the tool on the path. A `󱁤` marker is shown next to any version that came from mise; themes can change or hide it
-with the `mise_icon` property. The marker stays when a segment's `version` option hides the version itself, since it
-says who manages the tool rather than which one is pinned.
+#### separator
 
-The global config in `$HOME` is deliberately not read - these segments report the tools a project pins, so a global
-`python` entry would otherwise light them up in every directory.
+Sets the shape used between segments. Options are `"chevron"` (the default), `"round"` and `"angle_line"`. It is
+stateful: the style applies to every following segment on the same side until changed again.
 
-There are also three ways to modify the layout:
+```json
+{ "separator": "round" }
+```
 
-* **separator** - change the style between segments (see screenshot above). Options are "chevron" and "round". This
-  command is stateful, and will apply to all subsequent segments on the same section until overridden. The default is "
-  chevron"
-* **small_spacer** and **large_spacer** - show a segment as part of the current block with a black background
-* **padding** - end the current collection of segments and clear the background. The next segment will start with a
-  reversed separator separating it from the previous command.
+#### small_spacer / large_spacer
 
-Usage examples of most of these can be found in the config file shown above.
+Insert a blank segment with a black background as part of the current block.
+
+```json
+"small_spacer"
+```
+
+#### padding
+
+Ends the current block of segments and clears the background. The next module starts a new block with a reversed
+separator. The number is the gap width in cells; `0` is common at the end of a `right` array.
+
+```json
+{ "padding": 2 }
+```
+
+### Modules
+
+#### cwd
+
+The current working directory, shortened to `wanted_seg_num` path components and at most `max_length` characters.
+Both are required. Set `resolve_symlinks` to `true` to show the real path instead of the one you `cd`'d into.
+
+```json
+{ "cwd": { "max_length": 60, "wanted_seg_num": 5, "resolve_symlinks": false } }
+```
+
+#### read_only
+
+Shows a lock icon when the current directory is not writable.
+
+```json
+"read_only"
+```
+
+#### cmd
+
+The prompt character shown before your input. It turns red and shows the exit code when the previous command failed.
+
+```json
+"cmd"
+```
+
+#### last_cmd_duration
+
+How long the previous command took, shown only when it ran for at least `min_run_time` milliseconds. The option is
+required.
+
+```json
+{ "last_cmd_duration": { "min_run_time": 50 } }
+```
+
+#### shell
+
+The name of the running shell (`fish`, `zsh`, ...).
+
+```json
+"shell"
+```
+
+#### host and user
+
+The hostname and the current username.
+
+```json
+"host"
+```
+
+#### time
+
+The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)
+string and defaults to `%H:%M:%S`.
+
+```json
+{ "time": { "format": "%H:%M" } }
+```
+
+#### git
+
+The current branch and working-tree status: modified, staged and untracked counts, plus ahead/behind counts against
+the upstream. A GitHub logo appears whenever the repo has a remote; the ahead/behind counts beside it need an
+upstream tracking ref that still resolves, so they are absent on a branch that was never pushed or whose remote
+branch has been deleted.
+
+Status collection waits up to `status_timeout_ms` (250 by default). If it takes longer, the last cached result is
+shown while a refresh continues in the background for the next prompt. Before anything is cached the segment shows
+`loading…`.
+
+```json
+{ "git": { "status_timeout_ms": 250 } }
+```
+
+Repos with many untracked files can make status slow; git's own
+[untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) helps a lot.
+
+#### pr
+
+A clickable link to the GitHub pull request for the current branch, looked up via the `gh` CLI. The segment colour
+reflects the PR state (draft, open, merged, closed). With `status` on (the default) a coloured dot follows the PR
+number showing CI check status: green for success, red for failure, yellow for pending.
+
+The lookup runs in the background and is cached, so it never blocks the prompt - the link appears on a later prompt
+once the result is ready. The module is skipped entirely on `main`, `master` and `develop`.
+
+```json
+{ "pr": { "status": false } }
+```
+
+#### ai_usage
+
+Claude or Codex subscription usage, read via the provider's CLI on `PATH`. superline refreshes it in the background
+and caches the result, so rendering never waits on a provider request. Add the module more than once to show both
+providers, or the same provider with different windows and styles. Provider labels use the Nerd Font
+[`cod-openai`](https://www.nerdfonts.com/cheat-sheet?q=cod-openai) (`U+EC81`) and
+[`cod-claude`](https://www.nerdfonts.com/cheat-sheet?q=cod-claude) (`U+EC82`) glyphs.
+
+![Claude and Codex usage widgets using the sparkline display](https://raw.githubusercontent.com/alxhill/superline/main/ai_usage.png)
+
+`provider` is required and is `"claude"` or `"codex"`. Everything else is optional.
+
+**Windows.** `session` and `weekly` (both default `true`) toggle the five-hour and seven-day rate-limit windows.
+`fable` adds the Claude-only weekly Fable window and is ignored for Codex. Labels default to `"5h "`, `" 7d "` and
+`" F "`, with the spaces keeping adjacent windows apart; override them with `session_label`, `weekly_label` and
+`fable_label`, or set one to `""` to drop a label.
+
+```json
+{ "ai_usage": { "provider": "claude", "fable": true, "session_label": "" } }
+```
+
+**Display styles.** `display` picks how each window is drawn. The examples show the five-hour window at 61% used with its default label.
+
+| Style | Aliases | Example | Rendering |
+|-------|---------|---------|-----------|
+| `"percentage"` (default) | `percent`, `percents`, `percentages`, `pct` | `5h 61%` | Percent used as a number. |
+| `"bar"` | `bars` | `5h ▄▄▄▁▁` | A five-cell half-height bar that fills left to right. |
+| `"capped_bar"` | `capped_bars`, `capped` | `5h ▗▄▄▄▁▁▖` | The same bar with end caps. |
+| `"block"` | `blocks` | `5h ███░░` | Five full-height cells, shaded when empty. |
+| `"sparkline"` | `sparklines`, `spark`, `sparks` | `5h ▅` | One glyph per window. |
+| `"numeric"` | `number`, `numbers`, `num` | `5h 61%` | Raw figures for the credits lane; same as `percentage` for the rate-limit windows. |
+
+```json
+{ "ai_usage": { "provider": "codex", "display": "bar" } }
+```
+
+**Threshold.** `threshold` is a percent-used warning level. When any visible lane crosses it, the whole widget
+background switches to the theme's `modules.ai_usage.threshold_bg` colour.
+
+```json
+{ "ai_usage": { "provider": "claude", "display": "sparkline", "threshold": 80 } }
+```
+
+**Credits.** `credits` adds a lane for usage credits: Claude reports dollars spent against the credit limit and Codex
+reports the per-seat budget as a plain count. `credits_display` accepts the same styles as `display` plus
+`"numeric"` for raw figures such as `$50/$100` or `411/12000`, and follows `display` when unset. `credits_label`
+defaults to `" C "`. Set `credits_only_when_limited` to show the lane only once a session or weekly window has hit
+100%, which is when the provider starts drawing on credits. A visible credits lane counts towards `threshold`.
+
+```json
+{ "ai_usage": { "provider": "claude", "credits": true, "credits_display": "numeric", "credits_only_when_limited": true } }
+```
+
+**Session countdown.** `session_time_remaining` shows how long until the session window resets. To show it only once
+the session is nearly full, set `session_time_remaining_only_at_limit` to a fraction from `0` to `1`; `0.8` shows it
+at 80% and above.
+
+```json
+{ "ai_usage": { "provider": "claude", "session_time_remaining": true, "session_time_remaining_only_at_limit": 0.8 } }
+```
+
+**States.** Until the first reading is cached the widget shows `…`. If the provider CLI isn't on `PATH` it shows `?`.
+If the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
+
+### Language modules
+
+`python_env`, `nvm`, `java` and `cargo` share one behaviour and differ only in how they detect a project and
+which files can pin a version. Each shows its language icon when the current directory belongs to a project, and
+adds the version when one is pinned. Every one takes a `version` option; it defaults to `true` except for
+`python_env`, and setting it to `false` leaves just the icon.
+
+```json
+{ "nvm": { "version": false } }
+```
+
+Versions come first from [mise](https://mise.jdx.dev) configs (`mise.toml`, `.mise.toml`,
+`.config/mise/config.toml`, `.tool-versions` and their `.local` variants), searched from the current directory
+upwards with the nearest declaration winning. A mise version beats one from a language-specific file such as
+`.sdkmanrc`, since mise is what actually puts the tool on the path. The global mise config in `$HOME` is
+deliberately ignored: these modules report what a project pins, and a global `python` entry would otherwise light
+them up in every directory.
+
+A `󱁤` marker (the Nerd Font
+[`md-tools`](https://www.nerdfonts.com/cheat-sheet?q=md-tools) glyph, `U+F1064`) follows any version that came
+from mise. Themes can change or hide it with each module's `mise_icon`
+property. The marker stays even when `version` is `false`, since it says who manages the tool rather than which
+one is pinned.
+
+#### python_env
+
+- **Detects** an active virtual env (venv, conda or mamba), or a directory pinned by `.python-version` or containing
+  a `pyproject.toml`.
+- **Shows** the virtual env name when one is active; `venv: false` hides it.
+- **`version`** defaults to `false`. Inside a venv it reports the active interpreter, which means spawning `python`
+  on every prompt; outside one it reports the pinned version.
+
+```json
+{ "python_env": { "version": true, "venv": false } }
+```
+
+#### nvm
+
+- **Detects** the Node version nvm has activated, or one pinned by `.nvmrc`.
+
+#### java
+
+- **Detects** a version pinned by `.sdkmanrc`.
+- **Shows** the JDK distribution (corretto, Temurin, ...) as well as the major version; `jdk: false` hides it, and
+  with `version` also off only the icon remains.
+- Also accepted under its former name, `sdkman`.
+
+```json
+{ "java": { "jdk": false } }
+```
+
+#### cargo
+
+- **Detects** a `Cargo.toml` in the current directory.
+- **Pins** via `rust-toolchain.toml` or the legacy `rust-toolchain`, searched upwards from the current directory as
+  rustup does, so workspace members pick up the pin at the workspace root.
 
 ### Themes
 
-`theme` can be `"rainbow"`, `"simple"`, or a path to a theme JSON file. Paths starting with `/` are absolute;
-anything else is resolved relative to the config directory (`$HOME/.config/superline/`). If a custom theme fails to
-load, superline falls back to `rainbow`.
+`theme` is `"rainbow"`, `"simple"`, or a path to a theme JSON file. Paths starting with `/` are absolute; anything
+else is resolved relative to the config directory (`$HOME/.config/superline/`). If a custom theme fails to load,
+superline falls back to `rainbow`.
 
-A theme file has two keys: `defaults` and `modules`.
+A theme file has two keys, `defaults` and `modules`:
 
 ```json
 {
@@ -264,74 +387,71 @@ A theme file has two keys: `defaults` and `modules`.
 }
 ```
 
-* **defaults** - the `fg`/`bg` used for any colour a module doesn't set.
-* **modules** - per-module overrides, keyed by module name. Most modules accept `fg` and `bg`; some have extra
-  properties (e.g. `git` has `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array). A few accept string
-  properties such as `cmd.user_symbol`, `pr.icon`, or the `mise_icon` of a language module (set it to `""` to hide
-  the mise marker). Any property you omit falls back to `defaults`.
+- **defaults** - the `fg` and `bg` used for anything a module doesn't set.
+- **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colours (`git` has
+  `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`, and
+  `mise_icon` on the language modules - set it to `""` to hide the marker). Anything omitted falls back to
+  `defaults`.
 
-Colours are either a name (defined in `src/colors.rs`, e.g. `"green"`, `"warning_red"`) or an ANSI 256-colour code
-(`0`–`255`). See [`example_theme.json`](https://github.com/alxhill/superline/blob/main/example_theme.json) for a full
-example covering every module, and `src/themes/custom.rs` for the complete list of module names and properties.
+Note that a couple of theme keys differ from the module names in the config: the `read_only` module is themed as
+`readonly` and `python_env` as `py`.
 
-## Custom program
+Colours are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-colour code from
+`0` to `255`. [`example_theme.json`](example_theme.json) covers every module, and `src/themes/custom.rs` lists every
+module name and property.
 
-You can also create a separate rust program to fully customize the appearance. This allows creating a new theme too.
+## Commands
+
+| Command | What it does |
+|---------|--------------|
+| `superline install <shell>` | Append the prompt loader to the shell's config file. |
+| `superline init <shell>` | Print the loader snippet to stdout instead. |
+| `superline config` | Open the config file in `$EDITOR`. |
+| `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
+
+## Using superline as a library
+
+For the fastest possible prompt you can skip the config file entirely and compile your layout into a small Rust
+program. `examples/minimalistic.rs` and `examples/rainbow.rs` are complete, runnable starting points.
 
 ```rust
-use superline::{modules::*, theme::SimpleTheme};
+use superline::modules::*;
+use superline::powerline::{PowerlineRightBuilder, PowerlineShellBuilder};
+use superline::terminal::Shell;
+use superline::themes::SimpleTheme;
 
 fn main() {
-    let mut prompt = superline::Powerline::new();
-
-    prompt.add_module(User::<SimpleTheme>::new());
-    prompt.add_module(Host::<SimpleTheme>::new());
-    prompt.add_module(Cwd::<SimpleTheme>::new(45, 4, false));
-    prompt.add_module(Git::<SimpleTheme>::new());
-    prompt.add_module(ReadOnly::<SimpleTheme>::new());
-    prompt.add_module(Cmd::<SimpleTheme>::new());
-
-    println!("{}", prompt);
+    superline::Powerline::builder()
+        .set_shell(Shell::Bare)
+        .add_module(Cwd::<SimpleTheme>::new(45, 4, false))
+        .add_module(Git::<SimpleTheme>::new())
+        .add_module(ReadOnly::<SimpleTheme>::new())
+        .add_module(Cmd::<SimpleTheme>::new("0"))
+        .render(0);
 }
-
-
 ```
 
-### Cache untracked files
-
-Git module can be slower on repos with big number of untracked files. Read about caching untracked
-files  [here](https://git-scm.com/docs/git-update-index).
-
-### Custom theme
+Themes are types that implement each module's `*Scheme` trait, so a custom theme is just a struct with a few impls:
 
 ```rust
-use superline::{modules::*, terminal::Color};
+use superline::modules::*;
+use superline::themes::DefaultColors;
+use superline::Color;
 
 struct Theme;
 
-impl CmdScheme for Theme {
-    fn cmd_passed_fg() -> Color {
-        Color(15)
-    }
-
-    fn cmd_passed_bg() -> Color {
-        Color(236)
-    }
-
-    fn cmd_failed_bg() -> Color {
-        Color(161)
-    }
-
-    fn cmd_failed_fg() -> Color {
-        Color(15)
-    }
+impl DefaultColors for Theme {
+    fn default_fg() -> Color { Color(15) }
+    fn default_bg() -> Color { Color(236) }
 }
 
+impl CmdScheme for Theme {
+    fn cmd_failed_bg() -> Color { Color(161) }
+}
 
 fn main() {
     let mut prompt = superline::Powerline::new();
-    prompt.add_module(Cmd::<Theme>::new());
-
-    ...
+    prompt.add_module(Cmd::<Theme>::new("0"));
+    // ...
+}
 ```
-
