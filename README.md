@@ -255,22 +255,23 @@ providers, or the same provider with different windows and styles. Provider labe
 `provider` is required and is `"claude"` or `"codex"`. Everything else is optional.
 
 **Windows.** `session` and `weekly` (both default `true`) toggle the five-hour and seven-day rate-limit windows.
-`fable` adds the Claude-only weekly Fable window and is ignored for Codex. Labels default to `"5h"`, `"7d"` and
-`"F"`; override them with `session_label`, `weekly_label` and `fable_label`, or set one to `""` to drop it.
+`fable` adds the Claude-only weekly Fable window and is ignored for Codex. Labels default to `"5h "`, `" 7d "` and
+`" F "`, with the spaces keeping adjacent windows apart; override them with `session_label`, `weekly_label` and
+`fable_label`, or set one to `""` to drop a label.
 
 ```json
 { "ai_usage": { "provider": "claude", "fable": true, "session_label": "" } }
 ```
 
-**Display styles.** `display` picks how each window is drawn. The examples show the five-hour window at 61% used.
+**Display styles.** `display` picks how each window is drawn. The examples show the five-hour window at 61% used with its default label.
 
 | Style | Aliases | Example | Rendering |
 |-------|---------|---------|-----------|
 | `"percentage"` (default) | `percent`, `percents`, `percentages`, `pct` | `5h 61%` | Percent used as a number. |
-| `"bar"` | `bars` | `5h▄▄▄▁▁` | A five-cell half-height bar that fills left to right. |
-| `"capped_bar"` | `capped_bars`, `capped` | `5h▗▄▄▄▁▁▖` | The same bar with end caps. |
-| `"block"` | `blocks` | `5h███░░` | Five full-height cells, shaded when empty. |
-| `"sparkline"` | `sparklines`, `spark`, `sparks` | `5h▅` | One glyph per window. |
+| `"bar"` | `bars` | `5h ▄▄▄▁▁` | A five-cell half-height bar that fills left to right. |
+| `"capped_bar"` | `capped_bars`, `capped` | `5h ▗▄▄▄▁▁▖` | The same bar with end caps. |
+| `"block"` | `blocks` | `5h ███░░` | Five full-height cells, shaded when empty. |
+| `"sparkline"` | `sparklines`, `spark`, `sparks` | `5h ▅` | One glyph per window. |
 | `"numeric"` | `number`, `numbers`, `num` | `5h 61%` | Raw figures for the credits lane; same as `percentage` for the rate-limit windows. |
 
 ```json
@@ -287,7 +288,7 @@ background switches to the theme's `modules.ai_usage.threshold_bg` colour.
 **Credits.** `credits` adds a lane for usage credits: Claude reports dollars spent against the credit limit and Codex
 reports the per-seat budget as a plain count. `credits_display` accepts the same styles as `display` plus
 `"numeric"` for raw figures such as `$50/$100` or `411/12000`, and follows `display` when unset. `credits_label`
-defaults to `"C"`. Set `credits_only_when_limited` to show the lane only once a session or weekly window has hit
+defaults to `" C "`. Set `credits_only_when_limited` to show the lane only once a session or weekly window has hit
 100%, which is when the provider starts drawing on credits. A visible credits lane counts towards `threshold`.
 
 ```json
