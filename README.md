@@ -73,8 +73,9 @@ superline install <shell>
 Then reload your shell config. Supported shells are `fish`, `zsh`, `bash`, `pwsh` (PowerShell) and `nu` (nushell).
 The command appends a loader to the shell's default config file and is safe to run more than once.
 
-- **PowerShell** - appends to `$PROFILE`, creating it if needed. PowerShell compiles for Windows but isn't yet
-  runtime-tested there; see [`docs/powershell-testing.md`](docs/powershell-testing.md) for caveats.
+- **PowerShell** - appends to `$PROFILE`, creating it if needed. Windows PowerShell works but sees far less testing
+  than the Unix shells and Git Bash, so expect rougher edges; [`docs/powershell-testing.md`](docs/powershell-testing.md)
+  lists the known caveats.
 - **nushell** - appends a loader to `config.nu` (found via `$nu.config-path`) that regenerates the prompt script into
   nushell's vendor autoload directory on startup. Requires nushell 0.96 or newer.
 
