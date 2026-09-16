@@ -10,6 +10,8 @@ use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
 pub struct Nvm<S> {
+    /// Whether to show the node version after the icon.
+    show_version: bool,
     scheme: PhantomData<S>,
 }
 
@@ -38,15 +40,29 @@ pub trait NvmScheme: DefaultColors {
 
 impl<S: NvmScheme> Default for Nvm<S> {
     fn default() -> Self {
-        Self::new()
+        Self::new(true)
     }
 }
 
 impl<S: NvmScheme> Nvm<S> {
-    pub fn new() -> Nvm<S> {
+    pub fn new(show_version: bool) -> Nvm<S> {
         Nvm {
+            show_version,
             scheme: PhantomData,
         }
+    }
+
+    fn label(&self, source_icon: &str, version: &str) -> String {
+        [
+            Some(source_icon),
+            Some(S::icon()),
+            self.show_version.then_some(version),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
     }
 }
 
@@ -67,7 +83,7 @@ impl<S: NvmScheme> Module for Nvm<S> {
             // todo: handle the case where active version != .nvmrc
             (Some(version), _, _) => {
                 powerline.add_segment(
-                    format!("{} {}", S::icon(), version),
+                    self.label("", version.trim()),
                     Style::simple(S::nvm_fg(), S::nvm_bg()),
                 );
             }
@@ -75,13 +91,13 @@ impl<S: NvmScheme> Module for Nvm<S> {
             // the one in effect even though nvm never activated it.
             (None, Some(version), _) => {
                 powerline.add_segment(
-                    format!("{} {} {}", S::mise_icon(), S::icon(), version),
+                    self.label(S::mise_icon(), version),
                     Style::simple(S::nvm_fg(), S::nvm_bg()),
                 );
             }
             (None, None, Some(nvmrc)) => {
                 powerline.add_segment(
-                    format!("{} {}", S::icon(), nvmrc.trim()),
+                    self.label("", nvmrc.trim()),
                     Style::simple(S::nvm_fg(), S::nvm_inactive_bg()),
                 );
             }

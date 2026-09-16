@@ -10,6 +10,10 @@ use crate::themes::DefaultColors;
 use crate::{Color, Powerline, Style};
 
 pub struct Java<S> {
+    /// Whether to show the major version after the icon.
+    show_version: bool,
+    /// Whether to show the JDK distribution (corretto, Temurin, ...).
+    show_jdk: bool,
     scheme: PhantomData<S>,
 }
 
@@ -34,12 +38,14 @@ pub trait JavaScheme: DefaultColors {
 
 impl<S: JavaScheme> Default for Java<S> {
     fn default() -> Self {
-        Self::new()
+        Self::new(true, true)
     }
 }
 impl<S: JavaScheme> Java<S> {
-    pub fn new() -> Java<S> {
+    pub fn new(show_version: bool, show_jdk: bool) -> Java<S> {
         Java {
+            show_version,
+            show_jdk,
             scheme: PhantomData,
         }
     }
@@ -56,20 +62,32 @@ impl<S: JavaScheme> Module for Java<S> {
             .or_else(|| sdkman_java().map(|java| (java, "")));
 
         if let Some(((version, distribution), source_icon)) = java {
-            let label = [
+            let label = java_label(
                 source_icon,
                 S::icon(),
-                &version,
-                &distro_name(&distribution),
-            ]
-            .into_iter()
-            .filter(|part| !part.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
+                self.show_version.then_some(version.as_str()),
+                self.show_jdk.then(|| distro_name(&distribution)).as_deref(),
+            );
 
             powerline.add_segment(label, Style::simple(S::java_fg(), S::java_bg()));
         }
     }
+}
+
+/// Joins the parts of the segment that are enabled and non-empty, so the icon
+/// stands alone when both the version and the distribution are hidden.
+fn java_label(
+    source_icon: &str,
+    icon: &str,
+    version: Option<&str>,
+    distribution: Option<&str>,
+) -> String {
+    [Some(source_icon), Some(icon), version, distribution]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Reads the `java=<version>-<distribution>` line of the `.sdkmanrc` that
@@ -157,6 +175,19 @@ mod tests {
     #[test]
     fn ignores_mise_versions_without_a_number() {
         assert_eq!(mise_java("latest"), None);
+    }
+
+    #[test]
+    fn label_drops_the_parts_that_are_turned_off() {
+        assert_eq!(
+            java_label("M", "J", Some("21"), Some("Temurin")),
+            "M J 21 Temurin"
+        );
+        assert_eq!(java_label("", "J", Some("21"), None), "J 21");
+        assert_eq!(java_label("", "J", None, Some("Temurin")), "J Temurin");
+        assert_eq!(java_label("M", "J", None, None), "M J");
+        // A mise version with no distribution never leaves a trailing space.
+        assert_eq!(java_label("", "J", Some("21"), Some("")), "J 21");
     }
 
     #[test]

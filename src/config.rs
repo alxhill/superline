@@ -48,10 +48,33 @@ pub enum LineSegment {
         #[serde(default = "default_true")]
         status: bool,
     },
-    PythonEnv,
-    Nvm,
-    Java,
-    Cargo,
+    PythonEnv {
+        /// Show the interpreter version. Off by default: inside a virtual env
+        /// it means spawning `python` on every prompt.
+        #[serde(default)]
+        version: bool,
+        /// Show the active virtual env name. On by default.
+        #[serde(default = "default_true")]
+        venv: bool,
+    },
+    Nvm {
+        /// Show the node version after the icon. On by default.
+        #[serde(default = "default_true")]
+        version: bool,
+    },
+    Java {
+        /// Show the major java version. On by default.
+        #[serde(default = "default_true")]
+        version: bool,
+        /// Show the JDK distribution (corretto, Temurin, ...). On by default.
+        #[serde(default = "default_true")]
+        jdk: bool,
+    },
+    Cargo {
+        /// Show the mise-pinned toolchain version after the icon. On by default.
+        #[serde(default = "default_true")]
+        version: bool,
+    },
     Host,
     Shell,
     Time {
@@ -135,12 +158,28 @@ enum KnownLineSegment {
         #[serde(default = "default_true")]
         status: bool,
     },
-    PythonEnv,
-    Nvm,
+    PythonEnv {
+        #[serde(default)]
+        version: bool,
+        #[serde(default = "default_true")]
+        venv: bool,
+    },
+    Nvm {
+        #[serde(default = "default_true")]
+        version: bool,
+    },
     /// Named `sdkman` before it also read mise configs; both names parse.
     #[serde(alias = "sdkman")]
-    Java,
-    Cargo,
+    Java {
+        #[serde(default = "default_true")]
+        version: bool,
+        #[serde(default = "default_true")]
+        jdk: bool,
+    },
+    Cargo {
+        #[serde(default = "default_true")]
+        version: bool,
+    },
     Host,
     Shell,
     Time {
@@ -203,10 +242,12 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::ReadOnly => LineSegment::ReadOnly,
             KnownLineSegment::Git { status_timeout_ms } => LineSegment::Git { status_timeout_ms },
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
-            KnownLineSegment::PythonEnv => LineSegment::PythonEnv,
-            KnownLineSegment::Nvm => LineSegment::Nvm,
-            KnownLineSegment::Java => LineSegment::Java,
-            KnownLineSegment::Cargo => LineSegment::Cargo,
+            KnownLineSegment::PythonEnv { version, venv } => {
+                LineSegment::PythonEnv { version, venv }
+            }
+            KnownLineSegment::Nvm { version } => LineSegment::Nvm { version },
+            KnownLineSegment::Java { version, jdk } => LineSegment::Java { version, jdk },
+            KnownLineSegment::Cargo { version } => LineSegment::Cargo { version },
             KnownLineSegment::Host => LineSegment::Host,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
@@ -262,12 +303,16 @@ impl<'de> Deserialize<'de> for LineSegment {
     {
         let value = Value::deserialize(deserializer)?;
 
-        // Preserve the original string shorthand while also accepting the
-        // object form needed to configure the timeout.
-        if value == Value::String("git".to_string()) {
-            return Ok(LineSegment::Git {
-                status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
-            });
+        // A bare `"git"` or `"java"` is shorthand for the object form with
+        // every option at its default, so a segment can gain options without
+        // breaking configs that name it as a plain string.
+        if let Value::String(name) = &value {
+            if is_known_segment_name(name) {
+                let with_defaults = serde_json::json!({ name: {} });
+                if let Ok(segment) = serde_json::from_value::<KnownLineSegment>(with_defaults) {
+                    return Ok(segment.into());
+                }
+            }
         }
 
         match serde_json::from_value::<KnownLineSegment>(value.clone()) {
@@ -430,10 +475,16 @@ impl Default for Config {
                     ],
                     right: Some(vec![
                         LineSegment::Separator(SeparatorStyle::Round),
-                        LineSegment::Nvm,
-                        LineSegment::Java,
-                        LineSegment::PythonEnv,
-                        LineSegment::Cargo,
+                        LineSegment::Nvm { version: true },
+                        LineSegment::Java {
+                            version: true,
+                            jdk: true,
+                        },
+                        LineSegment::PythonEnv {
+                            version: false,
+                            venv: true,
+                        },
+                        LineSegment::Cargo { version: true },
                         LineSegment::Padding(0),
                     ]),
                 },
@@ -655,8 +706,82 @@ mod tests {
             let parsed: LineSegment =
                 serde_json::from_str(name).unwrap_or_else(|_| panic!("{name} should parse"));
 
-            assert_eq!(parsed, LineSegment::Java);
+            assert_eq!(
+                parsed,
+                LineSegment::Java {
+                    version: true,
+                    jdk: true,
+                }
+            );
         }
+    }
+
+    #[test]
+    fn java_version_and_jdk_are_configurable() {
+        let parsed: LineSegment = serde_json::from_str(r#"{"java":{"jdk":false}}"#)
+            .expect("configured java module should parse");
+        assert_eq!(
+            parsed,
+            LineSegment::Java {
+                version: true,
+                jdk: false,
+            }
+        );
+
+        let parsed: LineSegment =
+            serde_json::from_str(r#"{"sdkman":{"version":false,"jdk":false}}"#)
+                .expect("configured sdkman alias should parse");
+        assert_eq!(
+            parsed,
+            LineSegment::Java {
+                version: false,
+                jdk: false,
+            }
+        );
+    }
+
+    #[test]
+    fn segments_with_options_parse_as_plain_strings_with_defaults() {
+        let cases = [
+            (r#""nvm""#, LineSegment::Nvm { version: true }),
+            (
+                r#""python_env""#,
+                LineSegment::PythonEnv {
+                    version: false,
+                    venv: true,
+                },
+            ),
+            (r#""cargo""#, LineSegment::Cargo { version: true }),
+            (r#""pr""#, LineSegment::Pr { status: true }),
+        ];
+
+        for (json, expected) in cases {
+            let parsed: LineSegment =
+                serde_json::from_str(json).unwrap_or_else(|_| panic!("{json} should parse"));
+            assert_eq!(parsed, expected, "{json}");
+        }
+    }
+
+    #[test]
+    fn language_version_display_is_configurable() {
+        let parsed: LineSegment = serde_json::from_str(r#"{"nvm":{"version":false}}"#)
+            .expect("configured nvm module should parse");
+        assert_eq!(parsed, LineSegment::Nvm { version: false });
+
+        let parsed: LineSegment = serde_json::from_str(r#"{"cargo":{"version":false}}"#)
+            .expect("configured cargo module should parse");
+        assert_eq!(parsed, LineSegment::Cargo { version: false });
+
+        let parsed: LineSegment =
+            serde_json::from_str(r#"{"python_env":{"version":false,"venv":false}}"#)
+                .expect("configured python_env module should parse");
+        assert_eq!(
+            parsed,
+            LineSegment::PythonEnv {
+                version: false,
+                venv: false,
+            }
+        );
     }
 
     #[test]

@@ -192,37 +192,44 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   and if the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
-* **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.
-  Otherwise, show the version pinned by a mise config or `.python-version`, or a bare python icon in any directory
-  containing a `pyproject.toml`
-* **nvm** - show the active node version, falling back to the version pinned by a mise config or `.nvmrc`
+* **python_env** - if a virtual env (venv, conda, mamba) is active, show its name. Otherwise, show a python icon
+  in any directory pinned by a mise config or `.python-version` or containing a `pyproject.toml`. Set `version` to
+  `true` to also show the interpreter version: the pinned one outside a venv, or the active interpreter's inside one.
+  It is off by default because the latter means spawning `python` on every prompt. Set `venv` to `false` to hide the
+  virtual env name: `{ "python_env": { "version": true, "venv": false } }`
+* **nvm** - show the active node version, falling back to the version pinned by a mise config or `.nvmrc`. Set
+  `version` to `false` to show just the node icon: `{ "nvm": { "version": false } }`
 * **java** - show the java version and distribution pinned by a mise config or `.sdkmanrc`. Also accepted under its
-  former name, `sdkman`
+  former name, `sdkman`. Set `version` to `false` to hide the major version and `jdk` to `false` to hide the
+  distribution (corretto, Temurin, ...); with both off only the icon is shown: `{ "java": { "jdk": false } }`
 * **cargo** - show a crab icon if a `Cargo.toml` file is present in the current dir, plus the toolchain version if a
-  mise config pins one
+  mise config or a `rust-toolchain.toml` (or legacy `rust-toolchain`) file pins one. The toolchain file is searched
+  from the current directory upwards, as rustup does, so workspace members pick up the pin at the workspace root.
+  Set `version` to `false` to always show just the icon: `{ "cargo": { "version": false } }`
 * **git** - show the current git branch and status of the repo (modified, staged, and untracked files, plus git remote
   ahead/behind stats). The GitHub logo appears whenever the repo has a remote configured; the ahead/behind counts
   beside it need an upstream tracking ref that still resolves, so they're absent on a branch that was never pushed or
   whose remote branch has since been deleted. Status collection waits up to `status_timeout_ms` milliseconds (250 by default); if it takes
   longer, the most recent cached output is shown while the refresh continues in the background for the next prompt.
   Before the first result is cached, the segment displays `loading…` instead. The string shorthand `"git"` uses the
-  default timeout.
+  default timeout; the same goes for every segment with options, so `"java"` and `{ "java": {} }` are equivalent.
 * **pr** - show a clickable link to the GitHub PR for the current branch (via the [`gh`](https://cli.github.com)
   CLI), if one exists. The segment colour reflects the PR state (draft, open, merged, closed). When the `status` option
   is enabled (the default), a coloured dot is appended after the PR number reflecting the CI check status - green for
   success, red for failure, yellow for pending. The lookup runs in the background and is cached, so it never blocks the
   prompt - the link appears on a subsequent prompt once the result is ready. Skipped entirely on `develop`, `main`, and
-  `master`. Unlike most segments, `pr` is written as an object so its options can be set:
-  `{ "pr": { "status": false } }` shows just the PR number with no check dot.
+  `master`. Write it as an object to set its options: `{ "pr": { "status": false } }` shows just the PR number
+  with no check dot.
 
 #### mise
 
 The `java`, `nvm`, `python_env` and `cargo` segments read tool versions from [mise](https://mise.jdx.dev) configs
 (`mise.toml`, `.mise.toml`, `.config/mise/config.toml`, `.tool-versions`, and the `.local` variants). Configs are
 searched from the current directory upwards, with the nearest declaration of a tool winning, and a version from mise
-takes precedence over one from a language-specific file such as `.sdkmanrc`, since mise is what actually puts the tool
-on the path. A `󱁤` marker is shown next to any version that came from mise; themes can change or hide it
-with the `mise_icon` property.
+takes precedence over one from a language-specific file such as `.sdkmanrc` or `rust-toolchain.toml`, since mise is
+what actually puts the tool on the path. A `󱁤` marker is shown next to any version that came from mise; themes can change or hide it
+with the `mise_icon` property. The marker stays when a segment's `version` option hides the version itself, since it
+says who manages the tool rather than which one is pinned.
 
 The global config in `$HOME` is deliberately not read - these segments report the tools a project pins, so a global
 `python` entry would otherwise light them up in every directory.

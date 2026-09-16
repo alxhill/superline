@@ -340,11 +340,13 @@ impl Powerline {
             match module {
                 LineSegment::SmallSpacer => self.add_module(Spacer::<T>::small()),
                 LineSegment::LargeSpacer => self.add_module(Spacer::<T>::large()),
-                LineSegment::PythonEnv => self.add_module(PythonEnv::<T>::new()),
+                LineSegment::PythonEnv { version, venv } => {
+                    self.add_module(PythonEnv::<T>::new(*version, *venv))
+                }
                 LineSegment::Cmd => {
                     self.add_module(Cmd::<T>::new(runtime_data.last_command_status()))
                 }
-                LineSegment::Cargo => self.add_module(Cargo::<T>::new()),
+                LineSegment::Cargo { version } => self.add_module(Cargo::<T>::new(*version)),
                 LineSegment::Git { status_timeout_ms } => self.add_module(
                     Git::<T>::with_status_timeout(Duration::from_millis(*status_timeout_ms)),
                 ),
@@ -411,8 +413,10 @@ impl Powerline {
                     *wanted_seg_num,
                     *resolve_symlinks,
                 )),
-                LineSegment::Nvm => self.add_module(Nvm::<T>::new()),
-                LineSegment::Java => self.add_module(Java::<T>::new()),
+                LineSegment::Nvm { version } => self.add_module(Nvm::<T>::new(*version)),
+                LineSegment::Java { version, jdk } => {
+                    self.add_module(Java::<T>::new(*version, *jdk))
+                }
                 LineSegment::Error { message } => {
                     self.add_module(ErrorMessage::<T>::new(message.clone()))
                 }

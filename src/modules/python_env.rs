@@ -13,6 +13,10 @@ use crate::{Powerline, Style};
 use super::Module;
 
 pub struct PythonEnv<S: PythonEnvScheme> {
+    /// Whether to show the interpreter version.
+    show_version: bool,
+    /// Whether to show the active virtual env's name.
+    show_venv: bool,
     scheme: PhantomData<S>,
 }
 
@@ -39,13 +43,15 @@ pub trait PythonEnvScheme: DefaultColors {
 
 impl<S: PythonEnvScheme> Default for PythonEnv<S> {
     fn default() -> Self {
-        Self::new()
+        Self::new(false, true)
     }
 }
 
 impl<S: PythonEnvScheme> PythonEnv<S> {
-    pub fn new() -> PythonEnv<S> {
+    pub fn new(show_version: bool, show_venv: bool) -> PythonEnv<S> {
         PythonEnv {
+            show_version,
+            show_venv,
             scheme: PhantomData,
         }
     }
@@ -76,25 +82,36 @@ impl<S: PythonEnvScheme> Module for PythonEnv<S> {
             // file_name is always some, because env variable is a valid directory path.
             let venv_name = Path::new(&venv_path).file_name().unwrap().to_string_lossy();
 
-            let py_ver_str = Command::new("python")
-                .args(["-c", PYTHON_VERSION_CMD])
-                .output()
-                .ok()
-                .and_then(|output| {
-                    std::str::from_utf8(&output.stdout)
-                        .map(|s| s.to_owned())
-                        .ok()
-                })
-                .unwrap_or("".into());
+            // Asking the interpreter for its version is the one slow step here,
+            // so it is skipped entirely when the version is hidden.
+            let py_ver_str = if self.show_version {
+                Command::new("python")
+                    .args(["-c", PYTHON_VERSION_CMD])
+                    .output()
+                    .ok()
+                    .and_then(|output| {
+                        std::str::from_utf8(&output.stdout)
+                            .map(|s| s.to_owned())
+                            .ok()
+                    })
+                    .unwrap_or("".into())
+            } else {
+                String::new()
+            };
 
-            powerline.add_short_segment(
-                format!("{} {} ", pylogo, venv_name),
-                Style::simple(S::pyenv_fg(), S::pyenv_bg()),
-            );
-            powerline.add_segment(
-                py_ver_str.trim().to_string(),
-                Style::simple(S::pyver_fg(), S::pyver_bg()),
-            );
+            let label = if self.show_venv {
+                format!("{} {} ", pylogo, venv_name)
+            } else {
+                format!("{} ", pylogo)
+            };
+            powerline.add_short_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
+
+            if self.show_version {
+                powerline.add_segment(
+                    py_ver_str.trim().to_string(),
+                    Style::simple(S::pyver_fg(), S::pyver_bg()),
+                );
+            }
         } else if let Ok(cwd) = env::current_dir() {
             // A mise config wins over `.python-version`: it is what puts an
             // interpreter on the path, and repos often keep both.
@@ -106,23 +123,21 @@ impl<S: PythonEnvScheme> Module for PythonEnv<S> {
             });
 
             if py_ver.is_some() || cwd.join("pyproject.toml").exists() {
-                let source_icon = if mise_ver.is_some() {
-                    format!("{} ", S::mise_icon())
-                } else {
-                    String::new()
-                };
+                // One segment, unlike the venv path: without an env name there
+                // is nothing for the version to be set apart from.
+                let py_ver = py_ver.filter(|_| self.show_version);
+                let label = [
+                    mise_ver.map(|_| S::mise_icon()),
+                    Some(pylogo.as_str()),
+                    py_ver.as_deref().map(str::trim),
+                ]
+                .into_iter()
+                .flatten()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
 
-                powerline.add_short_segment(
-                    format!("{}{} ", source_icon, pylogo),
-                    Style::simple(S::pyenv_fg(), S::pyenv_bg()),
-                );
-
-                if let Some(py_ver) = py_ver {
-                    powerline.add_segment(
-                        py_ver.trim().to_string(),
-                        Style::simple(S::pyver_fg(), S::pyenv_bg()),
-                    );
-                }
+                powerline.add_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
             }
         }
     }
