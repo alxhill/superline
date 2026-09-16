@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/alxhill/superline/compare/v0.11.6...v0.12.0) - 2026-09-16
+
+### Added
+
+- *(lang)* add version/jdk display options to the language segments ([#87](https://github.com/alxhill/superline/pull/87))
+
 ## [0.11.6](https://github.com/alxhill/superline/compare/v0.11.5...v0.11.6) - 2026-09-14
 
 ### Fixed
