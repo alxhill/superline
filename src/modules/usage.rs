@@ -25,10 +25,10 @@ use super::Module;
 const CACHE_TTL: Duration = Duration::from_secs(60);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const BAR_WIDTH: usize = 5;
-const BAR_LEFT_EDGE: char = '▕';
-const BAR_RIGHT_EDGE: char = '▏';
+const BAR_LEFT_CAP: char = '▗';
+const BAR_RIGHT_CAP: char = '▖';
 const BAR_EMPTY: char = '▁';
-const BAR_FILL: [char; 9] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
+const BAR_FILLED: char = '▄';
 const SPARKLINE: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
@@ -437,24 +437,16 @@ fn format_window_parts(
     (prefix, value)
 }
 
-/// The bar is a trough with thin side edges and a bottom line that fills left
-/// to right in eighth-cell steps, so an empty bar shows only the outline and a
-/// full one is a solid block.
+/// The bar is a half-height trough: a baseline between two end caps that
+/// fills left to right one whole cell at a time, so an empty bar is just the
+/// outline and a full bar merges with the caps into one solid block.
 fn format_bar(percent: f64) -> String {
-    let steps = BAR_FILL.len() - 1;
-    let eighths = ((percent / 100.0) * (BAR_WIDTH * steps) as f64).round() as usize;
-    let (full, partial) = (eighths / steps, eighths % steps);
+    let filled = ((percent / 100.0) * BAR_WIDTH as f64).round() as usize;
     let mut bar = String::with_capacity(BAR_WIDTH + 2);
-    bar.push(BAR_LEFT_EDGE);
-    bar.extend(std::iter::repeat_n(BAR_FILL[steps], full));
-    if partial > 0 {
-        bar.push(BAR_FILL[partial]);
-    }
-    bar.extend(std::iter::repeat_n(
-        BAR_EMPTY,
-        BAR_WIDTH - full - usize::from(partial > 0),
-    ));
-    bar.push(BAR_RIGHT_EDGE);
+    bar.push(BAR_LEFT_CAP);
+    bar.extend(std::iter::repeat_n(BAR_FILLED, filled));
+    bar.extend(std::iter::repeat_n(BAR_EMPTY, BAR_WIDTH - filled));
+    bar.push(BAR_RIGHT_CAP);
     bar
 }
 
@@ -1676,7 +1668,7 @@ mod tests {
         );
         assert_eq!(
             format_credits("", Some(&DOLLARS), UsageDisplay::Bar),
-            "▕██▌▁▁▏"
+            "▗▄▄▄▁▁▖"
         );
         assert_eq!(
             format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
@@ -1863,23 +1855,19 @@ mod tests {
     fn bar_display_is_clamped_and_fixed_width() {
         assert_eq!(
             format_window("5h", Some(0.0), UsageDisplay::Bar),
-            "5h▕▁▁▁▁▁▏"
+            "5h▗▁▁▁▁▁▖"
         );
         assert_eq!(
             format_window("5h", Some(10.0), UsageDisplay::Bar),
-            "5h▕▌▁▁▁▁▏"
+            "5h▗▄▁▁▁▁▖"
         );
         assert_eq!(
             format_window("5h", Some(61.0), UsageDisplay::Bar),
-            "5h▕███▁▁▏"
-        );
-        assert_eq!(
-            format_window("5h", Some(70.0), UsageDisplay::Bar),
-            "5h▕███▌▁▏"
+            "5h▗▄▄▄▁▁▖"
         );
         assert_eq!(
             format_window("7d", Some(120.0), UsageDisplay::Bar),
-            "7d▕█████▏"
+            "7d▗▄▄▄▄▄▖"
         );
         assert_eq!(format_window("7d", None, UsageDisplay::Bar), "7d–");
     }

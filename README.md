@@ -169,7 +169,7 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   string to omit a label), and set
   `fable` to `true` to also show the Claude-only weekly Fable window (labelled with `fable_label`, defaulting to
   `"F"`; ignored for `"codex"`). Set
-  `display` to `"percentage"` (the default), `"bar"` (a five-cell trough that fills left to right), or `"sparkline"` (one glyph per
+  `display` to `"percentage"` (the default), `"bar"` (a five-cell half-height bar that fills left to right), or `"sparkline"` (one glyph per
   window). The values are percent used. Each style also accepts a few aliases: `"percent"`, `"percents"`,
   `"percentages"` and `"pct"`; `"bars"`; `"sparklines"`, `"spark"` and `"sparks"`; `"number"`, `"numbers"` and
   `"num"` for `"numeric"`. Set `threshold` to a percent-used warning level; configure the warning
