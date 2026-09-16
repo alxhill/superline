@@ -117,9 +117,12 @@ jobs:
           command: release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
-      # Queue the release PR to merge itself once CI is green, so cutting a
-      # release needs no clicks at all. `--auto` merges straight away if the
-      # checks have already passed.
+      # Queue the release PR to merge itself once CI is green, but only when the
+      # PR that just landed on `main` carries the `autorelease` label. The label
+      # goes on the feature PR and means "cut a release as soon as this is in".
+      # Without it the release PR stays open and keeps accumulating changes
+      # until a labelled PR lands or someone merges it by hand. `--auto` merges
+      # straight away if the checks have already passed.
       #
       # This must use `RELEASE_PLZ_TOKEN` rather than `GITHUB_TOKEN`, for the
       # same reason the PR itself does: merging pushes to `main`, and a push
@@ -130,4 +133,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           PR: ${{ steps.release-plz.outputs.pr }}
-        run: gh pr merge --squash --auto --repo '${{ github.repository }}' "$(jq -r .number <<<"$PR")"
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          # PRs are squash-merged, so the pushed commit maps back to exactly the
+          # PR it came from. If the lookup fails or finds no PR (e.g. a direct
+          # push to main), treat it as unlabelled rather than failing the job.
+          if ! labels=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].labels[].name'); then
+            echo "could not look up the PR for $SHA, leaving the release PR to be merged by hand"
+          elif grep -qx autorelease <<<"$labels"; then
+            gh pr merge --squash --auto --repo "$REPO" "$(jq -r .number <<<"$PR")"
+          else
+            echo "the PR merged as $SHA has no 'autorelease' label, leaving the release PR to be merged by hand"
+          fi
