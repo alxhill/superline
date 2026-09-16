@@ -24,7 +24,7 @@ configurable modules and themes.
   project.
 - **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
   served from a cache.
-- **Flexible layout**: multiple rows, plus right-aligned segments on any row but the last.
+- **Flexible layout**: multiple rows, each with an optional right-aligned side.
 - **Themeable**: two built-in themes, or point at your own theme JSON file.
 - **Any shell**: fish, zsh, bash, PowerShell and nushell are all supported by `superline install`.
 
@@ -114,8 +114,10 @@ A config has a `theme` and a list of `rows`:
 }
 ```
 
-Each row has a required `left` array and an optional `right` array of segments. The last row should have only a
-`left` so the cursor can sit next to it - a right-hand side is not currently possible on a one-line prompt.
+Each row has a required `left` array and an optional `right` array of segments. superline prints every row but the
+last in full, left and right. The last row's `right` is drawn by the shell's own right-prompt mechanism
+(`fish_right_prompt`, `RPS1` in zsh, `PROMPT_COMMAND_RIGHT` in nushell), so it stays put as you type. Bash and
+PowerShell have no right prompt, so on those shells the last row's `right` is not shown.
 
 Every module can be written either as a bare string or as an object with options, so `"git"` and `{ "git": {} }`
 are equivalent. Modules with required options (`cwd`, `last_cmd_duration`, `ai_usage`, `padding`, `separator`) must
