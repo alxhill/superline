@@ -247,48 +247,6 @@ once the result is ready. The module is skipped entirely on `main`, `master` and
 { "pr": { "status": false } }
 ```
 
-#### python_env
-
-Shows the active virtual env (venv, conda or mamba) by name. Outside a venv it shows a Python icon in any directory
-pinned by a mise config or `.python-version`, or containing a `pyproject.toml`.
-
-- `version` (default `false`) also shows the interpreter version: the pinned one outside a venv, or the active
-  interpreter's inside one. Off by default because the latter spawns `python` on every prompt.
-- `venv` (default `true`) controls whether the virtual env name is shown.
-
-```json
-{ "python_env": { "version": true, "venv": false } }
-```
-
-#### nvm
-
-The active Node version, falling back to the one pinned by a mise config or `.nvmrc`. Set `version` to `false` for
-just the icon.
-
-```json
-{ "nvm": { "version": false } }
-```
-
-#### java
-
-The Java version and distribution pinned by a mise config or `.sdkmanrc`. `version` hides the major version and
-`jdk` hides the distribution (corretto, Temurin, ...); with both off only the icon remains. The module is also
-accepted under its former name, `sdkman`.
-
-```json
-{ "java": { "jdk": false } }
-```
-
-#### cargo
-
-A crab icon when a `Cargo.toml` is present, plus the toolchain version if a mise config or `rust-toolchain.toml`
-(or legacy `rust-toolchain`) pins one. The toolchain file is searched from the current directory upwards, as rustup
-does, so workspace members pick up the pin at the workspace root. Set `version` to `false` for just the icon.
-
-```json
-{ "cargo": { "version": false } }
-```
-
 #### ai_usage
 
 Claude or Codex subscription usage, read via the provider's CLI on `PATH`. superline refreshes it in the background
@@ -351,20 +309,60 @@ at 80% and above.
 **States.** Until the first reading is cached the widget shows `…`. If the provider CLI isn't on `PATH` it shows `?`.
 If the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
 
-### mise
+### Language modules
 
-The `java`, `nvm`, `python_env` and `cargo` modules read tool versions from [mise](https://mise.jdx.dev) configs:
-`mise.toml`, `.mise.toml`, `.config/mise/config.toml`, `.tool-versions` and their `.local` variants. Configs are
-searched from the current directory upwards and the nearest declaration wins. A version from mise takes precedence
-over a language-specific file such as `.sdkmanrc` or `rust-toolchain.toml`, since mise is what actually puts the tool
-on the path.
+`python_env`, `nvm`, `java` and `cargo` share one behaviour and differ only in how they detect a project and
+which files can pin a version. Each shows its language icon when the current directory belongs to a project, and
+adds the version when one is pinned. Every one takes a `version` option; it defaults to `true` except for
+`python_env`, and setting it to `false` leaves just the icon.
 
-A `󱁤` marker is shown next to any version that came from mise. Themes can change or hide it with each module's
-`mise_icon` property. The marker stays even when a module's `version` option hides the version, since it says who
-manages the tool rather than which one is pinned.
+```json
+{ "nvm": { "version": false } }
+```
 
-The global mise config in `$HOME` is deliberately ignored: these modules report what a project pins, and a global
-`python` entry would otherwise light them up in every directory.
+Versions come first from [mise](https://mise.jdx.dev) configs (`mise.toml`, `.mise.toml`,
+`.config/mise/config.toml`, `.tool-versions` and their `.local` variants), searched from the current directory
+upwards with the nearest declaration winning. A mise version beats one from a language-specific file such as
+`.sdkmanrc`, since mise is what actually puts the tool on the path. The global mise config in `$HOME` is
+deliberately ignored: these modules report what a project pins, and a global `python` entry would otherwise light
+them up in every directory.
+
+A `󱁤` marker follows any version that came from mise. Themes can change or hide it with each module's `mise_icon`
+property. The marker stays even when `version` is `false`, since it says who manages the tool rather than which
+one is pinned.
+
+#### python_env
+
+- **Detects** an active virtual env (venv, conda or mamba), or a directory pinned by `.python-version` or containing
+  a `pyproject.toml`.
+- **Shows** the virtual env name when one is active; `venv: false` hides it.
+- **`version`** defaults to `false`. Inside a venv it reports the active interpreter, which means spawning `python`
+  on every prompt; outside one it reports the pinned version.
+
+```json
+{ "python_env": { "version": true, "venv": false } }
+```
+
+#### nvm
+
+- **Detects** the Node version nvm has activated, or one pinned by `.nvmrc`.
+
+#### java
+
+- **Detects** a version pinned by `.sdkmanrc`.
+- **Shows** the JDK distribution (corretto, Temurin, ...) as well as the major version; `jdk: false` hides it, and
+  with `version` also off only the icon remains.
+- Also accepted under its former name, `sdkman`.
+
+```json
+{ "java": { "jdk": false } }
+```
+
+#### cargo
+
+- **Detects** a `Cargo.toml` in the current directory.
+- **Pins** via `rust-toolchain.toml` or the legacy `rust-toolchain`, searched upwards from the current directory as
+  rustup does, so workspace members pick up the pin at the workspace root.
 
 ### Themes
 
