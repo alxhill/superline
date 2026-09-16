@@ -43,7 +43,7 @@ pub trait PythonEnvScheme: DefaultColors {
 
 impl<S: PythonEnvScheme> Default for PythonEnv<S> {
     fn default() -> Self {
-        Self::new(true, true)
+        Self::new(false, true)
     }
 }
 

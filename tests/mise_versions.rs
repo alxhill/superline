@@ -120,12 +120,23 @@ fn other_mise_managed_languages_are_shown() {
         ],
     );
 
-    for version in ["22.14.0", "3.13.3", "1.93.0"] {
+    for version in ["22.14.0", "1.93.0"] {
         assert!(
             prompt.contains(version),
             "expected the mise {version} in the prompt:\n{prompt}",
         );
     }
+
+    // The python version is off by default; the segment still marks the
+    // directory as mise-managed python.
+    assert!(
+        prompt.contains(&format!("{MISE_ICON} \u{e73c}")),
+        "expected the mise marker next to the python icon:\n{prompt}",
+    );
+    assert!(
+        !prompt.contains("3.13.3"),
+        "the python version should be hidden by default:\n{prompt}",
+    );
 }
 
 #[test]

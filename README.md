@@ -192,11 +192,11 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   and if the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
   Add the module more than once to show both providers or different windows/display styles. Provider labels use the
   Nerd Font OpenAI (`U+EC81`) and Claude (`U+EC82`) glyphs.
-* **python_env** - if a virtual env (venv, conda, mamba) is active, show the name and current version of python.
-  Otherwise, show the version pinned by a mise config or `.python-version`, or a bare python icon in any directory
-  containing a `pyproject.toml`. Set `version` to `false` to hide the interpreter version (which also skips asking
-  the interpreter for it), and `venv` to `false` to hide the virtual env name:
-  `{ "python_env": { "version": false, "venv": true } }`
+* **python_env** - if a virtual env (venv, conda, mamba) is active, show its name. Otherwise, show a python icon
+  in any directory pinned by a mise config or `.python-version` or containing a `pyproject.toml`. Set `version` to
+  `true` to also show the interpreter version: the pinned one outside a venv, or the active interpreter's inside one.
+  It is off by default because the latter means spawning `python` on every prompt. Set `venv` to `false` to hide the
+  virtual env name: `{ "python_env": { "version": true, "venv": false } }`
 * **nvm** - show the active node version, falling back to the version pinned by a mise config or `.nvmrc`. Set
   `version` to `false` to show just the node icon: `{ "nvm": { "version": false } }`
 * **java** - show the java version and distribution pinned by a mise config or `.sdkmanrc`. Also accepted under its
