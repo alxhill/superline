@@ -189,6 +189,68 @@ fn rust_toolchain_version_can_be_hidden() {
 }
 
 #[test]
+fn rust_toolchain_file_pins_the_cargo_version() {
+    let files = [
+        ("Cargo.toml", "[package]\nname = \"scratch\"\n"),
+        (
+            "rust-toolchain.toml",
+            "[toolchain]\nchannel = \"1.85.0\"\ncomponents = [\"clippy\"]\n",
+        ),
+    ];
+
+    let prompt = render("rust-toolchain-toml", r#""cargo""#, "", &files);
+    assert_shown(
+        &prompt,
+        &format!("{CARGO_ICON} 1.85.0"),
+        "the toolchain channel",
+    );
+    assert_hidden(&prompt, MISE_ICON, "the mise marker");
+
+    let hidden = render(
+        "rust-toolchain-no-version",
+        r#"{ "cargo": { "version": false } }"#,
+        "",
+        &files,
+    );
+    assert_hidden(&hidden, "1.85.0", "the toolchain channel");
+}
+
+#[test]
+fn legacy_rust_toolchain_file_pins_the_cargo_version() {
+    let prompt = render(
+        "rust-toolchain-legacy",
+        r#""cargo""#,
+        "",
+        &[
+            ("Cargo.toml", "[package]\nname = \"scratch\"\n"),
+            ("rust-toolchain", "nightly-2025-01-15\n"),
+        ],
+    );
+
+    assert_shown(
+        &prompt,
+        &format!("{CARGO_ICON} nightly-2025-01-15"),
+        "the legacy toolchain channel",
+    );
+}
+
+#[test]
+fn mise_rust_wins_over_a_rust_toolchain_file() {
+    let prompt = render(
+        "rust-both",
+        r#""cargo""#,
+        "[tools]\nrust = \"1.93.0\"\n",
+        &[
+            ("Cargo.toml", "[package]\nname = \"scratch\"\n"),
+            ("rust-toolchain.toml", "[toolchain]\nchannel = \"1.85.0\"\n"),
+        ],
+    );
+
+    assert_shown(&prompt, "1.93.0", "the mise toolchain version");
+    assert_hidden(&prompt, "1.85.0", "the rust-toolchain channel");
+}
+
+#[test]
 fn python_version_can_be_hidden() {
     let mise = "[tools]\npython = \"3.13.3\"\n";
 

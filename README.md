@@ -203,7 +203,9 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
   former name, `sdkman`. Set `version` to `false` to hide the major version and `jdk` to `false` to hide the
   distribution (corretto, Temurin, ...); with both off only the icon is shown: `{ "java": { "jdk": false } }`
 * **cargo** - show a crab icon if a `Cargo.toml` file is present in the current dir, plus the toolchain version if a
-  mise config pins one. Set `version` to `false` to always show just the icon: `{ "cargo": { "version": false } }`
+  mise config or a `rust-toolchain.toml` (or legacy `rust-toolchain`) file pins one. The toolchain file is searched
+  from the current directory upwards, as rustup does, so workspace members pick up the pin at the workspace root.
+  Set `version` to `false` to always show just the icon: `{ "cargo": { "version": false } }`
 * **git** - show the current git branch and status of the repo (modified, staged, and untracked files, plus git remote
   ahead/behind stats). The GitHub logo appears whenever the repo has a remote configured; the ahead/behind counts
   beside it need an upstream tracking ref that still resolves, so they're absent on a branch that was never pushed or
@@ -224,8 +226,8 @@ Inside the `left` and `right` arrays, you can add the following sections to for 
 The `java`, `nvm`, `python_env` and `cargo` segments read tool versions from [mise](https://mise.jdx.dev) configs
 (`mise.toml`, `.mise.toml`, `.config/mise/config.toml`, `.tool-versions`, and the `.local` variants). Configs are
 searched from the current directory upwards, with the nearest declaration of a tool winning, and a version from mise
-takes precedence over one from a language-specific file such as `.sdkmanrc`, since mise is what actually puts the tool
-on the path. A `󱁤` marker is shown next to any version that came from mise; themes can change or hide it
+takes precedence over one from a language-specific file such as `.sdkmanrc` or `rust-toolchain.toml`, since mise is
+what actually puts the tool on the path. A `󱁤` marker is shown next to any version that came from mise; themes can change or hide it
 with the `mise_icon` property. The marker stays when a segment's `version` option hides the version itself, since it
 says who manages the tool rather than which one is pinned.
 
