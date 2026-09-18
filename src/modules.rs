@@ -33,7 +33,7 @@ pub use host::{Host, HostScheme};
 pub use java::{Java, JavaScheme};
 pub use nvm::{Nvm, NvmScheme};
 pub use pr::{Pr, PrLookup, PrScheme};
-pub use python_env::{PythonEnv, PythonEnvScheme};
+pub use python_env::{PythonEnv, PythonEnvScheme, PythonVersion};
 pub use readonly::{ReadOnly, ReadOnlyScheme};
 pub use shell_name::{ShellName, ShellScheme};
 pub use spacer::{Spacer, SpacerScheme};
@@ -55,6 +55,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         GitStatus::KIND => refresh_from_json::<GitStatus>(source),
         PrLookup::KIND => refresh_from_json::<PrLookup>(source),
         UsageLookup::KIND => refresh_from_json::<UsageLookup>(source),
+        PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
         _ => false,
     }
 }

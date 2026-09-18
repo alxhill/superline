@@ -340,8 +340,9 @@ one is pinned.
 - **Detects** an active virtual env (venv, conda or mamba), or a directory pinned by `.python-version` or containing
   a `pyproject.toml`.
 - **Shows** the virtual env name when one is active; `venv: false` hides it.
-- **`version`** defaults to `false`. Inside a venv it reports the active interpreter, which means spawning `python`
-  on every prompt; outside one it reports the pinned version.
+- **`version`** defaults to `false`. Inside a venv it reports the active interpreter's version, fetched in the
+  background and cached so the prompt never waits on `python` (`…` shows until the first answer lands); outside one
+  it reports the pinned version.
 
 ```json
 { "python_env": { "version": true, "venv": false } }

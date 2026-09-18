@@ -49,8 +49,8 @@ pub enum LineSegment {
         status: bool,
     },
     PythonEnv {
-        /// Show the interpreter version. Off by default: inside a virtual env
-        /// it means spawning `python` on every prompt.
+        /// Show the interpreter version. Off by default. Inside a virtual env
+        /// the interpreter is asked in the background and the answer cached.
         #[serde(default)]
         version: bool,
         /// Show the active virtual env name. On by default.
