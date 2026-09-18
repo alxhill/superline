@@ -1,6 +1,7 @@
-//! The python_env segment asks the active virtual env's interpreter for its
-//! version through the shared cache, so these drive the real binary against a
-//! seeded cache directory rather than a real interpreter.
+//! The python_env segment reads the active virtual env's version from
+//! `pyvenv.cfg` when it can, and otherwise asks the interpreter through the
+//! shared cache. These drive the real binary against fake envs and a seeded
+//! cache directory rather than a real interpreter.
 
 use std::fs;
 use std::path::PathBuf;
@@ -121,6 +122,49 @@ fn python_version_shows_a_loading_marker_until_the_first_refresh_lands() {
         "stdout:\n{stdout}"
     );
     assert!(stdout.contains('\u{2026}'), "stdout:\n{stdout}");
+
+    let _ = fs::remove_dir_all(&scratch.root);
+}
+
+#[test]
+fn python_version_comes_from_pyvenv_cfg_without_touching_the_cache() {
+    let scratch = scratch("pyvenv-cfg");
+    fs::write(
+        scratch.venv.join("pyvenv.cfg"),
+        "home = /nowhere/bin\nimplementation = CPython\nversion_info = 3.99.1\n",
+    )
+    .expect("write pyvenv.cfg");
+
+    let stdout = scratch.render();
+    assert!(stdout.contains("3.99.1"), "stdout:\n{stdout}");
+    assert!(!stdout.contains('\u{2026}'), "stdout:\n{stdout}");
+    let python_cache_files = fs::read_dir(&scratch.cache_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.file_name().to_string_lossy().starts_with("python-"))
+                .count()
+        })
+        .unwrap_or(0);
+    assert_eq!(
+        python_cache_files, 0,
+        "pyvenv.cfg makes the cache unnecessary"
+    );
+
+    let _ = fs::remove_dir_all(&scratch.root);
+}
+
+#[test]
+fn python_version_comes_from_conda_meta_when_there_is_no_pyvenv_cfg() {
+    let scratch = scratch("conda-meta");
+    let meta = scratch.venv.join("conda-meta");
+    fs::create_dir_all(&meta).expect("create conda-meta");
+    fs::write(meta.join("python-dateutil-2.9.0-py_0.json"), b"{}").expect("write dateutil meta");
+    fs::write(meta.join("python-3.98.2-h1234abc_0.json"), b"{}").expect("write python meta");
+
+    let stdout = scratch.render();
+    assert!(stdout.contains("3.98.2"), "stdout:\n{stdout}");
+    assert!(!stdout.contains("2.9.0"), "stdout:\n{stdout}");
 
     let _ = fs::remove_dir_all(&scratch.root);
 }

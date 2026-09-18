@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::read_to_string;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -47,7 +47,7 @@ pub trait PythonEnvScheme: DefaultColors {
 
 impl<S: PythonEnvScheme> Default for PythonEnv<S> {
     fn default() -> Self {
-        Self::new(false, true)
+        Self::new(true, true)
     }
 }
 
@@ -67,8 +67,69 @@ const PYTHON_LOGO: &str = "\u{e73c}";
 const SNAKE_ICON: &str = "\u{f150e}";
 const LOADING_MARKER: &str = "\u{2026}";
 
-/// The version reported by one interpreter. Asking `python` is the slow step in
-/// this module, so the answer is cached and refreshed in the background.
+/// The version a virtual env was created from, read from the files the env
+/// tooling leaves behind, so the interpreter never has to start.
+///
+/// `pyvenv.cfg` is written by the stdlib `venv` module (`version`), uv
+/// (`version_info`) and virtualenv (both). Conda envs have no `pyvenv.cfg`
+/// but record the package in `conda-meta/python-<version>-<build>.json`.
+fn version_from_env_files(venv: &Path) -> Option<String> {
+    if let Ok(cfg) = fs::read_to_string(venv.join("pyvenv.cfg")) {
+        if let Some(version) = parse_pyvenv_cfg(&cfg) {
+            return Some(version);
+        }
+    }
+
+    fs::read_dir(venv.join("conda-meta"))
+        .ok()?
+        .flatten()
+        .find_map(|entry| conda_python_version(&entry.file_name().to_string_lossy()))
+}
+
+fn parse_pyvenv_cfg(contents: &str) -> Option<String> {
+    let mut version = None;
+    for line in contents.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            // virtualenv writes both keys; `version_info` is the more precise
+            // one (`3.13.8.final.0`), so it wins when present.
+            "version_info" => return release_version(value),
+            "version" => version = release_version(value),
+            _ => {}
+        }
+    }
+    version
+}
+
+/// `python-3.13.8-h1234abc_0.json` -> `3.13.8`. Other conda packages whose
+/// names merely start with `python` (`python-dateutil`, `python_abi`) do not
+/// have a digit straight after the dash.
+fn conda_python_version(file_name: &str) -> Option<String> {
+    let rest = file_name.strip_prefix("python-")?.strip_suffix(".json")?;
+    let (version, _build) = rest.split_once('-')?;
+    release_version(version)
+}
+
+/// The leading `major.minor.micro` of a version string, dropping any release
+/// level suffix such as `.final.0`.
+fn release_version(value: &str) -> Option<String> {
+    let value = value.trim();
+    let numeric: &str = value
+        .split(|c: char| !c.is_ascii_digit() && c != '.')
+        .next()?;
+    let parts = numeric
+        .split('.')
+        .filter(|part| !part.is_empty())
+        .take(3)
+        .collect::<Vec<_>>();
+    (!parts.is_empty() && parts[0].chars().all(|c| c.is_ascii_digit())).then(|| parts.join("."))
+}
+
+/// The version reported by one interpreter, for envs without a readable
+/// `pyvenv.cfg` or `conda-meta`. Asking `python` is the slow step in this
+/// module, so the answer is cached and refreshed in the background.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PythonVersion {
     pub interpreter: PathBuf,
@@ -142,11 +203,17 @@ impl<S: PythonEnvScheme> Module for PythonEnv<S> {
             powerline.add_short_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
 
             if self.show_version {
-                let interpreter = interpreter_for(Path::new(&venv_path));
-                let version = match Cached::new(PythonVersion { interpreter }).load() {
-                    Lookup::Ready(version) => version,
-                    Lookup::Loading => LOADING_MARKER.to_string(),
-                    Lookup::Unavailable => return,
+                let venv_dir = Path::new(&venv_path);
+                let version = match version_from_env_files(venv_dir) {
+                    Some(version) => version,
+                    None => {
+                        let interpreter = interpreter_for(venv_dir);
+                        match Cached::new(PythonVersion { interpreter }).load() {
+                            Lookup::Ready(version) => version,
+                            Lookup::Loading => LOADING_MARKER.to_string(),
+                            Lookup::Unavailable => return,
+                        }
+                    }
                 };
                 powerline.add_segment(version, Style::simple(S::pyver_fg(), S::pyver_bg()));
             }
@@ -184,6 +251,34 @@ impl<S: PythonEnvScheme> Module for PythonEnv<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pyvenv_cfg_from_each_tool_yields_the_release_version() {
+        let uv = "home = /x/bin\nimplementation = CPython\nversion_info = 3.13.8\n";
+        let stdlib = "home = /x/bin\ninclude-system-site-packages = false\nversion = 3.14.7\n";
+        let virtualenv = "version_info = 3.13.8.final.0\nversion = 3.13.8\n";
+        let prerelease = "version = 3.15.0rc1\n";
+        assert_eq!(parse_pyvenv_cfg(uv).as_deref(), Some("3.13.8"));
+        assert_eq!(parse_pyvenv_cfg(stdlib).as_deref(), Some("3.14.7"));
+        assert_eq!(parse_pyvenv_cfg(virtualenv).as_deref(), Some("3.13.8"));
+        assert_eq!(parse_pyvenv_cfg(prerelease).as_deref(), Some("3.15.0"));
+        assert_eq!(parse_pyvenv_cfg("home = /x/bin\n"), None);
+        assert_eq!(parse_pyvenv_cfg("version = \n"), None);
+    }
+
+    #[test]
+    fn conda_meta_python_package_yields_its_version() {
+        assert_eq!(
+            conda_python_version("python-3.13.8-h1234abc_0.json").as_deref(),
+            Some("3.13.8")
+        );
+        assert_eq!(
+            conda_python_version("python-dateutil-2.9.0-py_0.json"),
+            None
+        );
+        assert_eq!(conda_python_version("python_abi-3.13-5_cp313.json"), None);
+        assert_eq!(conda_python_version("history"), None);
+    }
 
     #[test]
     fn interpreter_version_output_is_trimmed_and_empty_output_is_a_failure() {
