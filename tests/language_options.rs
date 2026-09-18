@@ -251,26 +251,26 @@ fn mise_rust_wins_over_a_rust_toolchain_file() {
 }
 
 #[test]
-fn python_version_is_off_by_default_and_can_be_shown() {
+fn python_version_is_on_by_default_and_can_be_hidden() {
     let mise = "[tools]\npython = \"3.13.3\"\n";
 
-    let hidden = render("python-default", r#""python_env""#, mise, &[]);
+    let shown = render("python-default", r#""python_env""#, mise, &[]);
+    assert_shown(
+        &shown,
+        &format!("{MISE_ICON} {PYTHON_ICON} 3.13.3"),
+        "the python version in the same segment as the icon",
+    );
+
+    let hidden = render(
+        "python-no-version",
+        r#"{ "python_env": { "version": false } }"#,
+        mise,
+        &[],
+    );
     assert_shown(
         &hidden,
         &format!("{MISE_ICON} {PYTHON_ICON}"),
         "the mise marker and python icon",
     );
     assert_hidden(&hidden, "3.13.3", "the python version");
-
-    let shown = render(
-        "python-version",
-        r#"{ "python_env": { "version": true } }"#,
-        mise,
-        &[],
-    );
-    assert_shown(
-        &shown,
-        &format!("{MISE_ICON} {PYTHON_ICON} 3.13.3"),
-        "the python version in the same segment as the icon",
-    );
 }

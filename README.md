@@ -315,8 +315,8 @@ If the CLI is installed but not logged in it shows a logged-out user icon (``) u
 
 `python_env`, `nvm`, `java` and `cargo` share one behaviour and differ only in how they detect a project and
 which files can pin a version. Each shows its language icon when the current directory belongs to a project, and
-adds the version when one is pinned. Every one takes a `version` option; it defaults to `true` except for
-`python_env`, and setting it to `false` leaves just the icon.
+adds the version when one is pinned. Every one takes a `version` option; it defaults to `true`, and setting it to
+`false` leaves just the icon.
 
 ```json
 { "nvm": { "version": false } }
@@ -340,8 +340,10 @@ one is pinned.
 - **Detects** an active virtual env (venv, conda or mamba), or a directory pinned by `.python-version` or containing
   a `pyproject.toml`.
 - **Shows** the virtual env name when one is active; `venv: false` hides it.
-- **`version`** defaults to `false`. Inside a venv it reports the active interpreter, which means spawning `python`
-  on every prompt; outside one it reports the pinned version.
+- **`version`** defaults to `true`. Inside a venv it reports the interpreter the env was built from, read from the
+  env's `pyvenv.cfg` (venv, uv, virtualenv) or `conda-meta`. An env with neither is asked directly: the interpreter
+  runs in the background and its answer is cached, with `…` shown until it lands. Outside a venv it reports the
+  pinned version.
 
 ```json
 { "python_env": { "version": true, "venv": false } }

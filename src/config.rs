@@ -49,9 +49,10 @@ pub enum LineSegment {
         status: bool,
     },
     PythonEnv {
-        /// Show the interpreter version. Off by default: inside a virtual env
-        /// it means spawning `python` on every prompt.
-        #[serde(default)]
+        /// Show the interpreter version. On by default: inside a virtual env
+        /// it is read from the env's own files, and only envs without them ask
+        /// the interpreter in the background and cache the answer.
+        #[serde(default = "default_true")]
         version: bool,
         /// Show the active virtual env name. On by default.
         #[serde(default = "default_true")]
@@ -159,7 +160,7 @@ enum KnownLineSegment {
         status: bool,
     },
     PythonEnv {
-        #[serde(default)]
+        #[serde(default = "default_true")]
         version: bool,
         #[serde(default = "default_true")]
         venv: bool,
@@ -485,7 +486,7 @@ impl Default for Config {
                             jdk: true,
                         },
                         LineSegment::PythonEnv {
-                            version: false,
+                            version: true,
                             venv: true,
                         },
                         LineSegment::Cargo { version: true },
@@ -756,7 +757,7 @@ mod tests {
             (
                 r#""python_env""#,
                 LineSegment::PythonEnv {
-                    version: false,
+                    version: true,
                     venv: true,
                 },
             ),
