@@ -1,15 +1,8 @@
 use std::cmp::Ordering;
-use std::collections::hash_map::DefaultHasher;
 use std::env;
 use std::fmt::Write;
-use std::fs::{self, File};
-use std::hash::{Hash, Hasher};
-use std::io::Write as _;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::thread;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -24,6 +17,7 @@ use libgit as internal;
 #[cfg(not(any(feature = "libgit", feature = "gitoxide")))]
 use process as internal;
 
+use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::config::DEFAULT_GIT_STATUS_TIMEOUT_MS;
 use crate::themes::DefaultColors;
@@ -170,133 +164,26 @@ const GITHUB_LOGO: &str = "\u{e709}";
 const GIT_ICON: &str = "\u{e0a0}";
 const WORKTREE_ICON: &str = "\u{f1bb}";
 
-const REFRESH_DEBOUNCE: Duration = Duration::from_secs(20);
-
-enum GitRender {
-    Ready(GitStats),
-    Loading,
-    Unavailable,
+/// Git status for one repository. The status walk is always attempted live
+/// (see [`Git::with_status_timeout`]); the cache only stands in when it takes
+/// too long, so a cached value is never considered fresh.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct GitStatus {
+    pub git_dir: PathBuf,
 }
 
-fn run_git_with_timeout<F, R>(
-    git_dir: PathBuf,
-    cache_path: Option<PathBuf>,
-    timeout: Duration,
-    run_git: F,
-    refresh: R,
-) -> GitRender
-where
-    F: FnOnce(&Path) -> GitStats + Send + 'static,
-    R: FnOnce(&Path, &Path),
-{
-    let refresh_dir = git_dir.clone();
-    let (sender, receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let stats = run_git(&git_dir);
-        let _ = sender.send(stats);
-    });
+impl Source for GitStatus {
+    type Value = GitStats;
+    const KIND: &'static str = "git";
+    const TTL: Duration = Duration::ZERO;
 
-    match receiver.recv_timeout(timeout) {
-        Ok(stats) => {
-            if let Some(path) = cache_path {
-                write_cache(&path, &stats);
-            }
-            GitRender::Ready(stats)
-        }
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            if let Some(path) = cache_path.as_deref() {
-                refresh(&refresh_dir, path);
-            }
-            cache_path
-                .as_deref()
-                .and_then(read_cache)
-                .map(GitRender::Ready)
-                .unwrap_or(GitRender::Loading)
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => cache_path
-            .as_deref()
-            .and_then(read_cache)
-            .map(GitRender::Ready)
-            .unwrap_or(GitRender::Unavailable),
-    }
-}
-
-fn cache_path_for(repo_root: &Path) -> Option<PathBuf> {
-    let base = crate::platform::cache_dir()?;
-    let mut hasher = DefaultHasher::new();
-    repo_root.hash(&mut hasher);
-
-    Some(
-        base.join("superline")
-            .join(format!("git-{:016x}.json", hasher.finish())),
-    )
-}
-
-fn read_cache(path: &Path) -> Option<GitStats> {
-    serde_json::from_reader(File::open(path).ok()?).ok()
-}
-
-fn write_cache(path: &Path, stats: &GitStats) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+    fn cache_id(&self) -> String {
+        hash_id(&self.git_dir)
     }
 
-    let tmp = path.with_extension("tmp");
-    if let Ok(mut file) = File::create(&tmp) {
-        if serde_json::to_writer(&mut file, stats).is_ok() && file.flush().is_ok() {
-            let _ = fs::rename(&tmp, path);
-        }
+    fn fetch(&self) -> Option<GitStats> {
+        Some(internal::run_git(&self.git_dir))
     }
-}
-
-fn refresh_in_flight(lock_path: &Path) -> bool {
-    fs::metadata(lock_path)
-        .and_then(|meta| meta.modified())
-        .ok()
-        .and_then(|modified| modified.elapsed().ok())
-        .is_some_and(|elapsed| elapsed < REFRESH_DEBOUNCE)
-}
-
-fn spawn_refresh(repo_root: &Path, cache_path: &Path) {
-    let lock_path = cache_path.with_extension("lock");
-    if refresh_in_flight(&lock_path) {
-        return;
-    }
-
-    if let Some(parent) = cache_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let _ = File::create(&lock_path);
-
-    let Ok(exe) = env::current_exe() else {
-        let _ = fs::remove_file(&lock_path);
-        return;
-    };
-
-    if Command::new(exe)
-        .arg("refresh-git")
-        .arg("--repo-dir")
-        .arg(repo_root)
-        .arg("--cache")
-        .arg(cache_path)
-        .current_dir(repo_root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .is_err()
-    {
-        let _ = fs::remove_file(lock_path);
-    }
-}
-
-/// Performs a blocking git status refresh and updates the cache. Invoked by the
-/// hidden `refresh-git` subcommand in a detached process after rendering times
-/// out, so the result is available to a later prompt.
-pub fn refresh_git(repo_dir: &Path, cache_path: &Path) {
-    let stats = internal::run_git(repo_dir);
-    write_cache(cache_path, &stats);
-    let _ = fs::remove_file(cache_path.with_extension("lock"));
 }
 
 impl<S: GitScheme> Module for Git<S> {
@@ -306,24 +193,18 @@ impl<S: GitScheme> Module for Git<S> {
             _ => return,
         };
 
-        let cache_path = cache_path_for(&git_dir);
         let icon = if is_worktree { WORKTREE_ICON } else { GIT_ICON };
-        let stats = match run_git_with_timeout(
-            git_dir,
-            cache_path,
-            self.status_timeout,
-            internal::run_git,
-            spawn_refresh,
-        ) {
-            GitRender::Ready(stats) => stats,
-            GitRender::Loading => {
+        let stats = match Cached::new(GitStatus { git_dir }).load_with_timeout(self.status_timeout)
+        {
+            Lookup::Ready(stats) => stats,
+            Lookup::Loading => {
                 powerline.add_segment(
                     format!("{icon} loading…"),
                     Style::simple(S::git_repo_clean_fg(), S::git_repo_clean_bg()),
                 );
                 return;
             }
-            GitRender::Unavailable => return,
+            Lookup::Unavailable => return,
         };
 
         let (branch_fg, branch_bg) = if stats.is_dirty() {
@@ -393,117 +274,5 @@ impl<S: GitScheme> Module for Git<S> {
                 Style::simple(S::git_remote_fg(), S::git_remote_bg()),
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::cell::Cell;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU32, Ordering};
-    use std::thread;
-    use std::time::Duration;
-
-    use super::{read_cache, run_git_with_timeout, write_cache, GitRender, GitStats};
-
-    fn unique_temp_dir() -> PathBuf {
-        static COUNTER: AtomicU32 = AtomicU32::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("superline-git-{}-{n}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    fn stats(branch_name: &str) -> GitStats {
-        GitStats {
-            untracked: 0,
-            conflicted: 0,
-            non_staged: 0,
-            ahead: 0,
-            behind: 0,
-            staged: 0,
-            remote: false,
-            branch_name: branch_name.to_owned(),
-        }
-    }
-
-    #[test]
-    fn fresh_git_stats_are_returned_and_cached() {
-        let dir = unique_temp_dir();
-        let cache = dir.join("git.json");
-        write_cache(&cache, &stats("stale"));
-
-        let result = run_git_with_timeout(
-            PathBuf::new(),
-            Some(cache.clone()),
-            Duration::from_secs(1),
-            |_| stats("fresh"),
-            |_, _| panic!("a fast render must not start a background refresh"),
-        );
-
-        let GitRender::Ready(result) = result else {
-            panic!("fresh git stats should render");
-        };
-        assert_eq!(result.branch_name, "fresh");
-        assert_eq!(read_cache(&cache).unwrap().branch_name, "fresh");
-
-        fs::remove_dir_all(dir).ok();
-    }
-
-    #[test]
-    fn cached_git_stats_are_returned_when_rendering_times_out() {
-        let dir = unique_temp_dir();
-        let cache = dir.join("git.json");
-        write_cache(&cache, &stats("cached"));
-        let refresh_started = Cell::new(false);
-
-        let result = run_git_with_timeout(
-            PathBuf::new(),
-            Some(cache.clone()),
-            Duration::from_millis(10),
-            |_| {
-                thread::sleep(Duration::from_millis(100));
-                stats("fresh")
-            },
-            |_, path| {
-                assert_eq!(path, cache);
-                refresh_started.set(true);
-            },
-        );
-
-        let GitRender::Ready(result) = result else {
-            panic!("cached git stats should render");
-        };
-        assert_eq!(result.branch_name, "cached");
-        assert!(refresh_started.get());
-
-        fs::remove_dir_all(dir).ok();
-    }
-
-    #[test]
-    fn git_module_shows_loading_while_first_background_refresh_runs() {
-        let dir = unique_temp_dir();
-        let cache = dir.join("git.json");
-        let refresh_started = Cell::new(false);
-
-        let result = run_git_with_timeout(
-            PathBuf::new(),
-            Some(cache.clone()),
-            Duration::from_millis(10),
-            |_| {
-                thread::sleep(Duration::from_millis(100));
-                stats("fresh")
-            },
-            |_, path| {
-                assert_eq!(path, cache);
-                refresh_started.set(true);
-            },
-        );
-
-        assert!(matches!(result, GitRender::Loading));
-        assert!(refresh_started.get());
-
-        fs::remove_dir_all(dir).ok();
     }
 }

@@ -1,27 +1,16 @@
-use std::collections::hash_map::DefaultHasher;
-use std::env;
-use std::fs::{self, File};
-use std::hash::{Hash, Hasher};
-use std::io::Write as _;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::process::Command;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
 use super::Module;
-
-/// How long a cached lookup stays fresh. Prompts rendered within this window
-/// reuse the cache and never touch the network.
-const CACHE_TTL: Duration = Duration::from_secs(60);
-/// Debounce window for the background refresher, so several prompts rendered in
-/// quick succession don't each spawn their own `gh` process.
-const REFRESH_DEBOUNCE: Duration = Duration::from_secs(20);
 
 /// Branches that never have a PR of their own - skip all work for these.
 const SKIP_BRANCHES: &[&str] = &["develop", "main", "master", "HEAD"];
@@ -92,7 +81,7 @@ impl<S: PrScheme> Pr<S> {
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
-enum PrState {
+pub enum PrState {
     Draft,
     Open,
     Merged,
@@ -121,7 +110,7 @@ impl PrState {
 /// and status contexts reported by GitHub.
 #[derive(Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
-enum CheckStatus {
+pub enum CheckStatus {
     Success,
     Failure,
     Pending,
@@ -140,7 +129,7 @@ impl CheckStatus {
 }
 
 #[derive(Serialize, Deserialize)]
-struct PrInfo {
+pub struct PrInfo {
     number: u64,
     url: String,
     state: PrState,
@@ -151,13 +140,31 @@ struct PrInfo {
     checks: Option<CheckStatus>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct PrCache {
-    branch: String,
+/// The PR for one branch of one repository, looked up through `gh`.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrLookup {
+    pub branch: String,
+    pub repo_root: PathBuf,
+}
+
+impl Source for PrLookup {
     /// `None` means "looked up, but no PR exists for this branch" - cached so we
     /// don't re-query on every prompt.
-    pr: Option<PrInfo>,
-    fetched_at: u64,
+    type Value = Option<PrInfo>;
+    const KIND: &'static str = "pr";
+    /// Prompts rendered within this window reuse the cache and never touch the
+    /// network.
+    const TTL: Duration = Duration::from_secs(60);
+
+    fn cache_id(&self) -> String {
+        hash_id(&(&self.repo_root, &self.branch))
+    }
+
+    /// Always fetches the check status too - rendering it is a display-time
+    /// choice, so the cache stays the same regardless of config.
+    fn fetch(&self) -> Option<Option<PrInfo>> {
+        Some(fetch_pr(&self.branch, &self.repo_root))
+    }
 }
 
 impl<S: PrScheme> Module for Pr<S> {
@@ -169,38 +176,28 @@ impl<S: PrScheme> Module for Pr<S> {
             return;
         }
 
-        // Without a cache directory we'd have to fetch synchronously, which
-        // could block the prompt on a network request - so bail instead.
-        let Some(cache_path) = cache_path_for(&repo_root, &branch) else {
+        // Render whatever we have right now (possibly slightly stale); a
+        // missing or stale lookup is refreshed for a later prompt. There is no
+        // loading state: the segment simply appears once the result is in.
+        let Lookup::Ready(Some(pr)) = Cached::new(PrLookup { branch, repo_root }).load() else {
             return;
         };
 
-        let cache = read_cache(&cache_path).filter(|c| c.branch == branch);
+        let label = format!("{} #{}", S::pr_icon(), pr.number);
+        let (fg, bg) = pr.state.style::<S>();
 
-        // Refresh in the background when the cache is missing or stale. This
-        // never blocks rendering - the result is picked up by a later prompt.
-        if cache.as_ref().is_none_or(|c| is_stale(c.fetched_at)) {
-            spawn_refresh(&branch, &repo_root, &cache_path);
-        }
+        // The CI status, when enabled and meaningful, renders as a coloured
+        // dot tucked into the same segment right after the PR number. It's
+        // only shown while a PR is still in progress - the checks are stale
+        // or irrelevant once a PR is merged or closed.
+        let marker = (self.show_status && pr.state.is_open())
+            .then(|| {
+                pr.checks
+                    .map(|status| (S::pr_status_icon(), status.fg::<S>()))
+            })
+            .flatten();
 
-        // Render whatever we have right now (possibly slightly stale).
-        if let Some(PrCache { pr: Some(pr), .. }) = cache {
-            let label = format!("{} #{}", S::pr_icon(), pr.number);
-            let (fg, bg) = pr.state.style::<S>();
-
-            // The CI status, when enabled and meaningful, renders as a coloured
-            // dot tucked into the same segment right after the PR number. It's
-            // only shown while a PR is still in progress - the checks are stale
-            // or irrelevant once a PR is merged or closed.
-            let marker = (self.show_status && pr.state.is_open())
-                .then(|| {
-                    pr.checks
-                        .map(|status| (S::pr_status_icon(), status.fg::<S>()))
-                })
-                .flatten();
-
-            powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
-        }
+        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
     }
 }
 
@@ -226,91 +223,6 @@ fn current_branch_and_root() -> Option<(String, PathBuf)> {
     }
 
     Some((branch, PathBuf::from(root)))
-}
-
-fn cache_path_for(repo_root: &Path, branch: &str) -> Option<PathBuf> {
-    let base = crate::platform::cache_dir()?;
-
-    let mut hasher = DefaultHasher::new();
-    repo_root.hash(&mut hasher);
-    branch.hash(&mut hasher);
-
-    Some(
-        base.join("superline")
-            .join(format!("pr-{:016x}.json", hasher.finish())),
-    )
-}
-
-fn read_cache(path: &Path) -> Option<PrCache> {
-    serde_json::from_reader(File::open(path).ok()?).ok()
-}
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
-fn is_stale(fetched_at: u64) -> bool {
-    now_secs().saturating_sub(fetched_at) >= CACHE_TTL.as_secs()
-}
-
-/// True if a refresh was kicked off recently enough that we should let it
-/// finish rather than spawning another one.
-fn refresh_in_flight(lock_path: &Path) -> bool {
-    fs::metadata(lock_path)
-        .and_then(|meta| meta.modified())
-        .ok()
-        .and_then(|modified| modified.elapsed().ok())
-        .is_some_and(|elapsed| elapsed < REFRESH_DEBOUNCE)
-}
-
-/// Spawns a detached process to refresh the cache. The child's stdio is
-/// redirected to null so the shell's command substitution doesn't block
-/// waiting on the inherited pipe.
-fn spawn_refresh(branch: &str, repo_root: &Path, cache_path: &Path) {
-    let lock_path = cache_path.with_extension("lock");
-    if refresh_in_flight(&lock_path) {
-        return;
-    }
-
-    if let Some(parent) = cache_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    // Touch the lock up front to debounce concurrent prompts.
-    let _ = File::create(&lock_path);
-
-    let Ok(exe) = env::current_exe() else {
-        return;
-    };
-
-    let _ = Command::new(exe)
-        .arg("refresh-pr")
-        .args(["--branch", branch])
-        .arg("--repo-dir")
-        .arg(repo_root)
-        .arg("--cache")
-        .arg(cache_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-}
-
-/// Performs the blocking `gh` lookup and writes the cache. Invoked by the
-/// hidden `refresh-pr` subcommand from the detached process spawned above.
-/// Always fetches the check status too - rendering it is a display-time choice,
-/// so the cache stays the same regardless of config.
-pub fn refresh_pr(branch: &str, repo_dir: &Path, cache_path: &Path) {
-    let cache = PrCache {
-        branch: branch.to_string(),
-        pr: fetch_pr(branch, repo_dir),
-        fetched_at: now_secs(),
-    };
-
-    write_cache(cache_path, &cache);
-    let _ = fs::remove_file(cache_path.with_extension("lock"));
 }
 
 fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
@@ -436,21 +348,6 @@ struct GhPr {
     is_draft: bool,
     #[serde(rename = "statusCheckRollup", default)]
     status_check_rollup: Vec<CheckItem>,
-}
-
-fn write_cache(path: &Path, cache: &PrCache) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-
-    // Write to a temp file and rename so a concurrent reader never sees a
-    // half-written cache.
-    let tmp = path.with_extension("tmp");
-    if let Ok(mut file) = File::create(&tmp) {
-        if serde_json::to_writer(&mut file, cache).is_ok() && file.flush().is_ok() {
-            let _ = fs::rename(&tmp, path);
-        }
-    }
 }
 
 #[cfg(test)]
