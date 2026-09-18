@@ -10,8 +10,7 @@ use std::{env, io};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
-use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata, UsageProvider};
-use superline::modules::{refresh_git, refresh_pr, refresh_usage};
+use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
 use superline::Powerline;
@@ -189,18 +188,11 @@ enum PowerlineArgs {
     /// Remove all cached data (git status, PR lookups, AI usage) so the next
     /// prompt starts from a cold cache.
     ClearCaches,
-    /// Internal: refresh the cached PR lookup for a branch. Spawned in the
-    /// background by the `pr` module - not intended to be called by hand.
+    /// Internal: refresh one cached lookup (git status, PR, AI usage, ...).
+    /// Spawned in the background by `superline::cache` - not intended to be
+    /// called by hand.
     #[command(hide = true)]
-    RefreshPr(RefreshPrArgs),
-    /// Internal: refresh cached git status after a render timeout. Spawned in
-    /// the background by the `git` module - not intended to be called by hand.
-    #[command(hide = true)]
-    RefreshGit(RefreshGitArgs),
-    /// Internal: refresh cached Claude/Codex usage. Spawned in the background
-    /// by the `ai_usage` module - not intended to be called by hand.
-    #[command(hide = true)]
-    RefreshUsage(RefreshUsageArgs),
+    Refresh(RefreshArgs),
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -250,29 +242,11 @@ struct ShowArgs {
 }
 
 #[derive(Debug, Args)]
-struct RefreshPrArgs {
-    #[arg(long)]
-    branch: String,
-    #[arg(long)]
-    repo_dir: PathBuf,
-    #[arg(long)]
-    cache: PathBuf,
-}
-
-#[derive(Debug, Args)]
-struct RefreshGitArgs {
-    #[arg(long)]
-    repo_dir: PathBuf,
-    #[arg(long)]
-    cache: PathBuf,
-}
-
-#[derive(Debug, Args)]
-struct RefreshUsageArgs {
-    #[arg(long)]
-    provider: String,
-    #[arg(long)]
-    cache: PathBuf,
+struct RefreshArgs {
+    /// The `Source::KIND` to refresh.
+    kind: String,
+    /// The source's parameters as JSON.
+    source: String,
 }
 
 #[derive(Debug, Args)]
@@ -311,15 +285,8 @@ fn main() {
         PowerlineArgs::Install(args) => install(args),
         PowerlineArgs::Config => open_config(),
         PowerlineArgs::ClearCaches => clear_caches(),
-        PowerlineArgs::RefreshPr(args) => refresh_pr(&args.branch, &args.repo_dir, &args.cache),
-        PowerlineArgs::RefreshGit(args) => refresh_git(&args.repo_dir, &args.cache),
-        PowerlineArgs::RefreshUsage(args) => {
-            let provider = match args.provider.as_str() {
-                "claude" => UsageProvider::Claude,
-                "codex" => UsageProvider::Codex,
-                _ => return,
-            };
-            refresh_usage(provider, &args.cache);
+        PowerlineArgs::Refresh(args) => {
+            superline::modules::run_refresh(&args.kind, &args.source);
         }
     }
 }

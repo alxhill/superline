@@ -6,6 +6,10 @@
   Without the label the release PR stays open until merged by hand.
 - When adding a new widget, add it to `Config::default()` in `src/config.rs` so
   a fresh install shows it.
+- When a widget needs a slow lookup (network, big directory walk), implement
+  `cache::Source` in `src/cache.rs` for it, render through `Cached::load` (or
+  `load_with_timeout`), and register the type in `modules::run_refresh`. Do not
+  hand-roll cache files or background processes.
 - Once a change is ready, run `cargo install --path .` so it is available for
   manual testing.
 - Run `superline clear-caches` to wipe all cached data (git status, PR lookups,

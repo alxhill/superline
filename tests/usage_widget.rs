@@ -16,14 +16,14 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
     fs::write(
         cache_dir.join("usage-claude.json"),
         format!(
-            r#"{{"session":12.4,"weekly":67.8,"fable":33.3,"credits":{{"used":12.5,"limit":500.0,"unit":"dollars"}},"fetched_at":{fetched_at}}}"#
+            r#"{{"fetched_at":{fetched_at},"value":{{"session":12.4,"weekly":67.8,"fable":33.3,"credits":{{"used":12.5,"limit":500.0,"unit":"dollars"}}}}}}"#
         ),
     )
     .expect("write Claude cache");
     fs::write(
         cache_dir.join("usage-codex.json"),
         format!(
-            r#"{{"session":100.0,"weekly":80.0,"credits":{{"used":410.78,"limit":12000.0,"unit":"count"}},"fetched_at":{fetched_at}}}"#
+            r#"{{"fetched_at":{fetched_at},"value":{{"session":100.0,"weekly":80.0,"credits":{{"used":410.78,"limit":12000.0,"unit":"count"}}}}}}"#
         ),
     )
     .expect("write Codex cache");
@@ -166,7 +166,9 @@ fn usage_widget_shows_a_logged_out_provider_instead_of_loading() {
     // What a refresh writes after `claude auth status` reports no account.
     fs::write(
         cache_dir.join("usage-claude.json"),
-        format!(r#"{{"session":null,"weekly":null,"logged_out":true,"fetched_at":{fetched_at}}}"#),
+        format!(
+            r#"{{"fetched_at":{fetched_at},"value":{{"session":null,"weekly":null,"logged_out":true}}}}"#
+        ),
     )
     .expect("write Claude cache");
 
