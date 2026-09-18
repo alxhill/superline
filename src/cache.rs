@@ -29,8 +29,10 @@
 //! [`Cached::load`] never blocks: it serves whatever is on disk and, when that
 //! is missing or older than [`Source::TTL`], re-executes the `superline` binary
 //! with the hidden `refresh` subcommand to fetch a new value for a later
-//! prompt. [`Cached::load_with_timeout`] instead tries the fetch inline first
-//! and only falls back to the cache when it takes too long.
+//! prompt. [`Cached::load_with_timeout`] does the same but is willing to wait
+//! a little for that refresh, so a fast fetch still lands on the current
+//! prompt. The fetch itself only ever runs in the child, so a prompt that
+//! gives up waiting never wastes or duplicates its work.
 //!
 //! Every [`Source`] has to be registered in [`crate::modules::run_refresh`] so
 //! the child process can find it by [`Source::KIND`].
@@ -40,9 +42,8 @@ use std::fs::{self, File, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -52,6 +53,9 @@ const MAX_CACHE_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 /// Rendering happens frequently, so avoid walking the cache directory each time.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const PRUNE_MARKER: &str = ".last-pruned";
+/// How often [`Cached::load_with_timeout`] checks whether the refresh it is
+/// waiting on has finished. A `stat` per tick keeps the wait cheap.
+const REFRESH_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 /// A slow lookup whose result is served from an on-disk cache.
 ///
@@ -88,8 +92,7 @@ pub trait Source: Serialize + DeserializeOwned {
         true
     }
 
-    /// The slow part. Runs in the detached child (or, for
-    /// [`Cached::load_with_timeout`], on a helper thread). Returning `None`
+    /// The slow part. Only ever runs in the detached child. Returning `None`
     /// leaves the previous cached value in place.
     fn fetch(&self) -> Option<Self::Value>;
 }
@@ -203,36 +206,42 @@ impl<S: Source> Cached<S> {
         }
     }
 
-    /// Runs the fetch inline, giving up after `timeout`. A fetch that finishes
-    /// in time is cached and returned. One that does not is handed to a
-    /// background refresh while the cached value (if any) is served instead.
-    pub fn load_with_timeout(&self, timeout: Duration) -> Lookup<S::Value>
-    where
-        S: Clone + Send + 'static,
-        S::Value: Send + 'static,
-    {
-        let source = self.source.clone();
-        let (sender, receiver) = mpsc::sync_channel(1);
-        thread::spawn(move || {
-            let _ = sender.send(source.fetch());
-        });
+    /// Like [`load`](Self::load), but waits up to `timeout` for the refresh
+    /// it starts (or finds already running) to finish, so a quick fetch is
+    /// served fresh on this prompt. When the wait runs out the cached value,
+    /// if any, is served instead and the child carries on for the next
+    /// prompt.
+    pub fn load_with_timeout(&self, timeout: Duration) -> Lookup<S::Value> {
+        let cached = match self.read() {
+            Some(entry) if !entry.is_stale(S::TTL) => return Lookup::Ready(entry.value),
+            entry => entry,
+        };
+        let Some(path) = &self.path else {
+            return Lookup::Unavailable;
+        };
+        if cached.is_none() && !self.source.fetchable() {
+            return Lookup::Unavailable;
+        }
+        if !self.refresh_in_background() {
+            return cached
+                .map(|entry| Lookup::Ready(entry.value))
+                .unwrap_or(Lookup::Unavailable);
+        }
 
-        match receiver.recv_timeout(timeout) {
-            Ok(Some(value)) => {
-                self.write(&value);
-                Lookup::Ready(value)
+        // The child releases the refresh slot only after it has written the
+        // cache, so the marker vanishing is the completion signal. This also
+        // covers a refresh another prompt started moments ago.
+        let marker = marker_path(path);
+        let deadline = Instant::now() + timeout;
+        loop {
+            if !marker.exists() {
+                return self.cached_or(Lookup::Unavailable);
             }
-            Ok(None) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.cached_or(Lookup::Unavailable)
+            let now = Instant::now();
+            if now >= deadline {
+                return self.cached_or(Lookup::Loading);
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                let fallback = if self.refresh_in_background() {
-                    Lookup::Loading
-                } else {
-                    Lookup::Unavailable
-                };
-                self.cached_or(fallback)
-            }
+            thread::sleep(REFRESH_POLL_INTERVAL.min(deadline - now));
         }
     }
 
@@ -455,11 +464,18 @@ mod tests {
 
     static SPAWNED: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 
+    /// Stands in for re-executing the binary: records the spawn, then runs the
+    /// probe's refresh on a thread exactly as the child process would.
     pub(super) fn record_spawn(kind: &str, source: &str) -> bool {
         SPAWNED
             .lock()
             .unwrap()
             .push((kind.to_string(), source.to_string()));
+        if kind == Probe::KIND {
+            let probe: Probe = serde_json::from_str(source).unwrap();
+            let dir = probe.dir.clone();
+            thread::spawn(move || Cached::in_dir(probe, Some(dir)).refresh_now());
+        }
         true
     }
 
@@ -492,7 +508,8 @@ mod tests {
 
     /// A lookup whose fetch takes `delay_ms` and yields `result` (or `None`
     /// when `fails`). `kind` doubles as the test's name so recorded spawns can
-    /// be told apart across tests running in parallel.
+    /// be told apart across tests running in parallel, and `dir` tells the
+    /// fake child which cache directory to refresh into.
     #[derive(Clone, Serialize, Deserialize)]
     struct Probe {
         kind: String,
@@ -500,23 +517,25 @@ mod tests {
         delay_ms: u64,
         fails: bool,
         fetchable: bool,
+        dir: PathBuf,
     }
 
     impl Probe {
-        fn instant(kind: &str, result: &str) -> Self {
+        fn instant(kind: &str, result: &str, dir: &Path) -> Self {
             Probe {
                 kind: kind.to_string(),
                 result: result.to_string(),
                 delay_ms: 0,
                 fails: false,
                 fetchable: true,
+                dir: dir.to_path_buf(),
             }
         }
 
-        fn slow(kind: &str, result: &str) -> Self {
+        fn slow(kind: &str, result: &str, dir: &Path) -> Self {
             Probe {
-                delay_ms: 200,
-                ..Self::instant(kind, result)
+                delay_ms: 300,
+                ..Self::instant(kind, result, dir)
             }
         }
     }
@@ -555,10 +574,23 @@ mod tests {
             .count()
     }
 
+    /// Waits for the fake child to finish, bounded so a broken test fails
+    /// rather than hangs.
+    fn wait_for_child(cached: &Cached<Probe>) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while marker_path(cached.path().unwrap()).exists() {
+            assert!(Instant::now() < deadline, "the fake child never finished");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[test]
     fn load_serves_a_fresh_value_without_refreshing() {
         let dir = unique_temp_dir("fresh");
-        let cached = Cached::in_dir(Probe::instant("load-fresh", "unused"), Some(dir.clone()));
+        let cached = Cached::in_dir(
+            Probe::instant("load-fresh", "unused", &dir),
+            Some(dir.clone()),
+        );
         write_entry(&cached, "cached", Duration::ZERO);
 
         assert_eq!(cached.load().ready().as_deref(), Some("cached"));
@@ -569,7 +601,7 @@ mod tests {
     #[test]
     fn load_serves_a_stale_value_and_refreshes_it_once() {
         let dir = unique_temp_dir("stale");
-        let cached = Cached::in_dir(Probe::instant("load-stale", "unused"), Some(dir.clone()));
+        let cached = Cached::in_dir(Probe::slow("load-stale", "new", &dir), Some(dir.clone()));
         write_entry(&cached, "old", Probe::TTL + Duration::from_secs(1));
 
         assert_eq!(cached.load().ready().as_deref(), Some("old"));
@@ -577,27 +609,25 @@ mod tests {
         assert_eq!(cached.load().ready().as_deref(), Some("old"));
         assert_eq!(spawned_probe_kinds("load-stale"), 1);
         assert!(marker_path(cached.path().unwrap()).exists());
+
+        wait_for_child(&cached);
+        assert_eq!(cached.load().ready().as_deref(), Some("new"));
         fs::remove_dir_all(dir).ok();
     }
 
     #[test]
     fn load_reports_loading_until_the_first_refresh_lands() {
         let dir = unique_temp_dir("loading");
-        let cached = Cached::in_dir(Probe::instant("load-loading", "first"), Some(dir.clone()));
+        let cached = Cached::in_dir(
+            Probe::slow("load-loading", "first", &dir),
+            Some(dir.clone()),
+        );
 
         assert!(matches!(cached.load(), Lookup::Loading));
-        let spawned = spawned_for(Probe::KIND);
-        let source = spawned
-            .iter()
-            .find(|source| serde_json::from_str::<Probe>(source).unwrap().kind == "load-loading")
-            .expect("the first load starts a refresh");
+        assert_eq!(spawned_probe_kinds("load-loading"), 1);
 
-        // Simulate the child: it deserialises the source and refreshes into the
-        // same directory.
-        let child: Probe = serde_json::from_str(source).unwrap();
-        assert!(Cached::in_dir(child, Some(dir.clone())).refresh_now());
+        wait_for_child(&cached);
         assert!(!marker_path(cached.path().unwrap()).exists());
-
         assert_eq!(cached.load().ready().as_deref(), Some("first"));
         fs::remove_dir_all(dir).ok();
     }
@@ -605,14 +635,22 @@ mod tests {
     #[test]
     fn unfetchable_sources_and_missing_cache_directories_are_unavailable() {
         let dir = unique_temp_dir("unavailable");
-        let mut probe = Probe::instant("load-unfetchable", "unused");
+        let mut probe = Probe::instant("load-unfetchable", "unused", &dir);
         probe.fetchable = false;
-        let cached = Cached::in_dir(probe, Some(dir.clone()));
+        let cached = Cached::in_dir(probe.clone(), Some(dir.clone()));
         assert!(matches!(cached.load(), Lookup::Unavailable));
+        assert!(matches!(
+            cached.load_with_timeout(Duration::from_millis(50)),
+            Lookup::Unavailable
+        ));
         assert_eq!(spawned_probe_kinds("load-unfetchable"), 0);
 
-        let homeless = Cached::in_dir(Probe::instant("load-homeless", "unused"), None);
+        let homeless = Cached::in_dir(Probe::instant("load-homeless", "unused", &dir), None);
         assert!(matches!(homeless.load(), Lookup::Unavailable));
+        assert!(matches!(
+            homeless.load_with_timeout(Duration::from_millis(50)),
+            Lookup::Unavailable
+        ));
         assert!(!homeless.refresh_in_background());
         assert_eq!(spawned_probe_kinds("load-homeless"), 0);
         fs::remove_dir_all(dir).ok();
@@ -621,7 +659,7 @@ mod tests {
     #[test]
     fn a_failed_refresh_keeps_the_old_value_and_holds_the_slot() {
         let dir = unique_temp_dir("failed");
-        let mut probe = Probe::instant("refresh-failed", "unused");
+        let mut probe = Probe::instant("refresh-failed", "unused", &dir);
         probe.fails = true;
         let cached = Cached::in_dir(probe, Some(dir.clone()));
         write_entry(&cached, "old", Probe::TTL + Duration::from_secs(1));
@@ -638,26 +676,65 @@ mod tests {
     }
 
     #[test]
-    fn timeout_load_returns_and_caches_a_fast_fetch() {
-        let dir = unique_temp_dir("timeout-fast");
-        let cached = Cached::in_dir(Probe::instant("timeout-fast", "fresh"), Some(dir.clone()));
-        write_entry(&cached, "stale", Duration::ZERO);
+    fn timeout_load_serves_a_fresh_entry_without_refreshing() {
+        let dir = unique_temp_dir("timeout-fresh");
+        let cached = Cached::in_dir(
+            Probe::instant("timeout-fresh", "unused", &dir),
+            Some(dir.clone()),
+        );
+        write_entry(&cached, "cached", Duration::ZERO);
 
         let result = cached.load_with_timeout(Duration::from_secs(5));
-        assert_eq!(result.ready().as_deref(), Some("fresh"));
-        assert_eq!(cached.read().unwrap().value, "fresh");
-        assert_eq!(spawned_probe_kinds("timeout-fast"), 0);
+        assert_eq!(result.ready().as_deref(), Some("cached"));
+        assert_eq!(spawned_probe_kinds("timeout-fresh"), 0);
         fs::remove_dir_all(dir).ok();
     }
 
     #[test]
-    fn timeout_load_falls_back_to_the_cache_and_refreshes_in_the_background() {
+    fn timeout_load_waits_for_a_quick_refresh_and_serves_it_fresh() {
+        let dir = unique_temp_dir("timeout-quick");
+        let cached = Cached::in_dir(
+            Probe::instant("timeout-quick", "fresh", &dir),
+            Some(dir.clone()),
+        );
+        write_entry(&cached, "stale", Probe::TTL + Duration::from_secs(1));
+
+        let started = Instant::now();
+        let result = cached.load_with_timeout(Duration::from_secs(5));
+        assert_eq!(result.ready().as_deref(), Some("fresh"));
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "a finished refresh should be noticed promptly, not at the deadline"
+        );
+        assert_eq!(cached.read().unwrap().value, "fresh");
+        assert!(!marker_path(cached.path().unwrap()).exists());
+        assert_eq!(spawned_probe_kinds("timeout-quick"), 1);
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn timeout_load_falls_back_to_the_cache_and_leaves_the_refresh_running() {
         let dir = unique_temp_dir("timeout-cached");
-        let cached = Cached::in_dir(Probe::slow("timeout-cached", "fresh"), Some(dir.clone()));
-        write_entry(&cached, "cached", Duration::ZERO);
+        let cached = Cached::in_dir(
+            Probe::slow("timeout-cached", "fresh", &dir),
+            Some(dir.clone()),
+        );
+        write_entry(&cached, "cached", Probe::TTL + Duration::from_secs(1));
 
         let result = cached.load_with_timeout(Duration::from_millis(10));
         assert_eq!(result.ready().as_deref(), Some("cached"));
+        assert_eq!(spawned_probe_kinds("timeout-cached"), 1);
+
+        // The next prompt finds the same refresh still running and waits on it
+        // rather than starting another.
+        wait_for_child(&cached);
+        assert_eq!(
+            cached
+                .load_with_timeout(Duration::from_millis(10))
+                .ready()
+                .as_deref(),
+            Some("fresh")
+        );
         assert_eq!(spawned_probe_kinds("timeout-cached"), 1);
         fs::remove_dir_all(dir).ok();
     }
@@ -665,7 +742,10 @@ mod tests {
     #[test]
     fn timeout_load_reports_loading_while_the_first_refresh_runs() {
         let dir = unique_temp_dir("timeout-loading");
-        let cached = Cached::in_dir(Probe::slow("timeout-loading", "fresh"), Some(dir.clone()));
+        let cached = Cached::in_dir(
+            Probe::slow("timeout-loading", "fresh", &dir),
+            Some(dir.clone()),
+        );
 
         assert!(matches!(
             cached.load_with_timeout(Duration::from_millis(10)),
@@ -676,47 +756,35 @@ mod tests {
     }
 
     #[test]
-    fn timeout_load_treats_a_failed_fetch_like_a_miss() {
+    fn timeout_load_treats_a_failed_refresh_like_a_miss() {
         let dir = unique_temp_dir("timeout-failed");
-        let mut probe = Probe::instant("timeout-failed", "unused");
+        let mut probe = Probe::instant("timeout-failed", "unused", &dir);
         probe.fails = true;
         let cached = Cached::in_dir(probe, Some(dir.clone()));
 
+        // The failed child keeps the slot, so the wait runs to the deadline.
+        // From the prompt's side that is indistinguishable from a refresh that
+        // is still running, and it will be retried once the interval passes.
         assert!(matches!(
-            cached.load_with_timeout(Duration::from_secs(5)),
-            Lookup::Unavailable
+            cached.load_with_timeout(Duration::from_millis(50)),
+            Lookup::Loading
         ));
-        write_entry(&cached, "cached", Duration::ZERO);
+        // Anything cached before is served instead of the loading state.
+        write_entry(&cached, "cached", Probe::TTL + Duration::from_secs(1));
         assert_eq!(
             cached
-                .load_with_timeout(Duration::from_secs(5))
+                .load_with_timeout(Duration::from_millis(50))
                 .ready()
                 .as_deref(),
             Some("cached")
         );
-        assert_eq!(spawned_probe_kinds("timeout-failed"), 0);
+        assert_eq!(spawned_probe_kinds("timeout-failed"), 1);
         fs::remove_dir_all(dir).ok();
     }
 
     #[test]
-    fn refresh_from_json_writes_the_cache_for_a_registered_source() {
-        let dir = unique_temp_dir("from-json");
-        let probe = Probe::instant("from-json", "fetched");
-        let json = serde_json::to_string(&probe).unwrap();
-
+    fn refresh_from_json_rejects_malformed_input() {
         assert!(!refresh_from_json::<Probe>("not json"));
-        // `refresh_from_json` resolves the real cache directory, so exercise the
-        // same steps against the temporary one instead.
-        let child: Probe = serde_json::from_str(&json).unwrap();
-        assert!(Cached::in_dir(child, Some(dir.clone())).refresh_now());
-        assert_eq!(
-            Cached::in_dir(probe, Some(dir.clone()))
-                .read()
-                .unwrap()
-                .value,
-            "fetched"
-        );
-        fs::remove_dir_all(dir).ok();
     }
 
     #[test]
