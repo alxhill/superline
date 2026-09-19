@@ -4,7 +4,7 @@ use gix::status::index_worktree::Item as IndexWorktreeItem;
 use gix::status::plumbing::index_as_worktree::EntryStatus;
 use gix::status::Item;
 
-use super::GitStats;
+use super::{detached_label, preferred_branch, GitStats};
 
 /// gitoxide (pure-Rust) git backend. Produces the same [`GitStats`] the libgit
 /// and CLI backends do: a count of staged / non-staged / untracked / conflicted
@@ -55,8 +55,8 @@ pub fn run_git(path: &Path) -> GitStats {
     let branch_name = match (&head_name, &head_id) {
         // On a branch with at least one commit: show the short branch name.
         (Some(name), Some(_)) => name.shorten().to_string(),
-        // Detached HEAD: show the short commit hash.
-        (None, Some(id)) => id.shorten_or_id().to_string(),
+        // Detached HEAD: the branch whose tip this is (if any) and the hash.
+        (None, Some(id)) => detached_label(branch_at(&repo, id), &id.shorten_or_id().to_string()),
         // Unborn branch / no HEAD: match the libgit & CLI "Big Bang" label.
         _ => String::from("Big Bang"),
     };
@@ -94,6 +94,24 @@ pub fn run_git(path: &Path) -> GitStats {
         remote,
         branch_name,
     }
+}
+
+/// The branch whose tip is `commit`, for labelling a detached HEAD. Local
+/// branches are preferred; remote-tracking branches (`origin/main`) are only
+/// consulted when no local branch matches.
+fn branch_at(repo: &gix::Repository, commit: &gix::Id<'_>) -> Option<String> {
+    let commit = commit.detach();
+    let refs = repo.references().ok()?;
+    for iter in [refs.local_branches().ok()?, refs.remote_branches().ok()?] {
+        let found = preferred_branch(iter.flatten().filter_map(|reference| {
+            // Symbolic refs such as `origin/HEAD` have no direct id and are skipped.
+            (reference.try_id()?.detach() == commit).then(|| reference.name().shorten().to_string())
+        }));
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
 }
 
 /// Whether an untracked directory entry is "hollow": a directory whose tree
@@ -211,6 +229,59 @@ mod tests {
             run_git(&repo).untracked,
             1,
             "an untracked directory containing a file counts once"
+        );
+
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    #[test]
+    fn detached_head_at_a_branch_tip_names_the_branch() {
+        let repo = init_repo();
+        git(&repo, &["checkout", "-q", "--detach"]);
+
+        let stats = run_git(&repo);
+        assert!(
+            stats.branch_name.starts_with("main@"),
+            "expected `main@<hash>`, got {:?}",
+            stats.branch_name
+        );
+        assert!(stats.branch_name.len() > "main@".len());
+
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    #[test]
+    fn detached_head_off_every_branch_tip_shows_only_the_hash() {
+        let repo = init_repo();
+        git(&repo, &["checkout", "-q", "--detach"]);
+        git(&repo, &["commit", "-q", "--allow-empty", "-m", "adrift"]);
+
+        let stats = run_git(&repo);
+        assert!(
+            !stats.branch_name.contains('@') && stats.branch_name.len() >= 7,
+            "expected a bare hash, got {:?}",
+            stats.branch_name
+        );
+
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    #[test]
+    fn detached_head_at_a_remote_tip_falls_back_to_the_remote_branch() {
+        let repo = init_repo();
+        git(&repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        // Move `main` on so only the remote-tracking ref matches the old tip.
+        git(&repo, &["commit", "-q", "--allow-empty", "-m", "ahead"]);
+        git(
+            &repo,
+            &["checkout", "-q", "--detach", "refs/remotes/origin/main"],
+        );
+
+        let stats = run_git(&repo);
+        assert!(
+            stats.branch_name.starts_with("origin/main@"),
+            "expected `origin/main@<hash>`, got {:?}",
+            stats.branch_name
         );
 
         std::fs::remove_dir_all(&repo).ok();

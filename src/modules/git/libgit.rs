@@ -2,7 +2,7 @@ use std::path::Path;
 
 use git2::{Branch, BranchType, ObjectType, Repository, Status, StatusOptions, StatusShow};
 
-use super::GitStats;
+use super::{detached_label, preferred_branch, GitStats};
 
 pub fn run_git(path: &Path) -> GitStats {
     let repository = Repository::open(path).unwrap();
@@ -76,14 +76,15 @@ pub fn run_git(path: &Path) -> GitStats {
             if let Ok(head) = repository.head() {
                 let target = head.target().unwrap();
 
-                repository
+                let hash = repository
                     .find_object(target, Some(ObjectType::Any))
                     .unwrap()
                     .short_id()
                     .unwrap()
                     .as_str()
                     .unwrap()
-                    .to_owned()
+                    .to_owned();
+                detached_label(branch_at(&repository, target), &hash)
             } else {
                 String::from("Big Bang")
             }
@@ -99,6 +100,23 @@ pub fn run_git(path: &Path) -> GitStats {
         remote,
         branch_name,
     }
+}
+
+/// The branch whose tip is `commit`, for labelling a detached HEAD. Local
+/// branches are preferred; remote-tracking branches (`origin/main`) are only
+/// consulted when no local branch matches.
+fn branch_at(repository: &Repository, commit: git2::Oid) -> Option<String> {
+    [BranchType::Local, BranchType::Remote]
+        .into_iter()
+        .find_map(|kind| {
+            let branches = repository.branches(Some(kind)).ok()?;
+            preferred_branch(branches.filter_map(Result::ok).filter_map(|(branch, _)| {
+                if branch.get().target() != Some(commit) {
+                    return None;
+                }
+                branch.name().ok().flatten().map(ToOwned::to_owned)
+            }))
+        })
 }
 
 /// Whether the repository has any remote configured. Repo-level rather than

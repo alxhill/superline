@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use super::GitStats;
+use super::{detached_label, preferred_branch, GitStats};
 
 pub fn get_first_number(s: &str) -> u32 {
     s.chars()
@@ -56,15 +56,44 @@ pub fn get_detached_branch_name() -> String {
         .unwrap();
 
     if child.status.success() {
-        let branch = std::str::from_utf8(&child.stdout)
+        let hash = std::str::from_utf8(&child.stdout)
             .unwrap()
             .split('\n')
             .next()
             .unwrap();
-        format!("\u{2693}{}", branch)
+        format!("\u{2693}{}", detached_label(branch_at_head(), hash))
     } else {
         String::from("Big Bang")
     }
+}
+
+/// The branch whose tip is HEAD, for labelling a detached HEAD. Local branches
+/// are preferred; remote-tracking branches (`origin/main`) are only consulted
+/// when no local branch matches.
+fn branch_at_head() -> Option<String> {
+    ["refs/heads/", "refs/remotes/"]
+        .into_iter()
+        .find_map(|prefix| {
+            let output = Command::new("git")
+                .args([
+                    "for-each-ref",
+                    "--points-at=HEAD",
+                    "--format=%(refname:short)",
+                    prefix,
+                ])
+                .output()
+                .ok()
+                .filter(|out| out.status.success())?;
+            let stdout = String::from_utf8(output.stdout).ok()?;
+            preferred_branch(
+                stdout
+                    .lines()
+                    .map(str::trim)
+                    // `origin/HEAD` is a symbolic ref, not a branch of its own.
+                    .filter(|name| !name.is_empty() && !name.ends_with("/HEAD"))
+                    .map(ToOwned::to_owned),
+            )
+        })
 }
 
 /// Whether the repository has any remote configured. This is deliberately
