@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/alxhill/superline/compare/v0.14.0...v0.15.0) - 2026-09-19
+
+### Added
+
+- *(config)* rename the nvm and python_env modules to node and python ([#97](https://github.com/alxhill/superline/pull/97))
+
 ## [0.14.0](https://github.com/alxhill/superline/compare/v0.13.1...v0.14.0) - 2026-09-18
 
 ### Added
