@@ -119,6 +119,7 @@ pub fn run_git(_: &Path) -> GitStats {
     let branch_line = std::str::from_utf8(lines.next().unwrap()).unwrap();
 
     let remote = has_remote();
+    let remote_url = remote_web_url_of();
 
     let mut ahead = 0;
     let mut behind = 0;
@@ -171,6 +172,25 @@ pub fn run_git(_: &Path) -> GitStats {
         staged,
         conflicted,
         remote,
+        remote_url,
         branch_name,
     }
+}
+
+/// The browser URL of the preferred remote's fetch URL, if it has one.
+fn remote_web_url_of() -> Option<String> {
+    let names = Command::new("git").arg("remote").output().ok()?;
+    if !names.status.success() {
+        return None;
+    }
+    let names = String::from_utf8(names.stdout).ok()?;
+    let name = super::preferred_remote(names.lines().map(str::trim).filter(|n| !n.is_empty()))?;
+    let url = Command::new("git")
+        .args(["remote", "get-url", name])
+        .output()
+        .ok()?;
+    if !url.status.success() {
+        return None;
+    }
+    super::remote_web_url(std::str::from_utf8(&url.stdout).ok()?)
 }

@@ -305,7 +305,7 @@ impl Powerline {
         marker: Option<(&str, Color)>,
     ) {
         let mut visible_width = label.chars().count();
-        let link = format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, label);
+        let link = Hyperlink { url, label }.to_string();
         let seg = match marker {
             Some((glyph, color)) => {
                 // separating space + the glyph itself

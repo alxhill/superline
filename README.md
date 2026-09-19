@@ -219,7 +219,8 @@ string and defaults to `%H:%M:%S`.
 #### git
 
 The current branch and working-tree status: modified, staged and untracked counts, plus ahead/behind counts against
-the upstream. A GitHub logo appears whenever the repo has a remote; the ahead/behind counts beside it need an
+the upstream. A GitHub logo appears whenever the repo has a remote, and links to the repository's web page (derived
+from the `origin` fetch URL); the ahead/behind counts beside it need an
 upstream tracking ref that still resolves, so they are absent on a branch that was never pushed or whose remote
 branch has been deleted.
 
