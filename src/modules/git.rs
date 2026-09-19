@@ -129,6 +129,26 @@ impl GitStats {
     }
 }
 
+/// Label for a detached HEAD. A worktree checked out at a branch tip without
+/// a branch of its own (`git worktree add --detach`, `git checkout origin/main`)
+/// is what `git status` calls "HEAD detached at main"; it shows as
+/// `main@<hash>`. Once HEAD moves off every branch tip only the hash remains.
+fn detached_label(branch: Option<String>, hash: &str) -> String {
+    match branch {
+        Some(branch) => format!("{branch}@{hash}"),
+        None => hash.to_owned(),
+    }
+}
+
+/// Picks the branch to name when several share HEAD's commit: `main` or
+/// `master` first, then the alphabetically first name. Backends call this
+/// with local branches before falling back to remote-tracking ones.
+fn preferred_branch(names: impl IntoIterator<Item = String>) -> Option<String> {
+    names
+        .into_iter()
+        .min_by_key(|name| (!matches!(name.as_str(), "main" | "master"), name.clone()))
+}
+
 /// Returns the git directory and whether it's a worktree
 fn find_git_dir() -> Option<(PathBuf, bool)> {
     let mut git_dir = env::current_dir().ok()?;
@@ -274,5 +294,40 @@ impl<S: GitScheme> Module for Git<S> {
                 Style::simple(S::git_remote_fg(), S::git_remote_bg()),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{detached_label, preferred_branch};
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn detached_label_prefixes_the_branch_when_known() {
+        assert_eq!(
+            detached_label(Some("main".into()), "abc1234"),
+            "main@abc1234"
+        );
+        assert_eq!(detached_label(None, "abc1234"), "abc1234");
+    }
+
+    #[test]
+    fn preferred_branch_favours_main_then_alphabetical() {
+        assert_eq!(preferred_branch(names(&[])), None);
+        assert_eq!(
+            preferred_branch(names(&["zeta", "ah/feature", "main"])).as_deref(),
+            Some("main")
+        );
+        assert_eq!(
+            preferred_branch(names(&["zeta", "master", "ah/feature"])).as_deref(),
+            Some("master")
+        );
+        assert_eq!(
+            preferred_branch(names(&["zeta", "ah/feature"])).as_deref(),
+            Some("ah/feature")
+        );
     }
 }
