@@ -104,9 +104,9 @@ pub fn run_git(path: &Path) -> Option<GitStats> {
 /// The browser URL of the preferred remote's fetch URL, if it has one.
 fn remote_web_url_of(repository: &Repository) -> Option<String> {
     let names = repository.remotes().ok()?;
-    let name = preferred_remote(names.iter().flatten())?;
+    let name = preferred_remote(names.iter().flatten().flatten())?;
     let remote = repository.find_remote(name).ok()?;
-    remote_web_url(remote.url()?)
+    remote_web_url(remote.url().ok()?)
 }
 
 /// The branch whose tip is `commit`, for labelling a detached HEAD. Local
