@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/alxhill/superline/compare/v0.15.2...v0.16.0) - 2026-09-19
+
+### Added
+
+- *(git)* [**breaking**] pick the status backend at runtime and drop libgit2 ([#110](https://github.com/alxhill/superline/pull/110))
+- *(git)* render a detached HEAD at a branch tip as '<hash> -> branch' ([#109](https://github.com/alxhill/superline/pull/109))
+
+### Other
+
+- *(cache)* run a timed refresh in-process instead of re-executing the binary ([#103](https://github.com/alxhill/superline/pull/103))
+
 ## [0.15.2](https://github.com/alxhill/superline/compare/v0.15.1...v0.15.2) - 2026-09-19
 
 ### Added
