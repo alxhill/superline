@@ -46,9 +46,9 @@
         {
           "separator": "round"
         },
-        "nvm",
+        "node",
         "java",
-        "python_env",
+        "python",
         "cargo",
         {
           "ai_usage": {

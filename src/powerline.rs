@@ -6,7 +6,7 @@ use crate::colors::Color;
 use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::modules::{
-    Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Nvm, Pr, PythonEnv,
+    Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Node, Pr, Python,
     ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
 };
 use crate::terminal::*;
@@ -340,8 +340,8 @@ impl Powerline {
             match module {
                 LineSegment::SmallSpacer => self.add_module(Spacer::<T>::small()),
                 LineSegment::LargeSpacer => self.add_module(Spacer::<T>::large()),
-                LineSegment::PythonEnv { version, venv } => {
-                    self.add_module(PythonEnv::<T>::new(*version, *venv))
+                LineSegment::Python { version, venv } => {
+                    self.add_module(Python::<T>::new(*version, *venv))
                 }
                 LineSegment::Cmd => {
                     self.add_module(Cmd::<T>::new(runtime_data.last_command_status()))
@@ -413,7 +413,7 @@ impl Powerline {
                     *wanted_seg_num,
                     *resolve_symlinks,
                 )),
-                LineSegment::Nvm { version } => self.add_module(Nvm::<T>::new(*version)),
+                LineSegment::Node { version } => self.add_module(Node::<T>::new(*version)),
                 LineSegment::Java { version, jdk } => {
                     self.add_module(Java::<T>::new(*version, *jdk))
                 }

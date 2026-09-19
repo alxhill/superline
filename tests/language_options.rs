@@ -149,12 +149,12 @@ fn java_can_be_reduced_to_its_icon() {
 fn node_version_can_be_hidden() {
     let mise = "[tools]\nnode = \"22.14.0\"\n";
 
-    let shown = render("node-default", r#""nvm""#, mise, &[]);
+    let shown = render("node-default", r#""node""#, mise, &[]);
     assert_shown(&shown, "22.14.0", "the node version");
 
     let hidden = render(
         "node-no-version",
-        r#"{ "nvm": { "version": false } }"#,
+        r#"{ "node": { "version": false } }"#,
         mise,
         &[],
     );
@@ -254,7 +254,7 @@ fn mise_rust_wins_over_a_rust_toolchain_file() {
 fn python_version_is_on_by_default_and_can_be_hidden() {
     let mise = "[tools]\npython = \"3.13.3\"\n";
 
-    let shown = render("python-default", r#""python_env""#, mise, &[]);
+    let shown = render("python-default", r#""python""#, mise, &[]);
     assert_shown(
         &shown,
         &format!("{MISE_ICON} {PYTHON_ICON} 3.13.3"),
@@ -263,7 +263,7 @@ fn python_version_is_on_by_default_and_can_be_hidden() {
 
     let hidden = render(
         "python-no-version",
-        r#"{ "python_env": { "version": false } }"#,
+        r#"{ "python": { "version": false } }"#,
         mise,
         &[],
     );

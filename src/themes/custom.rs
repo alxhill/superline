@@ -11,7 +11,7 @@ use thiserror::Error;
 use crate::colors::Color;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme,
+    JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
     ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -166,6 +166,15 @@ fn mise_icon_from_json(module: &str) -> &'static str {
         .unwrap_or(crate::mise::DEFAULT_ICON)
 }
 
+/// Like [`mise_icon_from_json`], also checking the key a renamed module used
+/// to be themed under.
+fn mise_icon_from_json_or(module: &str, old_module: &str) -> &'static str {
+    CustomTheme::get_str(module, "mise_icon")
+        .or_else(|| CustomTheme::get_str(old_module, "mise_icon"))
+        .map(|str| str.leak() as &'static str)
+        .unwrap_or(crate::mise::DEFAULT_ICON)
+}
+
 macro_rules! color_from_json {
     ($function:ident, $module:ident, $property:ident, $default:ident) => {
         fn $function() -> Color {
@@ -195,13 +204,29 @@ impl JavaScheme for CustomTheme {
     }
 }
 
-impl NvmScheme for CustomTheme {
-    color_from_json!(nvm_fg, nvm, fg, default_fg);
-    color_from_json!(nvm_bg, nvm, bg, default_bg);
-    color_from_json!(nvm_inactive_bg, nvm, inactive_bg, default_bg);
+impl NodeScheme for CustomTheme {
+    // `nvm` is the name this module had before it was renamed; it is still
+    // honoured so existing theme files keep working.
+    fn node_fg() -> Color {
+        Self::get_color("node", "fg")
+            .or_else(|| Self::get_color("nvm", "fg"))
+            .unwrap_or_else(Self::default_fg)
+    }
+
+    fn node_bg() -> Color {
+        Self::get_color("node", "bg")
+            .or_else(|| Self::get_color("nvm", "bg"))
+            .unwrap_or_else(Self::default_bg)
+    }
+
+    fn node_inactive_bg() -> Color {
+        Self::get_color("node", "inactive_bg")
+            .or_else(|| Self::get_color("nvm", "inactive_bg"))
+            .unwrap_or_else(Self::default_bg)
+    }
 
     fn mise_icon() -> &'static str {
-        mise_icon_from_json("nvm")
+        mise_icon_from_json_or("node", "nvm")
     }
 }
 
@@ -305,15 +330,35 @@ impl PrScheme for CustomTheme {
     }
 }
 
-impl PythonEnvScheme for CustomTheme {
-    color_from_json!(pyenv_fg, py, env_fg, default_fg);
-    color_from_json!(pyenv_bg, py, env_bg, default_bg);
+impl PythonScheme for CustomTheme {
+    // `py` is the key this module had before it was renamed; it is still
+    // honoured so existing theme files keep working.
+    fn pyenv_fg() -> Color {
+        Self::get_color("python", "env_fg")
+            .or_else(|| Self::get_color("py", "env_fg"))
+            .unwrap_or_else(Self::default_fg)
+    }
 
-    color_from_json!(pyver_fg, py, version_fg, default_fg);
-    color_from_json!(pyver_bg, py, version_bg, default_bg);
+    fn pyenv_bg() -> Color {
+        Self::get_color("python", "env_bg")
+            .or_else(|| Self::get_color("py", "env_bg"))
+            .unwrap_or_else(Self::default_bg)
+    }
+
+    fn pyver_fg() -> Color {
+        Self::get_color("python", "version_fg")
+            .or_else(|| Self::get_color("py", "version_fg"))
+            .unwrap_or_else(Self::default_fg)
+    }
+
+    fn pyver_bg() -> Color {
+        Self::get_color("python", "version_bg")
+            .or_else(|| Self::get_color("py", "version_bg"))
+            .unwrap_or_else(Self::default_bg)
+    }
 
     fn mise_icon() -> &'static str {
-        mise_icon_from_json("py")
+        mise_icon_from_json_or("python", "py")
     }
 }
 

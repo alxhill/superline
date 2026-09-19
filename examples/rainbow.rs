@@ -29,7 +29,7 @@ fn main() {
         .add_module(Git::<RainbowTheme>::new())
         .start_right()
         .change_separator(Separator::Round)
-        .add_module(PythonEnv::<RainbowTheme>::default())
+        .add_module(Python::<RainbowTheme>::default())
         .add_padding(0)
         .render(columns);
 

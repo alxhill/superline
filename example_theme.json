@@ -45,7 +45,7 @@
       "fg": 254,
       "bg": 124
     },
-    "py": {
+    "python": {
       "env_fg": "dark_grey",
       "env_bg": "light_green",
       "version_bg": "mid_green",
@@ -73,7 +73,7 @@
       "fg": "green",
       "time_icon": ""
     },
-    "nvm": {
+    "node": {
       "bg": "forest_green",
       "inactive_bg": "burgundy",
       "fg": "white"

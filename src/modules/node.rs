@@ -9,22 +9,22 @@ use crate::modules::Module;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-pub struct Nvm<S> {
+pub struct Node<S> {
     /// Whether to show the node version after the icon.
     show_version: bool,
     scheme: PhantomData<S>,
 }
 
-pub trait NvmScheme: DefaultColors {
-    fn nvm_fg() -> Color {
+pub trait NodeScheme: DefaultColors {
+    fn node_fg() -> Color {
         Self::default_fg()
     }
 
-    fn nvm_bg() -> Color {
+    fn node_bg() -> Color {
         Self::default_bg()
     }
 
-    fn nvm_inactive_bg() -> Color {
+    fn node_inactive_bg() -> Color {
         Self::default_bg()
     }
 
@@ -38,15 +38,15 @@ pub trait NvmScheme: DefaultColors {
     }
 }
 
-impl<S: NvmScheme> Default for Nvm<S> {
+impl<S: NodeScheme> Default for Node<S> {
     fn default() -> Self {
         Self::new(true)
     }
 }
 
-impl<S: NvmScheme> Nvm<S> {
-    pub fn new(show_version: bool) -> Nvm<S> {
-        Nvm {
+impl<S: NodeScheme> Node<S> {
+    pub fn new(show_version: bool) -> Node<S> {
+        Node {
             show_version,
             scheme: PhantomData,
         }
@@ -66,7 +66,7 @@ impl<S: NvmScheme> Nvm<S> {
     }
 }
 
-impl<S: NvmScheme> Module for Nvm<S> {
+impl<S: NodeScheme> Module for Node<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let nvm_current_version = env::var("nvm_current_version").ok();
 
@@ -84,7 +84,7 @@ impl<S: NvmScheme> Module for Nvm<S> {
             (Some(version), _, _) => {
                 powerline.add_segment(
                     self.label("", version.trim()),
-                    Style::simple(S::nvm_fg(), S::nvm_bg()),
+                    Style::simple(S::node_fg(), S::node_bg()),
                 );
             }
             // A mise config manages node for this directory, so its version is
@@ -92,13 +92,13 @@ impl<S: NvmScheme> Module for Nvm<S> {
             (None, Some(version), _) => {
                 powerline.add_segment(
                     self.label(S::mise_icon(), version),
-                    Style::simple(S::nvm_fg(), S::nvm_bg()),
+                    Style::simple(S::node_fg(), S::node_bg()),
                 );
             }
             (None, None, Some(nvmrc)) => {
                 powerline.add_segment(
                     self.label("", nvmrc.trim()),
-                    Style::simple(S::nvm_fg(), S::nvm_inactive_bg()),
+                    Style::simple(S::node_fg(), S::node_inactive_bg()),
                 );
             }
             _ => {}
