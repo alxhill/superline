@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1](https://github.com/alxhill/superline/compare/v0.15.0...v0.15.1) - 2026-09-19
+
+### Added
+
+- *(git)* show branch@hash when HEAD is detached at a branch tip ([#101](https://github.com/alxhill/superline/pull/101))
+
 ## [0.15.0](https://github.com/alxhill/superline/compare/v0.14.0...v0.15.0) - 2026-09-19
 
 ### Added
