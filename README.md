@@ -19,7 +19,7 @@ configurable modules and themes.
 
 ## Highlights
 
-- **Fast**: around 15ms per prompt, git status included.
+- **Fast**: a few tens of milliseconds per prompt, git status included.
 - **Lazy**: backends only run when needed, so there is no git cost outside a git repo and no Python cost outside a
   project.
 - **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
@@ -236,8 +236,19 @@ shown while a refresh continues in the background for the next prompt. Before an
 { "git": { "status_timeout_ms": 250 } }
 ```
 
-Repos with many untracked files can make status slow; git's own
-[untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) helps a lot.
+Status is collected by running the `git` CLI, so `git` must be on your `PATH`. This is the fastest option on large
+working trees because it is the only backend that uses git's own
+[untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) and fsmonitor; enabling
+`core.untrackedCache` in a big repo typically cuts status time by two thirds. Two in-process backends are available
+when building from source, for machines without `git`:
+
+```bash
+cargo install superline --features gitoxide   # pure Rust
+cargo install superline --features libgit     # libgit2
+```
+
+Both walk the whole working tree on every refresh and are two to four times slower than the CLI on repos with
+thousands of files.
 
 #### pr
 
