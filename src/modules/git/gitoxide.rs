@@ -253,11 +253,11 @@ mod tests {
 
         let stats = run_git(&repo);
         assert!(
-            stats.branch_name.starts_with("main@"),
-            "expected `main@<hash>`, got {:?}",
+            stats.branch_name.ends_with(" -> main"),
+            "expected `<hash> -> main`, got {:?}",
             stats.branch_name
         );
-        assert!(stats.branch_name.len() > "main@".len());
+        assert!(stats.branch_name.len() > " -> main".len());
 
         std::fs::remove_dir_all(&repo).ok();
     }
@@ -270,7 +270,7 @@ mod tests {
 
         let stats = run_git(&repo);
         assert!(
-            !stats.branch_name.contains('@') && stats.branch_name.len() >= 7,
+            !stats.branch_name.contains("->") && stats.branch_name.len() >= 7,
             "expected a bare hash, got {:?}",
             stats.branch_name
         );
@@ -291,8 +291,8 @@ mod tests {
 
         let stats = run_git(&repo);
         assert!(
-            stats.branch_name.starts_with("origin/main@"),
-            "expected `origin/main@<hash>`, got {:?}",
+            stats.branch_name.ends_with(" -> origin/main"),
+            "expected `<hash> -> origin/main`, got {:?}",
             stats.branch_name
         );
 

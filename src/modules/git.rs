@@ -137,10 +137,10 @@ impl GitStats {
 /// Label for a detached HEAD. A worktree checked out at a branch tip without
 /// a branch of its own (`git worktree add --detach`, `git checkout origin/main`)
 /// is what `git status` calls "HEAD detached at main"; it shows as
-/// `main@<hash>`. Once HEAD moves off every branch tip only the hash remains.
+/// `<hash> -> main`. Once HEAD moves off every branch tip only the hash remains.
 fn detached_label(branch: Option<String>, hash: &str) -> String {
     match branch {
-        Some(branch) => format!("{branch}@{hash}"),
+        Some(branch) => format!("{hash} -> {branch}"),
         None => hash.to_owned(),
     }
 }
@@ -411,10 +411,10 @@ mod tests {
     }
 
     #[test]
-    fn detached_label_prefixes_the_branch_when_known() {
+    fn detached_label_points_at_the_branch_when_known() {
         assert_eq!(
             detached_label(Some("main".into()), "abc1234"),
-            "main@abc1234"
+            "abc1234 -> main"
         );
         assert_eq!(detached_label(None, "abc1234"), "abc1234");
     }
