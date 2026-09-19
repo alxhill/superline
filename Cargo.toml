@@ -48,11 +48,14 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 ctrlc = "3.5.2"
 
-# Pick at most one git backend. When several are enabled the precedence is
-# `gitoxide` > `libgit` > the `git` CLI fallback (see `src/modules/git.rs`).
-# To use libgit on its own: `--no-default-features --features libgit`.
+# Git backend. With no feature enabled the `git` CLI is used: it is the only
+# backend that honours git's untracked cache and fsmonitor, which makes it the
+# fastest by a wide margin on large working trees. `gitoxide` (pure Rust) and
+# `libgit` (libgit2) run in-process instead and need no `git` on PATH. When
+# several are enabled the precedence is `gitoxide` > `libgit` > CLI (see
+# `src/modules/git.rs`).
 [features]
-default = ["gitoxide"]
+default = []
 libgit = ["git2"]
 gitoxide = ["gix"]
 
