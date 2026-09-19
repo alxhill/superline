@@ -29,10 +29,10 @@
 //! [`Cached::load`] never blocks: it serves whatever is on disk and, when that
 //! is missing or older than [`Source::TTL`], re-executes the `superline` binary
 //! with the hidden `refresh` subcommand to fetch a new value for a later
-//! prompt. [`Cached::load_with_timeout`] does the same but is willing to wait
-//! a little for that refresh, so a fast fetch still lands on the current
-//! prompt. The fetch itself only ever runs in the child, so a prompt that
-//! gives up waiting never wastes or duplicates its work.
+//! prompt. [`Cached::load_with_timeout`] is willing to wait a little, so a fast
+//! fetch still lands on the current prompt: it runs the fetch on a worker
+//! thread and only hands it to the detached child if it outlasts the timeout.
+//! Either way the fetch never runs on the thread building the prompt.
 //!
 //! Every [`Source`] has to be registered in [`crate::modules::run_refresh`] so
 //! the child process can find it by [`Source::KIND`].
@@ -42,6 +42,7 @@ use std::fs::{self, File, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -64,9 +65,9 @@ const REFRESH_POLL_INTERVAL: Duration = Duration::from_millis(1);
 /// The implementing type holds the lookup's parameters. It is serialised to
 /// JSON and handed to the detached child that performs the fetch, so it must
 /// be small and self-contained.
-pub trait Source: Serialize + DeserializeOwned {
+pub trait Source: Serialize + DeserializeOwned + Clone + Send + 'static {
     /// What the lookup produces. This is what ends up in the cache file.
-    type Value: Serialize + DeserializeOwned;
+    type Value: Serialize + DeserializeOwned + Send + 'static;
 
     /// Names this kind of lookup. Used as the cache file prefix and to route
     /// the `refresh` subcommand back to this type.
@@ -94,8 +95,8 @@ pub trait Source: Serialize + DeserializeOwned {
         true
     }
 
-    /// The slow part. Only ever runs in the detached child. Returning `None`
-    /// leaves the previous cached value in place.
+    /// The slow part. Never runs on the thread rendering the prompt. Returning
+    /// `None` leaves the previous cached value in place.
     fn fetch(&self) -> Option<Self::Value>;
 }
 
@@ -242,28 +243,80 @@ impl<S: Source> Cached<S> {
             debug::cache(S::KIND, CacheStatus::Unavailable, started.elapsed());
             return Lookup::Unavailable;
         }
-        if !self.refresh_in_background() {
-            let status = match age {
-                Some(age) => CacheStatus::Stale {
-                    age,
-                    refreshing: false,
-                },
-                None => CacheStatus::Unavailable,
-            };
-            debug::cache(S::KIND, status, started.elapsed());
-            return cached
-                .map(|entry| Lookup::Ready(entry.value))
-                .unwrap_or(Lookup::Unavailable);
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
         }
 
-        // The child releases the refresh slot only after it has written the
-        // cache, so the marker vanishing is the completion signal. This also
-        // covers a refresh another prompt started moments ago.
         let marker = marker_path(path);
+        if !claim_refresh(&marker, S::REFRESH_INTERVAL) {
+            // Someone else is already refreshing this entry. They release the
+            // slot only once the cache has been written, so the marker
+            // vanishing is the completion signal to wait on.
+            return self.await_refresh(&marker, timeout, cached, age, started);
+        }
+
+        // The slot is ours. Re-executing the binary to do the fetch costs a
+        // process spawn on every prompt, so run it on a worker thread we can
+        // walk away from instead, and hand the work to a detached child only
+        // when it outlasts the prompt.
+        let fetched = self.fetch_on_worker();
+        match fetched.recv_timeout(timeout) {
+            Ok(Some(value)) => {
+                debug::cache(
+                    S::KIND,
+                    CacheStatus::Waited { served: true },
+                    started.elapsed(),
+                );
+                Lookup::Ready(value)
+            }
+            // The fetch failed. It keeps the slot so it is not retried before
+            // `REFRESH_INTERVAL`, exactly as a failed child would.
+            Ok(None) => {
+                debug::cache(
+                    S::KIND,
+                    CacheStatus::Waited { served: false },
+                    started.elapsed(),
+                );
+                self.cached_or(Lookup::Loading, cached)
+            }
+            Err(_) => {
+                // Still running, and this process is about to exit with the
+                // prompt. Start the detached child so the next prompt has a
+                // fresh value to serve.
+                self.spawn_refresh();
+                debug::cache(S::KIND, CacheStatus::TimedOut { age }, started.elapsed());
+                self.cached_or(Lookup::Loading, cached)
+            }
+        }
+    }
+
+    /// Runs the fetch on a detached worker thread, which writes the cache and
+    /// releases the refresh slot exactly as the child process would.
+    fn fetch_on_worker(&self) -> mpsc::Receiver<Option<S::Value>> {
+        let (sender, receiver) = mpsc::channel();
+        let refresher = Cached {
+            source: self.source.clone(),
+            path: self.path.clone(),
+        };
+        thread::spawn(move || {
+            let _ = sender.send(refresher.fetch_and_store());
+        });
+        receiver
+    }
+
+    /// Waits for a refresh started elsewhere to publish its value.
+    fn await_refresh(
+        &self,
+        marker: &Path,
+        timeout: Duration,
+        cached: Option<Entry<S::Value>>,
+        age: Option<Duration>,
+        started: Instant,
+    ) -> Lookup<S::Value> {
         let deadline = Instant::now() + timeout;
         loop {
             if !marker.exists() {
-                let lookup = self.cached_or(Lookup::Unavailable);
+                let lookup = self.cached_or(Lookup::Unavailable, None);
                 let served = matches!(lookup, Lookup::Ready(_));
                 debug::cache(S::KIND, CacheStatus::Waited { served }, started.elapsed());
                 return lookup;
@@ -271,14 +324,21 @@ impl<S: Source> Cached<S> {
             let now = Instant::now();
             if now >= deadline {
                 debug::cache(S::KIND, CacheStatus::TimedOut { age }, started.elapsed());
-                return self.cached_or(Lookup::Loading);
+                return self.cached_or(Lookup::Loading, cached);
             }
             thread::sleep(REFRESH_POLL_INTERVAL.min(deadline - now));
         }
     }
 
-    fn cached_or(&self, fallback: Lookup<S::Value>) -> Lookup<S::Value> {
-        self.read()
+    /// The value already in hand, else whatever is on disk now, else
+    /// `fallback`.
+    fn cached_or(
+        &self,
+        fallback: Lookup<S::Value>,
+        cached: Option<Entry<S::Value>>,
+    ) -> Lookup<S::Value> {
+        cached
+            .or_else(|| self.read())
             .map(|entry| Lookup::Ready(entry.value))
             .unwrap_or(fallback)
     }
@@ -299,11 +359,7 @@ impl<S: Source> Cached<S> {
             return true;
         }
 
-        let Ok(source) = serde_json::to_string(&self.source) else {
-            let _ = fs::remove_file(&marker);
-            return false;
-        };
-        if spawn_child(S::KIND, &source) {
+        if self.spawn_refresh() {
             true
         } else {
             let _ = fs::remove_file(marker);
@@ -311,19 +367,29 @@ impl<S: Source> Cached<S> {
         }
     }
 
+    /// Re-executes the binary to run this lookup's fetch detached from the
+    /// prompt. The caller is expected to hold the refresh slot already.
+    fn spawn_refresh(&self) -> bool {
+        serde_json::to_string(&self.source).is_ok_and(|source| spawn_child(S::KIND, &source))
+    }
+
     /// Performs the fetch on the calling thread and stores the result. This is
     /// what the detached child runs; a failed fetch leaves the previous value
     /// in place and keeps the refresh slot claimed so it is not retried before
     /// [`Source::REFRESH_INTERVAL`] has passed.
     pub fn refresh_now(&self) -> bool {
-        let Some(value) = self.source.fetch() else {
-            return false;
-        };
+        self.fetch_and_store().is_some()
+    }
+
+    /// The fetch itself, plus storing the result and releasing the refresh
+    /// slot. Shared by the detached child and by the in-process worker.
+    fn fetch_and_store(&self) -> Option<S::Value> {
+        let value = self.source.fetch()?;
         self.write(&value);
         if let Some(path) = &self.path {
             let _ = fs::remove_file(marker_path(path));
         }
-        true
+        Some(value)
     }
 
     fn write(&self, value: &S::Value) {
@@ -740,7 +806,8 @@ mod tests {
         );
         assert_eq!(cached.read().unwrap().value, "fresh");
         assert!(!marker_path(cached.path().unwrap()).exists());
-        assert_eq!(spawned_probe_kinds("timeout-quick"), 1);
+        // A fetch that fits inside the timeout costs no extra process.
+        assert_eq!(spawned_probe_kinds("timeout-quick"), 0);
         fs::remove_dir_all(dir).ok();
     }
 
@@ -794,13 +861,18 @@ mod tests {
         probe.fails = true;
         let cached = Cached::in_dir(probe, Some(dir.clone()));
 
-        // The failed child keeps the slot, so the wait runs to the deadline.
-        // From the prompt's side that is indistinguishable from a refresh that
-        // is still running, and it will be retried once the interval passes.
+        // The failed fetch keeps the slot, so it will not be retried until the
+        // interval passes. From the prompt's side that looks like a refresh
+        // that has not produced anything yet.
+        let started = Instant::now();
         assert!(matches!(
             cached.load_with_timeout(Duration::from_millis(50)),
             Lookup::Loading
         ));
+        assert!(
+            started.elapsed() < Duration::from_millis(50),
+            "a failure is known at once and must not be waited out"
+        );
         // Anything cached before is served instead of the loading state.
         write_entry(&cached, "cached", Probe::TTL + Duration::from_secs(1));
         assert_eq!(
@@ -810,7 +882,7 @@ mod tests {
                 .as_deref(),
             Some("cached")
         );
-        assert_eq!(spawned_probe_kinds("timeout-failed"), 1);
+        assert_eq!(spawned_probe_kinds("timeout-failed"), 0);
         fs::remove_dir_all(dir).ok();
     }
 
