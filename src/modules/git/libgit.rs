@@ -4,10 +4,8 @@ use git2::{Branch, BranchType, ObjectType, Repository, Status, StatusOptions, St
 
 use super::{detached_label, preferred_branch, preferred_remote, remote_web_url, GitStats};
 
-pub fn run_git(path: &Path) -> GitStats {
-    let Ok(repository) = Repository::open(path) else {
-        return GitStats::default();
-    };
+pub fn run_git(path: &Path) -> Option<GitStats> {
+    let repository = Repository::open(path).ok()?;
 
     let mut status_options = StatusOptions::new();
     status_options
@@ -19,9 +17,7 @@ pub fn run_git(path: &Path) -> GitStats {
     let remote = has_remote(&repository);
     let remote_url = remote_web_url_of(&repository);
 
-    let Ok(statuses) = repository.statuses(Some(&mut status_options)) else {
-        return GitStats::default();
-    };
+    let statuses = repository.statuses(Some(&mut status_options)).ok()?;
 
     let (mut untracked, mut non_staged, mut conflicted, mut staged, mut ahead, mut behind) =
         (0, 0, 0, 0, 0, 0);
@@ -92,7 +88,7 @@ pub fn run_git(path: &Path) -> GitStats {
             }
         });
 
-    GitStats {
+    Some(GitStats {
         untracked,
         staged,
         non_staged,
@@ -102,7 +98,7 @@ pub fn run_git(path: &Path) -> GitStats {
         remote,
         remote_url,
         branch_name,
-    }
+    })
 }
 
 /// The browser URL of the preferred remote's fetch URL, if it has one.
