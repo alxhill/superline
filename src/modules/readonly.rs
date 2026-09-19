@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::colors::Color;
 use crate::themes::DefaultColors;
-use crate::{platform, Powerline, Style};
+use crate::{platform, Segments, Style};
 
 use super::Module;
 
@@ -34,9 +34,9 @@ impl<S: ReadOnlyScheme> ReadOnly<S> {
 }
 
 impl<S: ReadOnlyScheme> Module for ReadOnly<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         if platform::cwd_is_readonly() {
-            powerline.add_segment(
+            segments.add_segment(
                 S::readonly_symbol(),
                 Style::simple(S::readonly_fg(), S::readonly_bg()),
             );

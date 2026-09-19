@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::colors::Color;
 use crate::themes::DefaultColors;
-use crate::{utils, Powerline, Style};
+use crate::{utils, Segments, Style};
 
 use super::Module;
 
@@ -43,10 +43,10 @@ impl<S: HostScheme> Host<S> {
 }
 
 impl<S: HostScheme> Module for Host<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         if self.show_on_local || utils::is_remote_shell() {
             if let Ok(host) = hostname::get() {
-                powerline.add_segment(
+                segments.add_segment(
                     host.to_str().unwrap(),
                     Style::simple(S::hostname_fg(), S::hostname_bg()),
                 );

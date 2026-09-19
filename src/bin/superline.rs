@@ -551,11 +551,7 @@ fn render_right(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
 }
 
 fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
-    let mut powerlines = conf
-        .rows
-        .into_iter()
-        .map(|prompt| powerline_from_conf(&prompt, args, theme))
-        .collect::<Vec<Powerline>>();
+    let mut powerlines = powerlines_from_conf(&conf.rows, args, theme);
 
     if let Some((last, all_bar_last)) = powerlines.split_last_mut() {
         for powerline in all_bar_last {
@@ -597,6 +593,19 @@ fn powerline_from_conf(prompt: &CommandLine, args: &ShowArgs, theme: LoadedTheme
         LoadedTheme::Rainbow => Powerline::from_conf::<RainbowTheme>(prompt, args),
         LoadedTheme::Simple => Powerline::from_conf::<SimpleTheme>(prompt, args),
         LoadedTheme::Custom => Powerline::from_conf::<CustomTheme>(prompt, args),
+    }
+}
+
+/// Every row of the prompt, built side by side.
+fn powerlines_from_conf(
+    rows: &[CommandLine],
+    args: &ShowArgs,
+    theme: LoadedTheme,
+) -> Vec<Powerline> {
+    match theme {
+        LoadedTheme::Rainbow => Powerline::from_conf_rows::<RainbowTheme>(rows, &args),
+        LoadedTheme::Simple => Powerline::from_conf_rows::<SimpleTheme>(rows, &args),
+        LoadedTheme::Custom => Powerline::from_conf_rows::<CustomTheme>(rows, &args),
     }
 }
 

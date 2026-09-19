@@ -18,7 +18,7 @@ use crate::cache::{Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::config::{UsageDisplay, UsageProvider};
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 use super::Module;
 
@@ -302,7 +302,7 @@ impl Source for UsageLookup {
 }
 
 impl<S: UsageScheme> Module for Usage<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         if !self.windows.any_enabled() && !self.show_session_time_remaining {
             return;
         }
@@ -337,7 +337,7 @@ impl<S: UsageScheme> Module for Usage<S> {
             })
             .map(|_| S::usage_threshold_bg())
             .unwrap_or(bg);
-        powerline.add_segment(label, Style::simple(default_fg, bg));
+        segments.add_segment(label, Style::simple(default_fg, bg));
     }
 }
 

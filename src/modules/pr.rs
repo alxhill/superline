@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 use super::Module;
 
@@ -168,7 +168,7 @@ impl Source for PrLookup {
 }
 
 impl<S: PrScheme> Module for Pr<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         let Some((branch, repo_root)) = current_branch_and_root() else {
             return;
         };
@@ -197,7 +197,7 @@ impl<S: PrScheme> Module for Pr<S> {
             })
             .flatten();
 
-        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
+        segments.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
     }
 }
 

@@ -4,7 +4,7 @@ use std::time::Duration;
 use crate::colors::Color;
 use crate::modules::Module;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 pub struct LastCmdDuration<S> {
     min_display_time: Duration,
@@ -37,10 +37,10 @@ impl<S: LastCmdDurationScheme> LastCmdDuration<S> {
 }
 
 impl<S: LastCmdDurationScheme> Module for LastCmdDuration<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         if let Some(cmd_dur) = self.cmd_duration {
             if cmd_dur > self.min_display_time {
-                powerline.add_short_segment(
+                segments.add_short_segment(
                     format!(" {}{}", nice_duration(cmd_dur), S::time_icon()),
                     Style::simple(S::time_fg(), S::time_bg()),
                 );

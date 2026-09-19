@@ -1,5 +1,5 @@
 use crate::cache::{refresh_from_json, Source};
-use crate::powerline::Powerline;
+use crate::powerline::Segments;
 
 mod cmd;
 mod cwd;
@@ -42,8 +42,15 @@ pub use unknown::{Unknown, UnknownScheme};
 pub use usage::{Usage, UsageLookup, UsageScheme, UsageWindow, UsageWindows};
 pub use user::{User, UserScheme};
 
+/// Something that contributes segments to a prompt row.
+///
+/// `append_segments` runs on its own thread, alongside the other modules of
+/// the row, when the prompt is built from a config. It may block on the slow
+/// work behind its segments (a git status walk, a cache refresh, a child
+/// process) without delaying the rest of the row, and must only touch shared
+/// state that is safe to read concurrently.
 pub trait Module {
-    fn append_segments(&mut self, powerline: &mut Powerline);
+    fn append_segments(&mut self, segments: &mut Segments);
 }
 
 /// Runs the background half of a cached lookup: the hidden `refresh`

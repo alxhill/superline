@@ -4,7 +4,7 @@ use chrono::Local;
 
 use crate::colors::Color;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 use super::Module;
 
@@ -45,8 +45,8 @@ impl<S: TimeScheme> Time<S> {
 }
 
 impl<S: TimeScheme> Module for Time<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         let now = Local::now().format(&self.time_format).to_string();
-        powerline.add_segment(now, Style::simple(S::time_fg(), S::time_bg()));
+        segments.add_segment(now, Style::simple(S::time_fg(), S::time_bg()));
     }
 }

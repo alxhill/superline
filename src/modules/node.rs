@@ -7,7 +7,7 @@ use crate::colors::Color;
 use crate::mise;
 use crate::modules::Module;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 pub struct Node<S> {
     /// Whether to show the node version after the icon.
@@ -67,7 +67,7 @@ impl<S: NodeScheme> Node<S> {
 }
 
 impl<S: NodeScheme> Module for Node<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         let nvm_current_version = env::var("nvm_current_version").ok();
 
         let nvmrc_version = env::current_dir()
@@ -82,7 +82,7 @@ impl<S: NodeScheme> Module for Node<S> {
         ) {
             // todo: handle the case where active version != .nvmrc
             (Some(version), _, _) => {
-                powerline.add_segment(
+                segments.add_segment(
                     self.label("", version.trim()),
                     Style::simple(S::node_fg(), S::node_bg()),
                 );
@@ -90,13 +90,13 @@ impl<S: NodeScheme> Module for Node<S> {
             // A mise config manages node for this directory, so its version is
             // the one in effect even though nvm never activated it.
             (None, Some(version), _) => {
-                powerline.add_segment(
+                segments.add_segment(
                     self.label(S::mise_icon(), version),
                     Style::simple(S::node_fg(), S::node_bg()),
                 );
             }
             (None, None, Some(nvmrc)) => {
-                powerline.add_segment(
+                segments.add_segment(
                     self.label("", nvmrc.trim()),
                     Style::simple(S::node_fg(), S::node_inactive_bg()),
                 );

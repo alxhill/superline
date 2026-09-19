@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::colors::Color;
 use crate::modules::Module;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 #[derive(Copy, Clone)]
 pub struct Spacer<S: SpacerScheme> {
@@ -37,11 +37,11 @@ impl<S: SpacerScheme> Spacer<S> {
 }
 
 impl<S: SpacerScheme> Module for Spacer<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         if self.large {
-            powerline.add_segment("", Style::simple(S::color_fg(), S::color_bg()));
+            segments.add_segment("", Style::simple(S::color_fg(), S::color_bg()));
         } else {
-            powerline.add_short_segment("", Style::simple(S::color_fg(), S::color_bg()));
+            segments.add_short_segment("", Style::simple(S::color_fg(), S::color_bg()));
         }
     }
 }

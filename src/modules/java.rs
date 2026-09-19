@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::mise;
 use crate::modules::Module;
 use crate::themes::DefaultColors;
-use crate::{Color, Powerline, Style};
+use crate::{Color, Segments, Style};
 
 pub struct Java<S> {
     /// Whether to show the major version after the icon.
@@ -52,7 +52,7 @@ impl<S: JavaScheme> Java<S> {
 }
 
 impl<S: JavaScheme> Module for Java<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         // mise wins over sdkman: when a mise config declares java it is the tool
         // actually putting a JDK on the path, even in a repo that also keeps a
         // `.sdkmanrc` around.
@@ -69,7 +69,7 @@ impl<S: JavaScheme> Module for Java<S> {
                 self.show_jdk.then(|| distro_name(&distribution)).as_deref(),
             );
 
-            powerline.add_segment(label, Style::simple(S::java_fg(), S::java_bg()));
+            segments.add_segment(label, Style::simple(S::java_fg(), S::java_bg()));
         }
     }
 }

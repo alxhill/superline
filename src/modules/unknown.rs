@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::colors::Color;
 use crate::modules::Module;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 pub struct Unknown<S: UnknownScheme> {
     name: String,
@@ -30,8 +30,8 @@ impl<S: UnknownScheme> Unknown<S> {
 }
 
 impl<S: UnknownScheme> Module for Unknown<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_segment(
+    fn append_segments(&mut self, segments: &mut Segments) {
+        segments.add_segment(
             format!("unknown module: {}", self.name),
             Style::simple(S::unknown_fg(), S::unknown_bg()),
         );

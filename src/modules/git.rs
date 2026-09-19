@@ -21,7 +21,7 @@ use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::config::DEFAULT_GIT_STATUS_TIMEOUT_MS;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 use super::Module;
 
@@ -187,7 +187,7 @@ impl Source for GitStatus {
 }
 
 impl<S: GitScheme> Module for Git<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         let (git_dir, is_worktree) = match find_git_dir() {
             Some(result) => result,
             _ => return,
@@ -198,7 +198,7 @@ impl<S: GitScheme> Module for Git<S> {
         {
             Lookup::Ready(stats) => stats,
             Lookup::Loading => {
-                powerline.add_segment(
+                segments.add_segment(
                     format!("{icon} loading…"),
                     Style::simple(S::git_repo_clean_fg(), S::git_repo_clean_bg()),
                 );
@@ -213,41 +213,41 @@ impl<S: GitScheme> Module for Git<S> {
             (S::git_repo_clean_fg(), S::git_repo_clean_bg())
         };
 
-        powerline.add_segment(
+        segments.add_segment(
             format!("{} {}", icon, stats.branch_name),
             Style::simple(branch_fg, branch_bg),
         );
 
-        let add_elem = |powerline: &mut Powerline, count: u32, symbol, fg, bg| match count.cmp(&1) {
+        let add_elem = |segments: &mut Segments, count: u32, symbol, fg, bg| match count.cmp(&1) {
             Ordering::Equal | Ordering::Greater => {
-                powerline.add_segment(format!("{} {}", count, symbol), Style::simple(fg, bg))
+                segments.add_segment(format!("{} {}", count, symbol), Style::simple(fg, bg))
             }
             Ordering::Less => (),
         };
 
         add_elem(
-            powerline,
+            segments,
             stats.non_staged,
             S::NOT_STAGED_SYMBOL,
             S::git_notstaged_fg(),
             S::git_notstaged_bg(),
         );
         add_elem(
-            powerline,
+            segments,
             stats.untracked,
             S::UNTRACKED_SYMBOL,
             S::git_untracked_fg(),
             S::git_untracked_bg(),
         );
         add_elem(
-            powerline,
+            segments,
             stats.staged,
             S::STAGED_SYMBOL,
             S::git_staged_fg(),
             S::git_staged_bg(),
         );
         add_elem(
-            powerline,
+            segments,
             stats.conflicted,
             S::CONFLICTED_SYMBOL,
             S::git_conflicted_fg(),
@@ -269,7 +269,7 @@ impl<S: GitScheme> Module for Git<S> {
                 let _ = write!(remote, "{}{}", stats.behind, DOWN_ARROW);
             }
 
-            powerline.add_segment(
+            segments.add_segment(
                 remote,
                 Style::simple(S::git_remote_fg(), S::git_remote_bg()),
             );

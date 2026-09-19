@@ -12,7 +12,7 @@ use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::mise;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 use super::Module;
 
@@ -176,7 +176,7 @@ fn interpreter_for(venv: &Path) -> PathBuf {
 }
 
 impl<S: PythonScheme> Module for Python<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         let venv = env::var("VIRTUAL_ENV")
             .or_else(|_| env::var("CONDA_ENV_PATH"))
             .or_else(|_| env::var("CONDA_DEFAULT_ENV"));
@@ -200,7 +200,7 @@ impl<S: PythonScheme> Module for Python<S> {
             } else {
                 format!("{} ", pylogo)
             };
-            powerline.add_short_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
+            segments.add_short_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
 
             if self.show_version {
                 let venv_dir = Path::new(&venv_path);
@@ -215,7 +215,7 @@ impl<S: PythonScheme> Module for Python<S> {
                         }
                     }
                 };
-                powerline.add_segment(version, Style::simple(S::pyver_fg(), S::pyver_bg()));
+                segments.add_segment(version, Style::simple(S::pyver_fg(), S::pyver_bg()));
             }
         } else if let Ok(cwd) = env::current_dir() {
             // A mise config wins over `.python-version`: it is what puts an
@@ -242,7 +242,7 @@ impl<S: PythonScheme> Module for Python<S> {
                 .collect::<Vec<_>>()
                 .join(" ");
 
-                powerline.add_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
+                segments.add_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
             }
         }
     }

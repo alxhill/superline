@@ -1,5 +1,5 @@
 use crate::themes::DefaultColors;
-use crate::{Color, Powerline, Style};
+use crate::{Color, Segments, Style};
 use std::marker::PhantomData;
 
 use super::Module;
@@ -29,8 +29,8 @@ impl<S: ShellScheme> ShellName<S> {
 }
 
 impl<S: ShellScheme> Module for ShellName<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_short_segment(
+    fn append_segments(&mut self, segments: &mut Segments) {
+        segments.add_short_segment(
             &self.name,
             Style::simple(S::default_fg(), S::shellname_bg()),
         );
