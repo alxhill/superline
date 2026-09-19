@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 
 // Backend selection. At most one of these modules is compiled in; when more
 // than one feature is enabled the precedence is `gitoxide` > `libgit` > the
-// `git` CLI fallback. Each backend exposes a `run_git(&Path) -> GitStats`.
+// `git` CLI fallback. `gitoxide` and `process` expose `run_git(&Path) ->
+// GitStats`; `libgit` exposes `run_git(&Path) -> Option<GitStats>`, yielding
+// `None` when the repository can't be opened or read instead of caching an
+// empty "clean repo" result.
 #[cfg(feature = "gitoxide")]
 use gitoxide as internal;
 #[cfg(all(feature = "libgit", not(feature = "gitoxide")))]
@@ -305,6 +308,12 @@ impl Source for GitStatus {
         hash_id(&self.git_dir)
     }
 
+    #[cfg(all(feature = "libgit", not(feature = "gitoxide")))]
+    fn fetch(&self) -> Option<GitStats> {
+        internal::run_git(&self.git_dir)
+    }
+
+    #[cfg(not(all(feature = "libgit", not(feature = "gitoxide"))))]
     fn fetch(&self) -> Option<GitStats> {
         Some(internal::run_git(&self.git_dir))
     }

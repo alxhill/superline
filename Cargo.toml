@@ -15,7 +15,7 @@ bin-dir = "{ bin }{ binary-ext }"
 
 [dependencies]
 hostname = "0.3"
-git2 = { version = "0.18", optional = true, default-features = false }
+git2 = { version = "0.21", optional = true, default-features = false }
 # Pure-Rust git backend. `status`/`revision` cover the status walk and the
 # ahead/behind commit counting; `max-performance-safe` keeps the speedups while
 # avoiding any C toolchain (gix decompresses objects with zlib-rs).
