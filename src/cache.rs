@@ -48,6 +48,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+use crate::debug::{self, CacheStatus};
+
 /// Cached prompt data older than this is unlikely to be useful as a fallback.
 const MAX_CACHE_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 /// Rendering happens frequently, so avoid walking the cache directory each time.
@@ -190,19 +192,30 @@ impl<S: Source> Cached<S> {
     /// Serves the cached value and refreshes it in the background when it is
     /// missing or older than [`Source::TTL`]. Never blocks on the fetch.
     pub fn load(&self) -> Lookup<S::Value> {
-        let entry = self.read();
-        match entry {
+        let started = Instant::now();
+        match self.read() {
             Some(entry) => {
-                if entry.is_stale(S::TTL) {
-                    self.refresh_in_background();
-                }
+                let age = entry.age();
+                let status = if entry.is_stale(S::TTL) {
+                    CacheStatus::Stale {
+                        age,
+                        refreshing: self.refresh_in_background(),
+                    }
+                } else {
+                    CacheStatus::Fresh(age)
+                };
+                debug::cache(S::KIND, status, started.elapsed());
                 Lookup::Ready(entry.value)
             }
             None if self.path.is_some() && self.source.fetchable() => {
                 self.refresh_in_background();
+                debug::cache(S::KIND, CacheStatus::Miss, started.elapsed());
                 Lookup::Loading
             }
-            None => Lookup::Unavailable,
+            None => {
+                debug::cache(S::KIND, CacheStatus::Unavailable, started.elapsed());
+                Lookup::Unavailable
+            }
         }
     }
 
@@ -212,17 +225,32 @@ impl<S: Source> Cached<S> {
     /// if any, is served instead and the child carries on for the next
     /// prompt.
     pub fn load_with_timeout(&self, timeout: Duration) -> Lookup<S::Value> {
+        let started = Instant::now();
         let cached = match self.read() {
-            Some(entry) if !entry.is_stale(S::TTL) => return Lookup::Ready(entry.value),
+            Some(entry) if !entry.is_stale(S::TTL) => {
+                debug::cache(S::KIND, CacheStatus::Fresh(entry.age()), started.elapsed());
+                return Lookup::Ready(entry.value);
+            }
             entry => entry,
         };
+        let age = cached.as_ref().map(Entry::age);
         let Some(path) = &self.path else {
+            debug::cache(S::KIND, CacheStatus::Unavailable, started.elapsed());
             return Lookup::Unavailable;
         };
         if cached.is_none() && !self.source.fetchable() {
+            debug::cache(S::KIND, CacheStatus::Unavailable, started.elapsed());
             return Lookup::Unavailable;
         }
         if !self.refresh_in_background() {
+            let status = match age {
+                Some(age) => CacheStatus::Stale {
+                    age,
+                    refreshing: false,
+                },
+                None => CacheStatus::Unavailable,
+            };
+            debug::cache(S::KIND, status, started.elapsed());
             return cached
                 .map(|entry| Lookup::Ready(entry.value))
                 .unwrap_or(Lookup::Unavailable);
@@ -235,10 +263,14 @@ impl<S: Source> Cached<S> {
         let deadline = Instant::now() + timeout;
         loop {
             if !marker.exists() {
-                return self.cached_or(Lookup::Unavailable);
+                let lookup = self.cached_or(Lookup::Unavailable);
+                let served = matches!(lookup, Lookup::Ready(_));
+                debug::cache(S::KIND, CacheStatus::Waited { served }, started.elapsed());
+                return lookup;
             }
             let now = Instant::now();
             if now >= deadline {
+                debug::cache(S::KIND, CacheStatus::TimedOut { age }, started.elapsed());
                 return self.cached_or(Lookup::Loading);
             }
             thread::sleep(REFRESH_POLL_INTERVAL.min(deadline - now));
