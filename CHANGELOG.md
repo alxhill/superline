@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/alxhill/superline/compare/v0.13.1...v0.14.0) - 2026-09-18
+
+### Added
+
+- *(python_env)* fetch the venv interpreter version through the shared cache ([#95](https://github.com/alxhill/superline/pull/95))
+
+### Other
+
+- *(cache)* generic cached lookups with background refresh ([#94](https://github.com/alxhill/superline/pull/94))
+- auto-merge the release PR only when the merged PR is labelled autorelease ([#92](https://github.com/alxhill/superline/pull/92))
+
 ## [0.13.1](https://github.com/alxhill/superline/compare/v0.13.0...v0.13.1) - 2026-09-16
 
 ### Other
