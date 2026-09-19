@@ -34,8 +34,13 @@ pub trait DefaultColors {
     }
 }
 
+/// A theme is a stateless set of colour choices, so it is shared freely across
+/// the threads that build a prompt.
 pub trait CompleteTheme:
-    DefaultColors
+    'static
+    + Send
+    + Sync
+    + DefaultColors
     + CmdScheme
     + CwdScheme
     + LastCmdDurationScheme

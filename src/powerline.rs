@@ -1,5 +1,7 @@
 use std::fmt;
 use std::fmt::{Display, Write};
+use std::panic;
+use std::thread;
 use std::time::Duration;
 
 use crate::colors::Color;
@@ -62,6 +64,85 @@ impl From<&SeparatorStyle> for Separator {
             SeparatorStyle::Round => Separator::Round,
             SeparatorStyle::AngleLine => Separator::AngleLine,
         }
+    }
+}
+
+/// One segment as a module describes it, before it is laid out. Everything
+/// that depends on the neighbouring segments or on the shell (separators,
+/// escape wrapping) is decided when it is pushed onto a [`Powerline`].
+enum Segment {
+    Text {
+        text: String,
+        style: Style,
+        /// Whether to pad the text with a space on each side.
+        spaces: bool,
+    },
+    Hyperlink {
+        label: String,
+        url: String,
+        style: Style,
+        marker: Option<(String, Color)>,
+    },
+}
+
+/// The segments one module contributes, in order.
+///
+/// Modules build their output here rather than writing into a [`Powerline`]
+/// directly, so that every module of a row can run on its own thread and the
+/// row is assembled afterwards in config order.
+#[derive(Default)]
+pub struct Segments {
+    items: Vec<Segment>,
+}
+
+impl Segments {
+    pub fn add_segment<D: Display>(&mut self, seg: D, style: Style) {
+        self.items.push(Segment::Text {
+            text: seg.to_string(),
+            style,
+            spaces: true,
+        });
+    }
+
+    pub fn add_short_segment<D: Display>(&mut self, seg: D, style: Style) {
+        self.items.push(Segment::Text {
+            text: seg.to_string(),
+            style,
+            spaces: false,
+        });
+    }
+
+    /// Adds a segment whose text is an OSC 8 terminal hyperlink, optionally
+    /// followed by a coloured marker glyph (e.g. the PR status dot) that shares
+    /// this segment's background instead of getting one of its own.
+    pub fn add_hyperlink_segment(
+        &mut self,
+        label: &str,
+        url: &str,
+        style: Style,
+        marker: Option<(&str, Color)>,
+    ) {
+        self.items.push(Segment::Hyperlink {
+            label: label.to_string(),
+            url: url.to_string(),
+            style,
+            marker: marker.map(|(glyph, color)| (glyph.to_string(), color)),
+        });
+    }
+}
+
+/// One entry of a row's config, ready to be applied to a [`Powerline`].
+/// Module steps carry the module itself so it can be run ahead of the layout
+/// pass; the other steps only affect layout and are applied in order.
+enum Step {
+    Module(Box<dyn Module + Send>),
+    Separator(Separator),
+    Padding(usize),
+}
+
+impl Step {
+    fn module<M: Module + Send + 'static>(module: M) -> Step {
+        Step::Module(Box::new(module))
     }
 }
 
@@ -166,12 +247,40 @@ impl Powerline {
         conf: &config::CommandLine,
         runtime_data: impl TerminalRuntimeMetadata,
     ) -> Self {
+        Self::from_row::<T>(conf, &runtime_data)
+    }
+
+    /// Builds one powerline per row. Rows are independent, so they are built
+    /// side by side, and within each row the modules run side by side too.
+    pub fn from_conf_rows<T: CompleteTheme>(
+        rows: &[config::CommandLine],
+        runtime_data: &(impl TerminalRuntimeMetadata + Sync),
+    ) -> Vec<Self> {
+        if rows.len() < 2 {
+            return rows
+                .iter()
+                .map(|row| Self::from_row::<T>(row, runtime_data))
+                .collect();
+        }
+        thread::scope(|scope| {
+            let handles = rows
+                .iter()
+                .map(|row| scope.spawn(move || Self::from_row::<T>(row, runtime_data)))
+                .collect::<Vec<_>>();
+            handles.into_iter().map(join).collect()
+        })
+    }
+
+    fn from_row<T: CompleteTheme>(
+        conf: &config::CommandLine,
+        runtime_data: &impl TerminalRuntimeMetadata,
+    ) -> Self {
         let mut powerline = Powerline::new();
-        powerline.add_conf_modules::<T>(&conf.left, &runtime_data);
+        powerline.add_conf_modules::<T>(&conf.left, runtime_data);
 
         if let Some(right_modules) = &conf.right {
             powerline.start_right();
-            powerline.add_conf_modules::<T>(right_modules, &runtime_data);
+            powerline.add_conf_modules::<T>(right_modules, runtime_data);
         }
 
         powerline
@@ -277,25 +386,22 @@ impl Powerline {
     }
 
     pub fn add_segment<D: Display>(&mut self, seg: D, style: Style) {
-        let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, true, None),
-            Direction::Right => self.write_segment_right(seg, style, true, None),
-        };
+        self.push(Segment::Text {
+            text: seg.to_string(),
+            style,
+            spaces: true,
+        });
     }
 
     pub fn add_short_segment<D: Display>(&mut self, seg: D, style: Style) {
-        let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, false, None),
-            Direction::Right => self.write_segment_right(seg, style, false, None),
-        };
+        self.push(Segment::Text {
+            text: seg.to_string(),
+            style,
+            spaces: false,
+        });
     }
 
-    /// Adds a segment whose text is an OSC 8 terminal hyperlink, optionally
-    /// followed by a coloured marker glyph (e.g. the PR status dot) that shares
-    /// this segment's background instead of getting one of its own. The OSC and
-    /// colour escapes are invisible, so the visible width is computed from
-    /// `label` and the marker glyph alone to keep column accounting (and
-    /// right-prompt padding) correct.
+    /// See [`Segments::add_hyperlink_segment`].
     pub fn add_hyperlink_segment(
         &mut self,
         label: &str,
@@ -303,21 +409,53 @@ impl Powerline {
         style: Style,
         marker: Option<(&str, Color)>,
     ) {
-        let mut visible_width = label.chars().count();
-        let link = format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, label);
-        let seg = match marker {
-            Some((glyph, color)) => {
-                // separating space + the glyph itself
-                visible_width += 1 + glyph.chars().count();
-                // Colour the glyph, then restore the segment's foreground so the
-                // terminal state matches what the renderer records for it.
-                format!("{} {}{}{}", link, FgColor::from(color), glyph, style.fg)
+        let mut segments = Segments::default();
+        segments.add_hyperlink_segment(label, url, style, marker);
+        self.add_segments(segments);
+    }
+
+    /// Lays out `segments` on the current side, in order.
+    pub fn add_segments(&mut self, segments: Segments) {
+        for segment in segments.items {
+            self.push(segment);
+        }
+    }
+
+    fn push(&mut self, segment: Segment) {
+        let (seg, style, spaces, visible_width) = match segment {
+            Segment::Text {
+                text,
+                style,
+                spaces,
+            } => (text, style, spaces, None),
+            Segment::Hyperlink {
+                label,
+                url,
+                style,
+                marker,
+            } => {
+                // The OSC and colour escapes are invisible, so the visible
+                // width is computed from the label and the marker glyph alone
+                // to keep column accounting (and right-prompt padding) correct.
+                let mut visible_width = label.chars().count();
+                let link = format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, label);
+                let seg = match marker {
+                    Some((glyph, color)) => {
+                        // separating space + the glyph itself
+                        visible_width += 1 + glyph.chars().count();
+                        // Colour the glyph, then restore the segment's
+                        // foreground so the terminal state matches what the
+                        // renderer records for it.
+                        format!("{} {}{}{}", link, FgColor::from(color), glyph, style.fg)
+                    }
+                    None => link,
+                };
+                (seg, style, true, Some(visible_width))
             }
-            None => link,
         };
         let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, true, Some(visible_width)),
-            Direction::Right => self.write_segment_right(seg, style, true, Some(visible_width)),
+            Direction::Left => self.write_segment(seg, style, spaces, visible_width),
+            Direction::Right => self.write_segment_right(seg, style, spaces, visible_width),
         };
     }
 
@@ -328,100 +466,35 @@ impl Powerline {
     }
 
     pub fn add_module<M: Module>(&mut self, mut module: M) {
-        module.append_segments(self);
+        let mut segments = Segments::default();
+        module.append_segments(&mut segments);
+        self.add_segments(segments);
     }
 
     fn add_conf_modules<T: CompleteTheme>(
         &mut self,
-        modules: &Vec<LineSegment>,
+        modules: &[LineSegment],
         runtime_data: &impl TerminalRuntimeMetadata,
     ) {
-        for module in modules {
-            match module {
-                LineSegment::SmallSpacer => self.add_module(Spacer::<T>::small()),
-                LineSegment::LargeSpacer => self.add_module(Spacer::<T>::large()),
-                LineSegment::Python { version, venv } => {
-                    self.add_module(Python::<T>::new(*version, *venv))
+        let steps = modules
+            .iter()
+            .map(|module| plan_step::<T>(module, runtime_data))
+            .collect::<Vec<_>>();
+        self.add_steps(steps);
+    }
+
+    /// Runs the modules among `steps` side by side, then applies every step in
+    /// order so the row comes out exactly as a sequential build would have it.
+    fn add_steps(&mut self, mut steps: Vec<Step>) {
+        let mut rendered = run_modules(&mut steps).into_iter();
+        for step in steps {
+            match step {
+                Step::Module(_) => {
+                    self.add_segments(rendered.next().expect("one output per module"))
                 }
-                LineSegment::Cmd => {
-                    self.add_module(Cmd::<T>::new(runtime_data.last_command_status()))
-                }
-                LineSegment::Cargo { version } => self.add_module(Cargo::<T>::new(*version)),
-                LineSegment::Git { status_timeout_ms } => self.add_module(
-                    Git::<T>::with_status_timeout(Duration::from_millis(*status_timeout_ms)),
-                ),
-                LineSegment::Pr { status } => self.add_module(Pr::<T>::new(*status)),
-                LineSegment::Separator(style) => self.set_separator(style.into()),
-                LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
-                LineSegment::Host => self.add_module(Host::<T>::new()),
-                LineSegment::Shell => {
-                    self.add_module(ShellName::<T>::new(runtime_data.shell_name()))
-                }
-                LineSegment::User => self.add_module(User::<T>::new()),
-                LineSegment::Padding(size) => self.add_padding(*size),
-                LineSegment::Time { format } => match format {
-                    Some(format) => self.add_module(Time::<T>::with_time_format(format.clone())),
-                    None => self.add_module(Time::<T>::new()),
-                },
-                LineSegment::AiUsage {
-                    provider,
-                    session,
-                    weekly,
-                    fable,
-                    display,
-                    threshold,
-                    session_label,
-                    weekly_label,
-                    fable_label,
-                    credits,
-                    credits_display,
-                    credits_label,
-                    credits_only_when_limited,
-                    session_time_remaining,
-                    session_time_remaining_only_at_limit,
-                } => self.add_module(Usage::<T>::new(
-                    *provider,
-                    UsageWindows::new(
-                        UsageWindows::session(*session, session_label.clone()),
-                        UsageWindows::weekly(*weekly, weekly_label.clone()),
-                        UsageWindows::fable(*fable, fable_label.clone()),
-                        UsageWindows::credits(
-                            *credits,
-                            credits_label.clone(),
-                            credits_display.unwrap_or(*display),
-                            *credits_only_when_limited,
-                        ),
-                        *provider,
-                    ),
-                    *display,
-                    *threshold,
-                    *session_time_remaining,
-                    *session_time_remaining_only_at_limit,
-                )),
-                LineSegment::LastCmdDuration { min_run_time } => {
-                    self.add_module(LastCmdDuration::<T>::new(
-                        runtime_data.last_command_duration(),
-                        Duration::from_millis(*min_run_time),
-                    ))
-                }
-                LineSegment::Cwd {
-                    max_length,
-                    wanted_seg_num,
-                    resolve_symlinks,
-                } => self.add_module(Cwd::<T>::new(
-                    *max_length,
-                    *wanted_seg_num,
-                    *resolve_symlinks,
-                )),
-                LineSegment::Node { version } => self.add_module(Node::<T>::new(*version)),
-                LineSegment::Java { version, jdk } => {
-                    self.add_module(Java::<T>::new(*version, *jdk))
-                }
-                LineSegment::Error { message } => {
-                    self.add_module(ErrorMessage::<T>::new(message.clone()))
-                }
-                LineSegment::Unknown { name } => self.add_module(Unknown::<T>::new(name.clone())),
-            };
+                Step::Separator(separator) => self.set_separator(separator),
+                Step::Padding(size) => self.add_padding(size),
+            }
         }
     }
 
@@ -510,5 +583,282 @@ impl Powerline {
             self.left_columns += 1;
         }
         self.last_style = None;
+    }
+}
+
+/// Turns one config entry into the step that realises it.
+fn plan_step<T: CompleteTheme>(
+    module: &LineSegment,
+    runtime_data: &impl TerminalRuntimeMetadata,
+) -> Step {
+    match module {
+        LineSegment::SmallSpacer => Step::module(Spacer::<T>::small()),
+        LineSegment::LargeSpacer => Step::module(Spacer::<T>::large()),
+        LineSegment::Python { version, venv } => Step::module(Python::<T>::new(*version, *venv)),
+        LineSegment::Cmd => Step::module(Cmd::<T>::new(runtime_data.last_command_status())),
+        LineSegment::Cargo { version } => Step::module(Cargo::<T>::new(*version)),
+        LineSegment::Git { status_timeout_ms } => Step::module(Git::<T>::with_status_timeout(
+            Duration::from_millis(*status_timeout_ms),
+        )),
+        LineSegment::Pr { status } => Step::module(Pr::<T>::new(*status)),
+        LineSegment::Separator(style) => Step::Separator(style.into()),
+        LineSegment::ReadOnly => Step::module(ReadOnly::<T>::new()),
+        LineSegment::Host => Step::module(Host::<T>::new()),
+        LineSegment::Shell => Step::module(ShellName::<T>::new(runtime_data.shell_name())),
+        LineSegment::User => Step::module(User::<T>::new()),
+        LineSegment::Padding(size) => Step::Padding(*size),
+        LineSegment::Time { format } => match format {
+            Some(format) => Step::module(Time::<T>::with_time_format(format.clone())),
+            None => Step::module(Time::<T>::new()),
+        },
+        LineSegment::AiUsage {
+            provider,
+            session,
+            weekly,
+            fable,
+            display,
+            threshold,
+            session_label,
+            weekly_label,
+            fable_label,
+            credits,
+            credits_display,
+            credits_label,
+            credits_only_when_limited,
+            session_time_remaining,
+            session_time_remaining_only_at_limit,
+        } => Step::module(Usage::<T>::new(
+            *provider,
+            UsageWindows::new(
+                UsageWindows::session(*session, session_label.clone()),
+                UsageWindows::weekly(*weekly, weekly_label.clone()),
+                UsageWindows::fable(*fable, fable_label.clone()),
+                UsageWindows::credits(
+                    *credits,
+                    credits_label.clone(),
+                    credits_display.unwrap_or(*display),
+                    *credits_only_when_limited,
+                ),
+                *provider,
+            ),
+            *display,
+            *threshold,
+            *session_time_remaining,
+            *session_time_remaining_only_at_limit,
+        )),
+        LineSegment::LastCmdDuration { min_run_time } => Step::module(LastCmdDuration::<T>::new(
+            runtime_data.last_command_duration(),
+            Duration::from_millis(*min_run_time),
+        )),
+        LineSegment::Cwd {
+            max_length,
+            wanted_seg_num,
+            resolve_symlinks,
+        } => Step::module(Cwd::<T>::new(
+            *max_length,
+            *wanted_seg_num,
+            *resolve_symlinks,
+        )),
+        LineSegment::Node { version } => Step::module(Node::<T>::new(*version)),
+        LineSegment::Java { version, jdk } => Step::module(Java::<T>::new(*version, *jdk)),
+        LineSegment::Error { message } => Step::module(ErrorMessage::<T>::new(message.clone())),
+        LineSegment::Unknown { name } => Step::module(Unknown::<T>::new(name.clone())),
+    }
+}
+
+/// Runs every module among `steps`, each on its own thread when there is more
+/// than one, and returns their segments in step order.
+///
+/// Module work is dominated by waiting: on the filesystem, on a child process,
+/// on a cache refresh. Run side by side, a row takes as long as its slowest
+/// module rather than the sum of all of them, and a git status walk that is
+/// allowed to block for a while no longer holds back the segments after it.
+fn run_modules(steps: &mut [Step]) -> Vec<Segments> {
+    let count = steps
+        .iter()
+        .filter(|step| matches!(step, Step::Module(_)))
+        .count();
+    let modules = steps.iter_mut().filter_map(|step| match step {
+        Step::Module(module) => Some(module),
+        Step::Separator(_) | Step::Padding(_) => None,
+    });
+    if count < 2 {
+        return modules
+            .map(|module| collect_segments(module.as_mut()))
+            .collect();
+    }
+    thread::scope(|scope| {
+        let handles = modules
+            .map(|module| scope.spawn(move || collect_segments(module.as_mut())))
+            .collect::<Vec<_>>();
+        handles.into_iter().map(join).collect()
+    })
+}
+
+fn collect_segments(module: &mut (dyn Module + Send)) -> Segments {
+    let mut segments = Segments::default();
+    module.append_segments(&mut segments);
+    segments
+}
+
+/// Waits for a worker and surfaces its panic on the caller, exactly as if the
+/// work had run inline.
+fn join<R>(handle: thread::ScopedJoinHandle<'_, R>) -> R {
+    handle
+        .join()
+        .unwrap_or_else(|payload| panic::resume_unwind(payload))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::terminal::{Shell, SHELL};
+
+    /// How many probes are inside `append_segments` at once, and the most
+    /// there have ever been.
+    #[derive(Default)]
+    struct Concurrency {
+        running: AtomicUsize,
+        peak: AtomicUsize,
+    }
+
+    /// A module that takes `delay` to produce one segment.
+    struct Probe {
+        text: &'static str,
+        delay: Duration,
+        concurrency: Arc<Concurrency>,
+    }
+
+    impl Module for Probe {
+        fn append_segments(&mut self, segments: &mut Segments) {
+            let running = self.concurrency.running.fetch_add(1, Ordering::SeqCst) + 1;
+            self.concurrency.peak.fetch_max(running, Ordering::SeqCst);
+            thread::sleep(self.delay);
+            self.concurrency.running.fetch_sub(1, Ordering::SeqCst);
+            segments.add_segment(self.text, Style::simple(Color(15), Color(4)));
+        }
+    }
+
+    fn probe(text: &'static str, delay_ms: u64, concurrency: &Arc<Concurrency>) -> Probe {
+        Probe {
+            text,
+            delay: Duration::from_millis(delay_ms),
+            concurrency: concurrency.clone(),
+        }
+    }
+
+    fn bare_shell() {
+        let _ = SHELL.set(Shell::Bare);
+    }
+
+    #[test]
+    fn modules_run_side_by_side() {
+        bare_shell();
+        let concurrency = Arc::new(Concurrency::default());
+        let steps = ["a", "b", "c"]
+            .into_iter()
+            .map(|text| Step::module(probe(text, 200, &concurrency)))
+            .collect();
+
+        Powerline::new().add_steps(steps);
+
+        assert_eq!(concurrency.peak.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn a_row_built_side_by_side_matches_a_sequential_build() {
+        bare_shell();
+        let concurrency = Arc::new(Concurrency::default());
+        // The slowest module comes first on each side, so any ordering by
+        // completion time rather than by config position would show.
+        let left = |c: &Arc<Concurrency>| {
+            vec![
+                Step::module(probe("slow", 100, c)),
+                Step::Padding(1),
+                Step::module(probe("quick", 0, c)),
+                Step::Separator(Separator::Round),
+                Step::module(probe("last", 20, c)),
+            ]
+        };
+        let right = |c: &Arc<Concurrency>| {
+            vec![
+                Step::module(probe("r-slow", 60, c)),
+                Step::Padding(2),
+                Step::module(probe("r-quick", 0, c)),
+            ]
+        };
+
+        let mut parallel = Powerline::new();
+        parallel.add_steps(left(&concurrency));
+        parallel.start_right();
+        parallel.add_steps(right(&concurrency));
+
+        let mut sequential = Powerline::new();
+        sequential.add_module(probe("slow", 0, &concurrency));
+        sequential.add_padding(1);
+        sequential.add_module(probe("quick", 0, &concurrency));
+        sequential.set_separator(Separator::Round);
+        sequential.add_module(probe("last", 0, &concurrency));
+        sequential.start_right();
+        sequential.add_module(probe("r-slow", 0, &concurrency));
+        sequential.add_padding(2);
+        sequential.add_module(probe("r-quick", 0, &concurrency));
+
+        assert_eq!(parallel.left_buffer, sequential.left_buffer);
+        assert_eq!(parallel.left_columns, sequential.left_columns);
+        assert_eq!(parallel.right_buffer, sequential.right_buffer);
+        assert_eq!(parallel.right_columns, sequential.right_columns);
+    }
+
+    #[test]
+    fn hyperlink_segments_lay_out_the_same_from_a_module() {
+        bare_shell();
+        let style = Style::simple(Color(15), Color(2));
+
+        let mut direct = Powerline::new();
+        direct.add_hyperlink_segment(
+            "#12",
+            "https://example.com/12",
+            style.clone(),
+            Some(("*", Color(9))),
+        );
+
+        let mut segments = Segments::default();
+        segments.add_hyperlink_segment(
+            "#12",
+            "https://example.com/12",
+            style,
+            Some(("*", Color(9))),
+        );
+        let mut deferred = Powerline::new();
+        deferred.add_segments(segments);
+
+        assert_eq!(direct.left_buffer, deferred.left_buffer);
+        assert_eq!(direct.left_columns, deferred.left_columns);
+    }
+
+    #[test]
+    fn a_panicking_module_still_panics_the_build() {
+        struct Boom;
+        impl Module for Boom {
+            fn append_segments(&mut self, _: &mut Segments) {
+                panic!("module failed");
+            }
+        }
+        let concurrency = Arc::new(Concurrency::default());
+        let steps = vec![
+            Step::module(Boom),
+            Step::module(probe("ok", 0, &concurrency)),
+        ];
+
+        let result = panic::catch_unwind(panic::AssertUnwindSafe(move || {
+            Powerline::new().add_steps(steps)
+        }));
+
+        let payload = result.expect_err("the module's panic should surface");
+        assert_eq!(payload.downcast_ref::<&str>(), Some(&"module failed"));
     }
 }

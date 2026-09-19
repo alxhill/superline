@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::colors::Color;
 use crate::themes::DefaultColors;
-use crate::{platform, utils, Powerline, Style};
+use crate::{platform, utils, Segments, Style};
 
 use super::Module;
 
@@ -46,7 +46,7 @@ impl<S: UserScheme> User<S> {
 }
 
 impl<S: UserScheme> Module for User<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         if self.show_on_local || utils::is_remote_shell() {
             let bg = if platform::is_root() {
                 S::username_root_bg()
@@ -55,7 +55,7 @@ impl<S: UserScheme> Module for User<S> {
             };
 
             if let Some(name) = platform::current_username() {
-                powerline.add_segment(name, Style::simple(S::username_fg(), bg));
+                segments.add_segment(name, Style::simple(S::username_fg(), bg));
             }
         }
     }

@@ -10,5 +10,5 @@ pub mod themes;
 
 pub(crate) mod utils;
 
-pub use crate::powerline::{Powerline, Style};
+pub use crate::powerline::{Powerline, Segments, Style};
 pub use colors::Color;

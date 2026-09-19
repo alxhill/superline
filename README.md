@@ -24,6 +24,8 @@ configurable modules and themes.
   project.
 - **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
   served from a cache.
+- **Parallel**: every module in a row runs on its own thread, so a prompt takes as long as its slowest module
+  rather than the sum of them all.
 - **Flexible layout**: multiple rows, each with an optional right-aligned side.
 - **Themeable**: two built-in themes, or point at your own theme JSON file.
 - **Any shell**: fish, zsh, bash, PowerShell and nushell are all supported by `superline install`.

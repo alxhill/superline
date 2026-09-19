@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::colors::Color;
 use crate::modules::Module;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 pub struct ErrorMessage<S: ErrorMessageScheme> {
     message: String,
@@ -30,8 +30,8 @@ impl<S: ErrorMessageScheme> ErrorMessage<S> {
 }
 
 impl<S: ErrorMessageScheme> Module for ErrorMessage<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_segment(
+    fn append_segments(&mut self, segments: &mut Segments) {
+        segments.add_segment(
             &self.message,
             Style::simple(S::error_message_fg(), S::error_message_bg()),
         );

@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use crate::colors::Color;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 use super::Module;
 
@@ -35,10 +35,10 @@ impl<S: ExitCodeScheme> ExitCode<S> {
 }
 
 impl<S: ExitCodeScheme> Module for ExitCode<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         if let Some(exit_code) = env::args().nth(1).as_deref() {
             if exit_code != "0" {
-                powerline.add_segment(
+                segments.add_segment(
                     exit_code,
                     Style::simple(S::exit_code_fg(), S::exit_code_bg()),
                 )

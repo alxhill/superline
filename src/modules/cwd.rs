@@ -6,7 +6,7 @@ use std::path::{PathBuf, MAIN_SEPARATOR, MAIN_SEPARATOR_STR};
 use crate::colors::Color;
 use crate::platform;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 use super::Module;
 
@@ -37,9 +37,9 @@ impl<S: CwdScheme> Cwd<S> {
 }
 
 macro_rules! rainbow_segment {
-    ($powerline:ident, $iter_var:ident, $value:expr) => {
+    ($segments:ident, $iter_var:ident, $value:expr) => {
         let r_col = S::path_bg_colors()[$iter_var % S::path_bg_colors().len()];
-        $powerline.add_short_segment(format!(" {}", $value), Style::simple(S::path_fg(), r_col));
+        $segments.add_short_segment(format!(" {}", $value), Style::simple(S::path_fg(), r_col));
         $iter_var = $iter_var.wrapping_add(1);
     };
 }
@@ -68,7 +68,7 @@ fn resolve_cwd(
 }
 
 impl<S: CwdScheme> Module for Cwd<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         let current_dir = resolve_cwd(
             self.resolve_symlinks,
             cfg!(windows),
@@ -84,14 +84,14 @@ impl<S: CwdScheme> Module for Cwd<S> {
         // Sitting at the filesystem root ("/" on Unix) - just show the glyph.
         #[allow(unused_assignments)]
         if cwd == MAIN_SEPARATOR_STR {
-            rainbow_segment!(powerline, current_bg, "~");
+            rainbow_segment!(segments, current_bg, "~");
             return;
         }
 
         if let Some(home) = platform::home_dir() {
             let home = home.to_string_lossy();
             if cwd.starts_with(home.as_ref()) {
-                rainbow_segment!(powerline, current_bg, "~");
+                rainbow_segment!(segments, current_bg, "~");
                 cwd = &cwd[home.len()..]
             }
         }
@@ -106,17 +106,17 @@ impl<S: CwdScheme> Module for Cwd<S> {
             let end = cwd.split(MAIN_SEPARATOR).skip(depth - right + 1);
 
             for val in start {
-                rainbow_segment!(powerline, current_bg, val);
+                rainbow_segment!(segments, current_bg, val);
             }
 
-            rainbow_segment!(powerline, current_bg, "...");
+            rainbow_segment!(segments, current_bg, "...");
 
             for val in end {
-                rainbow_segment!(powerline, current_bg, val);
+                rainbow_segment!(segments, current_bg, val);
             }
         } else {
             for val in cwd.split(MAIN_SEPARATOR).skip(1) {
-                rainbow_segment!(powerline, current_bg, val);
+                rainbow_segment!(segments, current_bg, val);
             }
         };
     }

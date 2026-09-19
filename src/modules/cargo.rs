@@ -7,7 +7,7 @@ use crate::colors::Color;
 use crate::mise;
 use crate::modules::Module;
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
+use crate::{Segments, Style};
 
 pub struct Cargo<S> {
     /// Whether to show the mise-pinned toolchain version after the icon.
@@ -50,7 +50,7 @@ impl<S: CargoScheme> Cargo<S> {
 }
 
 impl<S: CargoScheme> Module for Cargo<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn append_segments(&mut self, segments: &mut Segments) {
         if let Ok(cwd) = env::current_dir() {
             if cwd.join("Cargo.toml").exists() {
                 // The icon alone says "rust project"; a pinned toolchain adds
@@ -77,7 +77,7 @@ impl<S: CargoScheme> Module for Cargo<S> {
                 .collect::<Vec<_>>()
                 .join(" ");
 
-                powerline.add_segment(label, Style::simple(S::cargo_fg(), S::cargo_bg()));
+                segments.add_segment(label, Style::simple(S::cargo_fg(), S::cargo_bg()));
             }
         }
     }
