@@ -58,7 +58,10 @@ pub fn get_detached_branch_name() -> Option<String> {
         .ok()?;
 
     if child.status.success() {
-        let hash = std::str::from_utf8(&child.stdout).ok()?.split('\n').next()?;
+        let hash = std::str::from_utf8(&child.stdout)
+            .ok()?
+            .split('\n')
+            .next()?;
         Some(detached_label(branch_at_head(), hash))
     } else {
         Some(String::from("Big Bang"))
