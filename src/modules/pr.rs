@@ -201,28 +201,12 @@ impl<S: PrScheme> Module for Pr<S> {
     }
 }
 
-/// Resolves the current branch name and repository root in a single, fast,
-/// network-free git invocation. Returns `None` outside a git repository.
+/// Resolves the current branch name and repository root by walking up to the
+/// `.git` entry and reading `HEAD`. Returns `None` outside a git repository.
 fn current_branch_and_root() -> Option<(String, PathBuf)> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD", "--show-toplevel"])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let text = String::from_utf8(output.stdout).ok()?;
-    let mut lines = text.lines();
-    let branch = lines.next()?.trim().to_string();
-    let root = lines.next()?.trim();
-
-    if branch.is_empty() || root.is_empty() {
-        return None;
-    }
-
-    Some((branch, PathBuf::from(root)))
+    let (root, is_worktree) = super::git::find_git_dir()?;
+    let branch = super::git::head_branch(&root, is_worktree)?;
+    (!branch.is_empty()).then_some((branch, root))
 }
 
 fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
