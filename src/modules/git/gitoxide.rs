@@ -23,6 +23,14 @@ pub fn run_git(path: &Path) -> GitStats {
     let status = repo
         .status(gix::progress::Discard)
         .unwrap()
+        // A submodule's own untracked files cost a full directory walk of that
+        // submodule's worktree, and the superproject's prompt cannot say which
+        // submodule they are in anyway. Its committed and modified state still
+        // counts, and `cd`ing into the submodule shows its untracked files.
+        .index_worktree_submodules(gix::status::Submodule::Given {
+            ignore: gix::submodule::config::Ignore::Untracked,
+            check_dirty: false,
+        })
         .into_iter(None)
         .unwrap();
 
@@ -232,6 +240,52 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// A submodule's untracked files are the expensive half of a submodule
+    /// status walk and are deliberately not counted, but a submodule checked
+    /// out at a different commit still marks the superproject dirty.
+    #[test]
+    fn submodule_untracked_files_are_ignored_but_commit_changes_are_not() {
+        let inner = init_repo();
+        std::fs::write(inner.join("tracked"), b"x").unwrap();
+        git(&inner, &["add", "."]);
+        git(&inner, &["commit", "-q", "-m", "tracked"]);
+
+        let outer = init_repo();
+        git(
+            &outer,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                inner.to_str().unwrap(),
+                "sub",
+            ],
+        );
+        git(&outer, &["commit", "-q", "-m", "add submodule"]);
+
+        std::fs::write(outer.join("sub/untracked"), b"x").unwrap();
+        let stats = run_git(&outer);
+        assert_eq!(
+            (stats.untracked, stats.non_staged),
+            (0, 0),
+            "an untracked file inside a submodule must not dirty the superproject"
+        );
+
+        git(&inner, &["commit", "-q", "--allow-empty", "-m", "moved on"]);
+        git(&outer, &["-C", "sub", "fetch", "-q", "origin"]);
+        git(&outer, &["-C", "sub", "checkout", "-q", "FETCH_HEAD"]);
+        assert_eq!(
+            run_git(&outer).non_staged,
+            1,
+            "a submodule checked out at another commit must still show up"
+        );
+
+        std::fs::remove_dir_all(&outer).ok();
+        std::fs::remove_dir_all(&inner).ok();
     }
 
     #[test]
