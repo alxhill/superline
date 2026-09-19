@@ -11,6 +11,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
 use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
+use superline::debug;
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
 use superline::Powerline;
@@ -276,6 +277,7 @@ impl TerminalRuntimeMetadata for &ShowArgs {
 }
 
 fn main() {
+    debug::init();
     let args = PowerlineArgs::parse();
 
     match args {
@@ -488,7 +490,9 @@ fn print_shell_conf(shell: ShellSubcommand) {
 
 fn show(args: ShowArgs, right_only: bool) {
     ignore_ctrl_c_for_powershell_prompt(args.shell);
+    let span = debug::span("prune caches");
     superline::cache::prune_stale();
+    span.finish();
 
     match args.shell {
         ShellArg::Bash => SHELL.set(Shell::Bash),
@@ -502,19 +506,34 @@ fn show(args: ShowArgs, right_only: bool) {
     }
     .expect("failed to set shell");
 
-    match load_config(args.config.clone()) {
-        Ok((mut conf, conf_root)) => match load_theme(&conf, &conf_root) {
-            Ok(theme) => render_prompt(&args, conf, theme, right_only),
-            Err(error @ PowerlineError::InvalidTheme(_)) => {
-                prepend_error_module(&mut conf, fallback_message(&error));
-                render_prompt(&args, conf, LoadedTheme::Rainbow, right_only);
+    let span = debug::span("config");
+    let config = load_config(args.config.clone());
+    span.finish();
+
+    match config {
+        Ok((mut conf, conf_root)) => {
+            let span = debug::span("theme");
+            let theme = load_theme(&conf, &conf_root);
+            span.finish();
+
+            match theme {
+                Ok(theme) => render_prompt(&args, conf, theme, right_only),
+                Err(error @ PowerlineError::InvalidTheme(_)) => {
+                    prepend_error_module(&mut conf, fallback_message(&error));
+                    render_prompt(&args, conf, LoadedTheme::Rainbow, right_only);
+                }
+                Err(error) => show_fallback(&args, &error, right_only),
             }
-            Err(error) => show_fallback(&args, &error, right_only),
-        },
+        }
         Err(e) => {
             show_fallback(&args, &e, right_only);
         }
     }
+
+    // The report's total should cover writing the prompt, which is otherwise
+    // flushed at exit.
+    let _ = io::stdout().flush();
+    debug::report();
 }
 
 /// Keep a Windows Ctrl-C event from terminating the short-lived PowerShell
@@ -536,16 +555,20 @@ fn ignore_ctrl_c_for_powershell_prompt(shell: ShellArg) {
 fn ignore_ctrl_c_for_powershell_prompt(_shell: ShellArg) {}
 
 fn render_prompt(args: &ShowArgs, conf: Config, theme: LoadedTheme, right_only: bool) {
+    let span = debug::span(if right_only { "render right" } else { "render" });
     if right_only {
         render_right(args, conf, theme);
     } else {
         render_normal(args, conf, theme);
     }
+    span.finish();
 }
 
 fn render_right(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
     if let Some(prompt) = conf.rows.last() {
+        let span = debug::span(format!("row {}", conf.rows.len()));
         let powerline = powerline_from_conf(prompt, args, theme);
+        span.finish();
         powerline.print_right();
     }
 }
@@ -554,9 +577,16 @@ fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
     let mut powerlines = conf
         .rows
         .into_iter()
-        .map(|prompt| powerline_from_conf(&prompt, args, theme))
+        .enumerate()
+        .map(|(row, prompt)| {
+            let span = debug::span(format!("row {}", row + 1));
+            let powerline = powerline_from_conf(&prompt, args, theme);
+            span.finish();
+            powerline
+        })
         .collect::<Vec<Powerline>>();
 
+    let span = debug::span("print");
     if let Some((last, all_bar_last)) = powerlines.split_last_mut() {
         for powerline in all_bar_last {
             powerline.print_left();
@@ -568,6 +598,7 @@ fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
         last.print_left();
         println!();
     }
+    span.finish();
 }
 
 #[derive(Clone, Copy)]

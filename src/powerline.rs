@@ -5,6 +5,7 @@ use std::time::Duration;
 use crate::colors::Color;
 use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
+use crate::debug;
 use crate::modules::{
     Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Node, Pr, Python,
     ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
@@ -328,7 +329,9 @@ impl Powerline {
     }
 
     pub fn add_module<M: Module>(&mut self, mut module: M) {
+        let span = debug::span(debug::type_label(std::any::type_name::<M>()));
         module.append_segments(self);
+        span.finish();
     }
 
     fn add_conf_modules<T: CompleteTheme>(

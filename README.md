@@ -416,6 +416,37 @@ module name and property.
 | `superline config` | Open the config file in `$EDITOR`. |
 | `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
 
+## Debugging a slow prompt
+
+Set `SUPERLINE_DEBUG=1` to have superline print a timing report to **stderr** after it renders. The prompt on stdout is
+unchanged, so this works in a live shell as well as from a one-off `superline show`.
+
+```console
+$ SUPERLINE_DEBUG=1 superline show -s 0 -c 200 fish >/dev/null
+superline debug
+  startup                 0.1ms
+  prune caches            0.1ms
+  config                  0.7ms
+  theme                   0.6ms
+  render                141.7ms
+    row 1               140.9ms
+      Cwd                 0.0ms
+      Git               133.9ms
+        git             133.8ms  refresh finished during wait
+      Pr                  6.8ms
+      Usage               0.1ms
+        usage             0.1ms  hit fresh (age 14s)
+    row 2                 0.3ms
+      Node                0.1ms
+    print                 0.0ms
+  total                 143.1ms
+```
+
+Each module is timed where the prompt draws it, and any cached lookup it made is listed underneath with how it was
+served: `hit fresh`, `hit stale (…), refresh spawned`, `miss, refresh spawned`, `refresh finished during wait`, or
+`wait timed out, serving cache (…)`. A module with no cache line under it did all of its work inline. Rows render one
+after another, so the times down the tree add up to the `total` wall clock.
+
 ## Using superline as a library
 
 For the fastest possible prompt you can skip the config file entirely and compile your layout into a small Rust
