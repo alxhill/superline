@@ -51,7 +51,7 @@ pub fn get_branch_name(s: &str) -> Option<&str> {
 
 pub fn get_detached_branch_name() -> String {
     let child = Command::new("git")
-        .args(["describe", "--tags", "--always"])
+        .args(["rev-parse", "--short", "HEAD"])
         .output()
         .unwrap();
 
@@ -61,7 +61,7 @@ pub fn get_detached_branch_name() -> String {
             .split('\n')
             .next()
             .unwrap();
-        format!("\u{2693}{}", detached_label(branch_at_head(), hash))
+        detached_label(branch_at_head(), hash)
     } else {
         String::from("Big Bang")
     }
