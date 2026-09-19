@@ -204,8 +204,8 @@ impl<S: PrScheme> Module for Pr<S> {
 /// Resolves the current branch name and repository root by walking up to the
 /// `.git` entry and reading `HEAD`. Returns `None` outside a git repository.
 fn current_branch_and_root() -> Option<(String, PathBuf)> {
-    let (root, is_worktree) = super::git::find_git_dir()?;
-    let branch = super::git::head_branch(&root, is_worktree)?;
+    let (root, _) = super::git::find_git_dir()?;
+    let branch = super::git::head_branch(&root)?;
     (!branch.is_empty()).then_some((branch, root))
 }
 

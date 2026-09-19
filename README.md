@@ -19,7 +19,7 @@ configurable modules and themes.
 
 ## Highlights
 
-- **Fast**: around 15ms per prompt, git status included.
+- **Fast**: a few tens of milliseconds per prompt, git status included.
 - **Lazy**: backends only run when needed, so there is no git cost outside a git repo and no Python cost outside a
   project.
 - **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
@@ -233,11 +233,19 @@ shown while a refresh continues in the background for the next prompt. Before an
 `loading…`.
 
 ```json
-{ "git": { "status_timeout_ms": 250 } }
+{ "git": { "status_timeout_ms": 250, "backend": "auto" } }
 ```
 
-Repos with many untracked files can make status slow; git's own
-[untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) helps a lot.
+Status is produced by one of two backends, chosen with `backend`:
+
+- `cli` shells out to the `git` binary. It is the fastest option on large working trees because it is the only
+  backend that uses git's own [untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) and
+  fsmonitor; enabling `core.untrackedCache` in a big repo typically cuts status time by two thirds. It needs `git` on
+  your `PATH`.
+- `gitoxide` walks the working tree in-process with pure Rust. It needs no external binary, and is faster on small
+  repos where the CLI's process-spawn overhead dominates.
+- `auto` (the default) picks between them from the size of `.git/index`: the CLI for large working trees, gitoxide
+  for small ones. It falls back to gitoxide whenever `git` isn't on `PATH`.
 
 #### pr
 

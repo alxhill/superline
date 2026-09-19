@@ -46,18 +46,6 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
-      # Guard the pure-Rust `git` CLI backend (no libgit2 C build) - the path
-      # recommended for Windows installs without a C toolchain.
-      - name: Test (no default features, git-CLI backend)
-        run: cargo test --no-default-features --verbose
-
-      # Guard the optional libgit2 backend.
-      - name: Clippy (libgit backend)
-        run: cargo clippy --no-default-features --features libgit --all-targets -- -D warnings
-
-      - name: Test (libgit backend)
-        run: cargo test --no-default-features --features libgit --verbose
-
   release-assets:
     name: Release assets (dry run)
     if: github.event_name == 'pull_request'
@@ -84,7 +72,8 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      # Default features use the pure-Rust gitoxide backend.
+      # Both git backends (CLI and gitoxide) compile in by default and are
+      # picked at runtime by the `git` module's `backend` config.
       - name: Build
         run: cargo build --verbose
 
@@ -92,29 +81,3 @@ jobs:
       # (PowerShell 7 is preinstalled on windows-latest).
       - name: Test
         run: cargo test --verbose
-
-      - name: Build (no default features, git-CLI backend)
-        run: cargo build --no-default-features --verbose
-
-      # The optional libgit2 backend needs the MSVC toolchain + cmake supplied
-      # by windows-latest.
-      - name: Build (libgit backend)
-        run: cargo build --no-default-features --features libgit --verbose
-
-      # The steps above build the committed Cargo.lock. `cargo install` instead
-      # resolves dependencies fresh, so a published release can pull newer
-      # transitive crates than the locked build ever sees. That is exactly how
-      # the advapi32 link failure shipped: libgit2-sys never links advapi32, and
-      # the locked build only succeeds because the pinned windows-sys 0.52 (via
-      # chrono) drags its umbrella Win32 import library onto the link line and
-      # incidentally resolves those symbols. Newer windows-sys uses per-function
-      # raw-dylib imports and drops that coverage. Resolve to the latest
-      # compatible versions and rebuild so this job also mirrors the
-      # `cargo install` view and fails loudly if a transitive bump removes a
-      # system library the optional libgit backend depends on. Kept last because
-      # it rewrites Cargo.lock.
-      - name: Update to latest compatible dependencies
-        run: cargo update
-
-      - name: Build (libgit backend, latest deps)
-        run: cargo build --no-default-features --features libgit --verbose

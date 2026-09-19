@@ -15,11 +15,11 @@ bin-dir = "{ bin }{ binary-ext }"
 
 [dependencies]
 hostname = "0.3"
-git2 = { version = "0.18", optional = true, default-features = false }
-# Pure-Rust git backend. `status`/`revision` cover the status walk and the
+# Pure-Rust git backend, used in-process for small working trees (see
+# `src/modules/git.rs`). `status`/`revision` cover the status walk and the
 # ahead/behind commit counting; `max-performance-safe` keeps the speedups while
 # avoiding any C toolchain (gix decompresses objects with zlib-rs).
-gix = { version = "0.84", optional = true, default-features = false, features = [
+gix = { version = "0.84", default-features = false, features = [
     "sha1",
     "status",
     "revision",
@@ -47,14 +47,6 @@ libc = "0.2"
 # custom prompt return no output and fall back to `PS>`.
 [target.'cfg(windows)'.dependencies]
 ctrlc = "3.5.2"
-
-# Pick at most one git backend. When several are enabled the precedence is
-# `gitoxide` > `libgit` > the `git` CLI fallback (see `src/modules/git.rs`).
-# To use libgit on its own: `--no-default-features --features libgit`.
-[features]
-default = ["gitoxide"]
-libgit = ["git2"]
-gitoxide = ["gix"]
 
 [profile.release]
 opt-level = 3
