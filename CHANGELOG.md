@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.2](https://github.com/alxhill/superline/compare/v0.15.1...v0.15.2) - 2026-09-19
+
+### Added
+
+- *(git)* link the GitHub logo to the repository web page ([#107](https://github.com/alxhill/superline/pull/107))
+- *(debug)* report per-module and cache timings with SUPERLINE_DEBUG=1 ([#100](https://github.com/alxhill/superline/pull/100))
+
+### Other
+
+- *(pr)* read the branch from HEAD instead of shelling out to git ([#102](https://github.com/alxhill/superline/pull/102))
+
 ## [0.15.1](https://github.com/alxhill/superline/compare/v0.15.0...v0.15.1) - 2026-09-19
 
 ### Added
