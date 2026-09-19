@@ -7,9 +7,9 @@ use std::{env, fs};
 
 use serde::{Deserialize, Serialize};
 
-// Backend selection. At most one of these modules is compiled in; when more
-// than one feature is enabled the precedence is `gitoxide` > `libgit` > the
-// `git` CLI fallback. Each backend exposes a `run_git(&Path) -> GitStats`.
+// Backend selection. At most one of these modules is compiled in; the `git`
+// CLI is the default, and when a library feature is enabled the precedence is
+// `gitoxide` > `libgit` > CLI. Each backend exposes a `run_git(&Path) -> GitStats`.
 #[cfg(feature = "gitoxide")]
 use gitoxide as internal;
 #[cfg(all(feature = "libgit", not(feature = "gitoxide")))]

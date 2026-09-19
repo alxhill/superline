@@ -46,17 +46,19 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
-      # Guard the pure-Rust `git` CLI backend (no libgit2 C build) - the path
-      # recommended for Windows installs without a C toolchain.
-      - name: Test (no default features, git-CLI backend)
-        run: cargo test --no-default-features --verbose
+      # Guard the optional in-process gitoxide backend.
+      - name: Clippy (gitoxide backend)
+        run: cargo clippy --features gitoxide --all-targets -- -D warnings
+
+      - name: Test (gitoxide backend)
+        run: cargo test --features gitoxide --verbose
 
       # Guard the optional libgit2 backend.
       - name: Clippy (libgit backend)
-        run: cargo clippy --no-default-features --features libgit --all-targets -- -D warnings
+        run: cargo clippy --features libgit --all-targets -- -D warnings
 
       - name: Test (libgit backend)
-        run: cargo test --no-default-features --features libgit --verbose
+        run: cargo test --features libgit --verbose
 
   release-assets:
     name: Release assets (dry run)
@@ -84,7 +86,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      # Default features use the pure-Rust gitoxide backend.
+      # Default features use the `git` CLI backend.
       - name: Build
         run: cargo build --verbose
 
@@ -93,13 +95,13 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
-      - name: Build (no default features, git-CLI backend)
-        run: cargo build --no-default-features --verbose
+      - name: Build (gitoxide backend)
+        run: cargo build --features gitoxide --verbose
 
       # The optional libgit2 backend needs the MSVC toolchain + cmake supplied
       # by windows-latest.
       - name: Build (libgit backend)
-        run: cargo build --no-default-features --features libgit --verbose
+        run: cargo build --features libgit --verbose
 
       # The steps above build the committed Cargo.lock. `cargo install` instead
       # resolves dependencies fresh, so a published release can pull newer
@@ -117,4 +119,4 @@ jobs:
         run: cargo update
 
       - name: Build (libgit backend, latest deps)
-        run: cargo build --no-default-features --features libgit --verbose
+        run: cargo build --features libgit --verbose
