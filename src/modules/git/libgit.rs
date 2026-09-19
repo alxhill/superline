@@ -5,7 +5,9 @@ use git2::{Branch, BranchType, ObjectType, Repository, Status, StatusOptions, St
 use super::{detached_label, preferred_branch, preferred_remote, remote_web_url, GitStats};
 
 pub fn run_git(path: &Path) -> GitStats {
-    let repository = Repository::open(path).unwrap();
+    let Ok(repository) = Repository::open(path) else {
+        return GitStats::default();
+    };
 
     let mut status_options = StatusOptions::new();
     status_options
@@ -17,15 +19,14 @@ pub fn run_git(path: &Path) -> GitStats {
     let remote = has_remote(&repository);
     let remote_url = remote_web_url_of(&repository);
 
+    let Ok(statuses) = repository.statuses(Some(&mut status_options)) else {
+        return GitStats::default();
+    };
+
     let (mut untracked, mut non_staged, mut conflicted, mut staged, mut ahead, mut behind) =
         (0, 0, 0, 0, 0, 0);
 
-    for status in repository
-        .statuses(Some(&mut status_options))
-        .unwrap()
-        .iter()
-        .map(|ref x| x.status())
-    {
+    for status in statuses.iter().map(|ref x| x.status()) {
         if status.intersects(
             Status::INDEX_NEW
                 | Status::INDEX_MODIFIED

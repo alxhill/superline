@@ -108,7 +108,7 @@ impl<S: GitScheme> Git<S> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct GitStats {
     pub untracked: u32,
     pub conflicted: u32,
