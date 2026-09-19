@@ -225,8 +225,8 @@ upstream tracking ref that still resolves, so they are absent on a branch that w
 branch has been deleted.
 
 A detached HEAD shows the short commit hash. When that commit is the tip of a branch (a worktree created with
-`git worktree add --detach`, or `git checkout origin/main`) the branch comes first, as `main@1a2b3c4`; local branches
-take precedence over remote-tracking ones, and `main`/`master` over other names.
+`git worktree add --detach`, or `git checkout origin/main`) the branch follows it, as `1a2b3c4 -> main`; local
+branches take precedence over remote-tracking ones, and `main`/`master` over other names.
 
 Status collection waits up to `status_timeout_ms` (250 by default). If it takes longer, the last cached result is
 shown while a refresh continues in the background for the next prompt. Before anything is cached the segment shows
