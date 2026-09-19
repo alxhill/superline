@@ -1,9 +1,9 @@
 use std::cmp::Ordering;
-use std::env;
 use std::fmt::Write;
 use std::marker::PhantomData;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::{env, fs};
 
 use serde::{Deserialize, Serialize};
 
@@ -150,7 +150,7 @@ fn preferred_branch(names: impl IntoIterator<Item = String>) -> Option<String> {
 }
 
 /// Returns the git directory and whether it's a worktree
-fn find_git_dir() -> Option<(PathBuf, bool)> {
+pub(super) fn find_git_dir() -> Option<(PathBuf, bool)> {
     let mut git_dir = env::current_dir().ok()?;
     loop {
         git_dir.push(".git");
@@ -173,6 +173,47 @@ fn find_git_dir() -> Option<(PathBuf, bool)> {
             return None;
         }
     }
+}
+
+/// The checked-out branch of the repository rooted at `worktree`, read straight
+/// from `HEAD`. Returns `"HEAD"` for a detached head, matching what
+/// `git rev-parse --abbrev-ref HEAD` prints.
+pub(super) fn head_branch(worktree: &Path, is_worktree: bool) -> Option<String> {
+    let git_dir = resolve_git_dir(worktree, is_worktree)?;
+    parse_head(&fs::read_to_string(git_dir.join("HEAD")).ok()?)
+}
+
+/// `.git` is a directory in a normal clone and a `gitdir:` pointer file in a
+/// linked worktree, where `HEAD` lives under the main repository's
+/// `.git/worktrees/<name>`.
+fn resolve_git_dir(worktree: &Path, is_worktree: bool) -> Option<PathBuf> {
+    let dot_git = worktree.join(".git");
+    if !is_worktree {
+        return Some(dot_git);
+    }
+
+    let pointer = fs::read_to_string(&dot_git).ok()?;
+    let target = PathBuf::from(pointer.trim().strip_prefix("gitdir:")?.trim());
+    Some(if target.is_absolute() {
+        target
+    } else {
+        worktree.join(target)
+    })
+}
+
+fn parse_head(contents: &str) -> Option<String> {
+    let head = contents.trim();
+    let Some(reference) = head.strip_prefix("ref:") else {
+        // A detached head records the commit hash instead of a ref.
+        return (!head.is_empty()).then(|| String::from("HEAD"));
+    };
+    let reference = reference.trim();
+    Some(
+        reference
+            .strip_prefix("refs/heads/")
+            .unwrap_or(reference)
+            .to_string(),
+    )
 }
 
 const UP_ARROW: &str = "\u{f062}";
@@ -299,7 +340,7 @@ impl<S: GitScheme> Module for Git<S> {
 
 #[cfg(test)]
 mod tests {
-    use super::{detached_label, preferred_branch};
+    use super::{detached_label, parse_head, preferred_branch};
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(ToString::to_string).collect()
@@ -328,6 +369,35 @@ mod tests {
         assert_eq!(
             preferred_branch(names(&["zeta", "ah/feature"])).as_deref(),
             Some("ah/feature")
+        );
+    }
+
+    #[test]
+    fn head_on_a_branch_yields_the_short_name() {
+        assert_eq!(
+            parse_head("ref: refs/heads/main\n").as_deref(),
+            Some("main")
+        );
+        assert_eq!(
+            parse_head("ref: refs/heads/ah/perf-fix\n").as_deref(),
+            Some("ah/perf-fix")
+        );
+    }
+
+    #[test]
+    fn detached_head_reports_the_placeholder_name() {
+        assert_eq!(
+            parse_head("9c1a1802f3d4c5b6a7980123456789abcdef0123\n").as_deref(),
+            Some("HEAD")
+        );
+        assert_eq!(parse_head("  \n"), None);
+    }
+
+    #[test]
+    fn a_ref_outside_refs_heads_keeps_its_full_name() {
+        assert_eq!(
+            parse_head("ref: refs/remotes/origin/main\n").as_deref(),
+            Some("refs/remotes/origin/main")
         );
     }
 }
