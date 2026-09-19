@@ -63,6 +63,35 @@ impl std::fmt::Display for FgColor {
     }
 }
 
+/// An OSC 8 terminal hyperlink around `label`. The opening and closing
+/// sequences are non-printing, so they get the same per-shell wrapping as the
+/// colour escapes; the label itself is printed bare.
+pub struct Hyperlink<'a> {
+    pub url: &'a str,
+    pub label: &'a str,
+}
+
+impl std::fmt::Display for Hyperlink<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match SHELL.get().expect("shell not specified!") {
+            Shell::Bash => write!(
+                f,
+                r#"\[\e]8;;{}\e\\\]{}\[\e]8;;\e\\\]"#,
+                self.url, self.label
+            ),
+            Shell::Bare => write!(f, "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", self.url, self.label),
+            // `%` starts a prompt escape in zsh, so a percent-encoded URL has to
+            // be doubled to survive prompt expansion.
+            Shell::Zsh => write!(
+                f,
+                "%{{\x1b]8;;{}\x1b\\%}}{}%{{\x1b]8;;\x1b\\%}}",
+                self.url.replace('%', "%%"),
+                self.label
+            ),
+        }
+    }
+}
+
 impl std::fmt::Display for Reset {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match SHELL.get().expect("shell not specified!") {

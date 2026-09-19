@@ -2,7 +2,7 @@ use std::path::Path;
 
 use git2::{Branch, BranchType, ObjectType, Repository, Status, StatusOptions, StatusShow};
 
-use super::{detached_label, preferred_branch, GitStats};
+use super::{detached_label, preferred_branch, preferred_remote, remote_web_url, GitStats};
 
 pub fn run_git(path: &Path) -> GitStats {
     let repository = Repository::open(path).unwrap();
@@ -15,6 +15,7 @@ pub fn run_git(path: &Path) -> GitStats {
         .renames_head_to_index(true);
 
     let remote = has_remote(&repository);
+    let remote_url = remote_web_url_of(&repository);
 
     let (mut untracked, mut non_staged, mut conflicted, mut staged, mut ahead, mut behind) =
         (0, 0, 0, 0, 0, 0);
@@ -98,8 +99,17 @@ pub fn run_git(path: &Path) -> GitStats {
         behind,
         conflicted,
         remote,
+        remote_url,
         branch_name,
     }
+}
+
+/// The browser URL of the preferred remote's fetch URL, if it has one.
+fn remote_web_url_of(repository: &Repository) -> Option<String> {
+    let names = repository.remotes().ok()?;
+    let name = preferred_remote(names.iter().flatten())?;
+    let remote = repository.find_remote(name).ok()?;
+    remote_web_url(remote.url()?)
 }
 
 /// The branch whose tip is `commit`, for labelling a detached HEAD. Local

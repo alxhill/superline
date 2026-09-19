@@ -120,6 +120,11 @@ pub struct GitStats {
     /// branch-level: it stays true on a branch that was never pushed, and on
     /// one whose remote-tracking ref has been pruned.
     pub remote: bool,
+    /// Browser URL of the repository, derived from the fetch URL of `origin`
+    /// (or the first remote when there is no `origin`). `None` when the remote
+    /// is a local path or the URL is unparseable.
+    #[serde(default)]
+    pub remote_url: Option<String>,
     pub branch_name: String,
 }
 
@@ -138,6 +143,64 @@ fn detached_label(branch: Option<String>, hash: &str) -> String {
         Some(branch) => format!("{branch}@{hash}"),
         None => hash.to_owned(),
     }
+}
+
+/// Picks the remote whose URL the GitHub logo links to: `origin` when it
+/// exists, otherwise the first remote by name.
+pub(super) fn preferred_remote<'a>(names: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    names
+        .into_iter()
+        .min_by_key(|name| (*name != "origin", *name))
+}
+
+/// Turns a git remote URL into the page a browser opens for the repository:
+/// scp-style (`git@github.com:owner/repo.git`) and `ssh://`/`git://` URLs
+/// become `https://host/path`, `http(s)://` URLs keep their scheme, and the
+/// `.git` suffix and any user info or SSH port are dropped. Local paths and
+/// `file://` URLs have no web page and yield `None`.
+pub(super) fn remote_web_url(remote: &str) -> Option<String> {
+    let remote = remote.trim();
+    if remote.is_empty() {
+        return None;
+    }
+
+    let (scheme, rest) = match remote.split_once("://") {
+        Some((scheme, rest)) => (scheme.to_ascii_lowercase(), rest),
+        // scp-style `user@host:path`, but not a Windows drive (`C:\...`) or a
+        // path that contains a slash before the colon.
+        None => match remote.split_once(':') {
+            Some((host, path))
+                if !host.contains('/') && host.len() > 1 && !path.starts_with("//") =>
+            {
+                return build_web_url("https", host, path)
+            }
+            _ => return None,
+        },
+    };
+
+    let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+    match scheme.as_str() {
+        "http" | "https" => build_web_url(&scheme, host, path),
+        "ssh" | "git" | "git+ssh" | "ssh+git" => {
+            // ssh URLs may carry a port which the web host never uses.
+            let host = host.rsplit_once(':').map_or(host, |(host, _)| host);
+            build_web_url("https", host, path)
+        }
+        _ => None,
+    }
+}
+
+fn build_web_url(scheme: &str, host: &str, path: &str) -> Option<String> {
+    let host = host.rsplit_once('@').map_or(host, |(_, host)| host);
+    let path = path.trim_matches('/');
+    let path = path
+        .strip_suffix(".git")
+        .unwrap_or(path)
+        .trim_end_matches('/');
+    if host.is_empty() || path.is_empty() {
+        return None;
+    }
+    Some(format!("{scheme}://{host}/{path}"))
 }
 
 /// Picks the branch to name when several share HEAD's commit: `main` or
@@ -330,17 +393,18 @@ impl<S: GitScheme> Module for Git<S> {
                 let _ = write!(remote, "{}{}", stats.behind, DOWN_ARROW);
             }
 
-            powerline.add_segment(
-                remote,
-                Style::simple(S::git_remote_fg(), S::git_remote_bg()),
-            );
+            let style = Style::simple(S::git_remote_fg(), S::git_remote_bg());
+            match &stats.remote_url {
+                Some(url) => powerline.add_hyperlink_segment(&remote, url, style, None),
+                None => powerline.add_segment(remote, style),
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{detached_label, parse_head, preferred_branch};
+    use super::{detached_label, parse_head, preferred_branch, preferred_remote, remote_web_url};
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(ToString::to_string).collect()
@@ -370,6 +434,63 @@ mod tests {
             preferred_branch(names(&["zeta", "ah/feature"])).as_deref(),
             Some("ah/feature")
         );
+    }
+
+    #[test]
+    fn preferred_remote_favours_origin_then_alphabetical() {
+        assert_eq!(preferred_remote([]), None);
+        assert_eq!(preferred_remote(["upstream", "origin"]), Some("origin"));
+        assert_eq!(preferred_remote(["upstream", "fork"]), Some("fork"));
+    }
+
+    #[test]
+    fn scp_style_remotes_become_https_pages() {
+        assert_eq!(
+            remote_web_url("git@github.com:alxhill/superline.git").as_deref(),
+            Some("https://github.com/alxhill/superline")
+        );
+        assert_eq!(
+            remote_web_url("gitlab.com:group/sub/repo").as_deref(),
+            Some("https://gitlab.com/group/sub/repo")
+        );
+    }
+
+    #[test]
+    fn ssh_and_git_remotes_drop_user_and_port() {
+        assert_eq!(
+            remote_web_url("ssh://git@github.com:22/alxhill/superline.git").as_deref(),
+            Some("https://github.com/alxhill/superline")
+        );
+        assert_eq!(
+            remote_web_url("git://github.com/alxhill/superline.git").as_deref(),
+            Some("https://github.com/alxhill/superline")
+        );
+    }
+
+    #[test]
+    fn http_remotes_keep_their_scheme_and_lose_the_git_suffix() {
+        assert_eq!(
+            remote_web_url("https://github.com/alxhill/superline.git").as_deref(),
+            Some("https://github.com/alxhill/superline")
+        );
+        assert_eq!(
+            remote_web_url("https://user:token@github.com/alxhill/superline/").as_deref(),
+            Some("https://github.com/alxhill/superline")
+        );
+        assert_eq!(
+            remote_web_url("http://git.internal:8080/team/repo.git").as_deref(),
+            Some("http://git.internal:8080/team/repo")
+        );
+    }
+
+    #[test]
+    fn local_remotes_have_no_web_page() {
+        assert_eq!(remote_web_url("/srv/git/repo.git"), None);
+        assert_eq!(remote_web_url("../other-repo"), None);
+        assert_eq!(remote_web_url("file:///srv/git/repo.git"), None);
+        assert_eq!(remote_web_url("C:\\repos\\project"), None);
+        assert_eq!(remote_web_url(""), None);
+        assert_eq!(remote_web_url("https://github.com"), None);
     }
 
     #[test]

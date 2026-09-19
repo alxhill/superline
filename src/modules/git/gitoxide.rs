@@ -4,7 +4,7 @@ use gix::status::index_worktree::Item as IndexWorktreeItem;
 use gix::status::plumbing::index_as_worktree::EntryStatus;
 use gix::status::Item;
 
-use super::{detached_label, preferred_branch, GitStats};
+use super::{detached_label, preferred_branch, preferred_remote, remote_web_url, GitStats};
 
 /// gitoxide (pure-Rust) git backend. Produces the same [`GitStats`] the libgit
 /// and CLI backends do: a count of staged / non-staged / untracked / conflicted
@@ -64,7 +64,9 @@ pub fn run_git(path: &Path) -> GitStats {
     // Repo-level: whether any remote is configured at all. Deliberately not the
     // branch's upstream - a merged branch whose remote-tracking ref has been
     // pruned still lives in a repo that has a remote.
-    let remote = !repo.remote_names().is_empty();
+    let remote_names = repo.remote_names();
+    let remote = !remote_names.is_empty();
+    let remote_url = remote_web_url_of(&repo, &remote_names);
 
     // Ahead/behind, in contrast, are branch-specific and need a tracking ref
     // that actually resolves to a commit to count against.
@@ -92,8 +94,18 @@ pub fn run_git(path: &Path) -> GitStats {
         behind,
         conflicted,
         remote,
+        remote_url,
         branch_name,
     }
+}
+
+/// The browser URL of the preferred remote's fetch URL, if it has one.
+fn remote_web_url_of(repo: &gix::Repository, names: &gix::remote::Names<'_>) -> Option<String> {
+    let names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
+    let name = preferred_remote(names.iter().map(String::as_str))?;
+    let remote = repo.find_remote(name).ok()?;
+    let url = remote.url(gix::remote::Direction::Fetch)?;
+    remote_web_url(&url.to_bstring().to_string())
 }
 
 /// The branch whose tip is `commit`, for labelling a detached HEAD. Local
