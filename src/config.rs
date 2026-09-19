@@ -41,6 +41,11 @@ pub enum LineSegment {
     Git {
         #[serde(default = "default_git_status_timeout_ms")]
         status_timeout_ms: u64,
+        /// Which backend produces the status: `auto` (default) picks the CLI
+        /// for large working trees and gitoxide for small ones, `cli` and
+        /// `gitoxide` pin one backend.
+        #[serde(default)]
+        backend: GitBackend,
     },
     Pr {
         /// Append a coloured dot reflecting the PR's CI check status. On by
@@ -154,6 +159,8 @@ enum KnownLineSegment {
     Git {
         #[serde(default = "default_git_status_timeout_ms")]
         status_timeout_ms: u64,
+        #[serde(default)]
+        backend: GitBackend,
     },
     Pr {
         #[serde(default = "default_true")]
@@ -246,7 +253,13 @@ impl From<KnownLineSegment> for LineSegment {
                 resolve_symlinks,
             },
             KnownLineSegment::ReadOnly => LineSegment::ReadOnly,
-            KnownLineSegment::Git { status_timeout_ms } => LineSegment::Git { status_timeout_ms },
+            KnownLineSegment::Git {
+                status_timeout_ms,
+                backend,
+            } => LineSegment::Git {
+                status_timeout_ms,
+                backend,
+            },
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
             KnownLineSegment::Node { version } => LineSegment::Node { version },
@@ -370,6 +383,17 @@ fn is_known_segment_name(name: &str) -> bool {
     )
 }
 
+/// Which backend produces the `git` module's status. See `src/modules/git.rs`
+/// for how `Auto` decides between the other two.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum GitBackend {
+    #[default]
+    Auto,
+    Cli,
+    Gitoxide,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum UsageProvider {
@@ -435,6 +459,7 @@ impl Default for Config {
                         LineSegment::Padding(2),
                         LineSegment::Git {
                             status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                            backend: GitBackend::Auto,
                         },
                         LineSegment::Pr { status: true },
                         LineSegment::Padding(2),
@@ -536,6 +561,7 @@ mod tests {
             parsed,
             LineSegment::Git {
                 status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                backend: GitBackend::Auto,
             }
         );
     }
@@ -549,8 +575,30 @@ mod tests {
             parsed,
             LineSegment::Git {
                 status_timeout_ms: 250,
+                backend: GitBackend::Auto,
             }
         );
+    }
+
+    #[test]
+    fn git_backend_is_configurable() {
+        for (name, expected) in [
+            ("auto", GitBackend::Auto),
+            ("cli", GitBackend::Cli),
+            ("gitoxide", GitBackend::Gitoxide),
+        ] {
+            let json = format!(r#"{{"git":{{"backend":"{name}"}}}}"#);
+            let parsed: LineSegment =
+                serde_json::from_str(&json).unwrap_or_else(|_| panic!("{json} should parse"));
+
+            assert_eq!(
+                parsed,
+                LineSegment::Git {
+                    status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                    backend: expected,
+                }
+            );
+        }
     }
 
     #[test]

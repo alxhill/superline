@@ -1,41 +1,37 @@
 use std::cmp::Ordering;
 use std::fmt::Write;
+use std::io::Read;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 use std::{env, fs};
 
 use serde::{Deserialize, Serialize};
 
-// Backend selection. At most one of these modules is compiled in; the `git`
-// CLI is the default, and when a library feature is enabled the precedence is
-// `gitoxide` > `libgit` > CLI. Each backend exposes a `run_git(&Path) -> GitStats`.
-#[cfg(feature = "gitoxide")]
-use gitoxide as internal;
-#[cfg(all(feature = "libgit", not(feature = "gitoxide")))]
-use libgit as internal;
-#[cfg(not(any(feature = "libgit", feature = "gitoxide")))]
-use process as internal;
-
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
-use crate::config::DEFAULT_GIT_STATUS_TIMEOUT_MS;
+use crate::config::{GitBackend, DEFAULT_GIT_STATUS_TIMEOUT_MS};
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
 use super::Module;
 
-#[cfg(not(any(feature = "libgit", feature = "gitoxide")))]
+mod gitoxide;
 mod process;
 
-#[cfg(all(feature = "libgit", not(feature = "gitoxide")))]
-mod libgit;
-
-#[cfg(feature = "gitoxide")]
-mod gitoxide;
+// Backend selection. Both backends always compile in and are chosen at
+// runtime through the `git` module's `backend` config (default `auto`):
+// `cli` shells out to the `git` binary, the only backend that honours git's
+// untracked cache and fsmonitor, which wins by a wide margin on large working
+// trees; `gitoxide` walks the repository in-process with pure Rust, which
+// wins on small trees where a process spawn costs more than the walk itself.
+// `auto` decides from the size of `.git/index` (see `auto_prefers_cli`).
+// Each backend exposes a `run_git(&Path) -> GitStats`.
 
 pub struct Git<S> {
     status_timeout: Duration,
+    backend: GitBackend,
     scheme: PhantomData<S>,
 }
 
@@ -97,12 +93,16 @@ impl<S: GitScheme> Default for Git<S> {
 
 impl<S: GitScheme> Git<S> {
     pub fn new() -> Git<S> {
-        Self::with_status_timeout(Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS))
+        Self::with_config(
+            Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS),
+            GitBackend::default(),
+        )
     }
 
-    pub fn with_status_timeout(status_timeout: Duration) -> Git<S> {
+    pub fn with_config(status_timeout: Duration, backend: GitBackend) -> Git<S> {
         Git {
             status_timeout,
+            backend,
             scheme: PhantomData,
         }
     }
@@ -241,17 +241,17 @@ pub(super) fn find_git_dir() -> Option<(PathBuf, bool)> {
 /// The checked-out branch of the repository rooted at `worktree`, read straight
 /// from `HEAD`. Returns `"HEAD"` for a detached head, matching what
 /// `git rev-parse --abbrev-ref HEAD` prints.
-pub(super) fn head_branch(worktree: &Path, is_worktree: bool) -> Option<String> {
-    let git_dir = resolve_git_dir(worktree, is_worktree)?;
+pub(super) fn head_branch(worktree: &Path) -> Option<String> {
+    let git_dir = resolve_git_dir(worktree)?;
     parse_head(&fs::read_to_string(git_dir.join("HEAD")).ok()?)
 }
 
 /// `.git` is a directory in a normal clone and a `gitdir:` pointer file in a
-/// linked worktree, where `HEAD` lives under the main repository's
-/// `.git/worktrees/<name>`.
-fn resolve_git_dir(worktree: &Path, is_worktree: bool) -> Option<PathBuf> {
+/// linked worktree, where the real git directory (and `HEAD`, and `index`)
+/// lives under the main repository's `.git/worktrees/<name>`.
+fn resolve_git_dir(worktree: &Path) -> Option<PathBuf> {
     let dot_git = worktree.join(".git");
-    if !is_worktree {
+    if dot_git.is_dir() {
         return Some(dot_git);
     }
 
@@ -262,6 +262,48 @@ fn resolve_git_dir(worktree: &Path, is_worktree: bool) -> Option<PathBuf> {
     } else {
         worktree.join(target)
     })
+}
+
+/// Repos at or above this many index entries favour the CLI backend: measured
+/// crossover where the CLI's untracked-cache win outweighs its process-spawn
+/// cost (52ms CLI vs 120ms gitoxide on a 10k-file repo; 10ms gitoxide vs 39ms
+/// CLI on superline's own ~200-file repo).
+const AUTO_CLI_ENTRY_THRESHOLD: u32 = 1500;
+
+/// Picks the CLI backend for large working trees and gitoxide for small ones,
+/// based on the entry count in `.git/index`. Falls back to the CLI when the
+/// count can't be read (safer default), and unconditionally to gitoxide when
+/// `git` isn't on `PATH`.
+fn auto_prefers_cli(worktree: &Path) -> bool {
+    if !git_on_path() {
+        return false;
+    }
+    let count = resolve_git_dir(worktree).and_then(|dir| index_entry_count(&dir.join("index")));
+    prefers_cli_for_index_count(count)
+}
+
+/// The threshold rule in isolation: at least [`AUTO_CLI_ENTRY_THRESHOLD`]
+/// entries, or the count being unreadable, favours the CLI.
+fn prefers_cli_for_index_count(count: Option<u32>) -> bool {
+    count.is_none_or(|count| count >= AUTO_CLI_ENTRY_THRESHOLD)
+}
+
+fn git_on_path() -> bool {
+    Command::new("git")
+        .arg("--version")
+        .output()
+        .is_ok_and(|out| out.status.success())
+}
+
+/// Reads the entry count straight out of the 12-byte `.git/index` header,
+/// without loading the (potentially large) rest of the file: a 4-byte `DIRC`
+/// signature, a 4-byte big-endian version, then a 4-byte big-endian entry
+/// count.
+fn index_entry_count(index_path: &Path) -> Option<u32> {
+    let mut file = fs::File::open(index_path).ok()?;
+    let mut header = [0u8; 12];
+    file.read_exact(&mut header).ok()?;
+    (&header[0..4] == b"DIRC").then(|| u32::from_be_bytes(header[8..12].try_into().unwrap()))
 }
 
 fn parse_head(contents: &str) -> Option<String> {
@@ -289,11 +331,15 @@ const GIT_ICON: &str = "\u{e0a0}";
 const WORKTREE_ICON: &str = "\u{f1bb}";
 
 /// Git status for one repository. The status walk is always attempted live
-/// (see [`Git::with_status_timeout`]); the cache only stands in when it takes
-/// too long, so a cached value is never considered fresh.
+/// (see [`Git::with_config`]); the cache only stands in when it takes too
+/// long, so a cached value is never considered fresh.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GitStatus {
     pub git_dir: PathBuf,
+    /// Configured backend choice. Not part of [`Source::cache_id`]: switching
+    /// it changes how the value is produced, not which repository it is for,
+    /// so it must not invalidate an existing cache entry.
+    pub backend: GitBackend,
 }
 
 impl Source for GitStatus {
@@ -306,7 +352,12 @@ impl Source for GitStatus {
     }
 
     fn fetch(&self) -> Option<GitStats> {
-        Some(internal::run_git(&self.git_dir))
+        Some(match self.backend {
+            GitBackend::Cli => process::run_git(&self.git_dir),
+            GitBackend::Gitoxide => gitoxide::run_git(&self.git_dir),
+            GitBackend::Auto if auto_prefers_cli(&self.git_dir) => process::run_git(&self.git_dir),
+            GitBackend::Auto => gitoxide::run_git(&self.git_dir),
+        })
     }
 }
 
@@ -318,8 +369,11 @@ impl<S: GitScheme> Module for Git<S> {
         };
 
         let icon = if is_worktree { WORKTREE_ICON } else { GIT_ICON };
-        let stats = match Cached::new(GitStatus { git_dir }).load_with_timeout(self.status_timeout)
-        {
+        let source = GitStatus {
+            git_dir,
+            backend: self.backend,
+        };
+        let stats = match Cached::new(source).load_with_timeout(self.status_timeout) {
             Lookup::Ready(stats) => stats,
             Lookup::Loading => {
                 powerline.add_segment(
@@ -404,10 +458,78 @@ impl<S: GitScheme> Module for Git<S> {
 
 #[cfg(test)]
 mod tests {
-    use super::{detached_label, parse_head, preferred_branch, preferred_remote, remote_web_url};
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use super::{
+        detached_label, index_entry_count, parse_head, preferred_branch, preferred_remote,
+        prefers_cli_for_index_count, remote_web_url, AUTO_CLI_ENTRY_THRESHOLD,
+    };
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(ToString::to_string).collect()
+    }
+
+    fn temp_file(bytes: &[u8]) -> std::path::PathBuf {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("superline-index-{}-{n}", std::process::id()));
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(bytes).unwrap();
+        path
+    }
+
+    fn index_header(entry_count: u32) -> Vec<u8> {
+        let mut header = Vec::with_capacity(12);
+        header.extend_from_slice(b"DIRC");
+        header.extend_from_slice(&2u32.to_be_bytes());
+        header.extend_from_slice(&entry_count.to_be_bytes());
+        header
+    }
+
+    #[test]
+    fn index_entry_count_reads_the_header() {
+        let path = temp_file(&index_header(4321));
+        assert_eq!(index_entry_count(&path), Some(4321));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn index_entry_count_rejects_a_short_file() {
+        let path = temp_file(b"DIRC\0\0\0\x02");
+        assert_eq!(index_entry_count(&path), None);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn index_entry_count_rejects_a_bad_signature() {
+        let mut bytes = index_header(10);
+        bytes[0..4].copy_from_slice(b"NOPE");
+        let path = temp_file(&bytes);
+        assert_eq!(index_entry_count(&path), None);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn index_entry_count_is_none_for_a_missing_file() {
+        let path = std::env::temp_dir().join("superline-index-missing-does-not-exist");
+        assert_eq!(index_entry_count(&path), None);
+    }
+
+    #[test]
+    fn auto_selection_favours_cli_at_and_above_the_threshold() {
+        assert!(!prefers_cli_for_index_count(Some(
+            AUTO_CLI_ENTRY_THRESHOLD - 1
+        )));
+        assert!(prefers_cli_for_index_count(Some(AUTO_CLI_ENTRY_THRESHOLD)));
+        assert!(prefers_cli_for_index_count(Some(
+            AUTO_CLI_ENTRY_THRESHOLD + 1
+        )));
+    }
+
+    #[test]
+    fn auto_selection_favours_cli_when_the_count_is_unreadable() {
+        assert!(prefers_cli_for_index_count(None));
     }
 
     #[test]

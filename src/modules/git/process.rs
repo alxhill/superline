@@ -49,21 +49,19 @@ pub fn get_branch_name(s: &str) -> Option<&str> {
     }
 }
 
-pub fn get_detached_branch_name() -> String {
+/// `None` when `git` could not be run at all; `Some("Big Bang")` when it ran
+/// but found no commit (an unborn HEAD).
+pub fn get_detached_branch_name() -> Option<String> {
     let child = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
-        .unwrap();
+        .ok()?;
 
     if child.status.success() {
-        let hash = std::str::from_utf8(&child.stdout)
-            .unwrap()
-            .split('\n')
-            .next()
-            .unwrap();
-        detached_label(branch_at_head(), hash)
+        let hash = std::str::from_utf8(&child.stdout).ok()?.split('\n').next()?;
+        Some(detached_label(branch_at_head(), hash))
     } else {
-        String::from("Big Bang")
+        Some(String::from("Big Bang"))
     }
 }
 
@@ -108,15 +106,21 @@ fn has_remote() -> bool {
         .is_ok_and(|out| out.status.success() && !out.stdout.iter().all(u8::is_ascii_whitespace))
 }
 
-pub fn run_git(_: &Path) -> GitStats {
+/// Falls back to the gitoxide backend when `git` cannot be run at all, so a
+/// refresh never panics just because `git` is missing from `PATH`.
+pub fn run_git(path: &Path) -> GitStats {
+    try_run_git().unwrap_or_else(|| super::gitoxide::run_git(path))
+}
+
+fn try_run_git() -> Option<GitStats> {
     let output = Command::new("git")
         .args(["status", "--porcelain", "-b"])
         .output()
-        .unwrap()
+        .ok()?
         .stdout;
 
     let mut lines = output.split(|x| *x == (b'\n'));
-    let branch_line = std::str::from_utf8(lines.next().unwrap()).unwrap();
+    let branch_line = std::str::from_utf8(lines.next()?).ok()?;
 
     let remote = has_remote();
     let remote_url = remote_web_url_of();
@@ -140,7 +144,7 @@ pub fn run_git(_: &Path) -> GitStats {
             }
             String::from(branch_name)
         } else {
-            get_detached_branch_name()
+            get_detached_branch_name()?
         }
     };
     let mut add_file = |entry: &str| {
@@ -164,7 +168,7 @@ pub fn run_git(_: &Path) -> GitStats {
         add_file(std::str::from_utf8(op).unwrap());
     }
 
-    super::GitStats {
+    Some(super::GitStats {
         untracked,
         ahead,
         behind,
@@ -174,7 +178,7 @@ pub fn run_git(_: &Path) -> GitStats {
         remote,
         remote_url,
         branch_name,
-    }
+    })
 }
 
 /// The browser URL of the preferred remote's fetch URL, if it has one.
