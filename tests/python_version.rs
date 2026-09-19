@@ -1,4 +1,4 @@
-//! The python_env segment reads the active virtual env's version from
+//! The python segment reads the active virtual env's version from
 //! `pyvenv.cfg` when it can, and otherwise asks the interpreter through the
 //! shared cache. These drive the real binary against fake envs and a seeded
 //! cache directory rather than a real interpreter.
@@ -39,7 +39,7 @@ fn scratch(label: &str) -> Scratch {
 
     fs::write(
         root.join("config.json"),
-        r#"{"theme":"rainbow","rows":[{"left":[{"python_env":{"version":true}}]}]}"#,
+        r#"{"theme":"rainbow","rows":[{"left":[{"python":{"version":true}}]}]}"#,
     )
     .expect("write config");
 

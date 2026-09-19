@@ -2,7 +2,7 @@ use crate::colors::Color;
 use crate::colors::*;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, LastCmdDurationScheme, NvmScheme, PrScheme, PythonEnvScheme, ReadOnlyScheme,
+    JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
     ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -52,16 +52,16 @@ impl UnknownScheme for RainbowTheme {
     }
 }
 
-impl NvmScheme for RainbowTheme {
-    fn nvm_fg() -> Color {
+impl NodeScheme for RainbowTheme {
+    fn node_fg() -> Color {
         white()
     }
 
-    fn nvm_bg() -> Color {
+    fn node_bg() -> Color {
         forest_green()
     }
 
-    fn nvm_inactive_bg() -> Color {
+    fn node_inactive_bg() -> Color {
         burgundy()
     }
 }
@@ -266,7 +266,7 @@ impl ReadOnlyScheme for RainbowTheme {
     }
 }
 
-impl PythonEnvScheme for RainbowTheme {
+impl PythonScheme for RainbowTheme {
     fn pyenv_fg() -> Color {
         dark_grey()
     }

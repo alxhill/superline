@@ -16,7 +16,7 @@ use crate::{Powerline, Style};
 
 use super::Module;
 
-pub struct PythonEnv<S: PythonEnvScheme> {
+pub struct Python<S: PythonScheme> {
     /// Whether to show the interpreter version.
     show_version: bool,
     /// Whether to show the active virtual env's name.
@@ -24,7 +24,7 @@ pub struct PythonEnv<S: PythonEnvScheme> {
     scheme: PhantomData<S>,
 }
 
-pub trait PythonEnvScheme: DefaultColors {
+pub trait PythonScheme: DefaultColors {
     fn pyenv_fg() -> Color {
         Self::default_fg()
     }
@@ -45,15 +45,15 @@ pub trait PythonEnvScheme: DefaultColors {
     }
 }
 
-impl<S: PythonEnvScheme> Default for PythonEnv<S> {
+impl<S: PythonScheme> Default for Python<S> {
     fn default() -> Self {
         Self::new(true, true)
     }
 }
 
-impl<S: PythonEnvScheme> PythonEnv<S> {
-    pub fn new(show_version: bool, show_venv: bool) -> PythonEnv<S> {
-        PythonEnv {
+impl<S: PythonScheme> Python<S> {
+    pub fn new(show_version: bool, show_venv: bool) -> Python<S> {
+        Python {
             show_version,
             show_venv,
             scheme: PhantomData,
@@ -175,7 +175,7 @@ fn interpreter_for(venv: &Path) -> PathBuf {
     }
 }
 
-impl<S: PythonEnvScheme> Module for PythonEnv<S> {
+impl<S: PythonScheme> Module for Python<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let venv = env::var("VIRTUAL_ENV")
             .or_else(|_| env::var("CONDA_ENV_PATH"))

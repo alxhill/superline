@@ -101,7 +101,7 @@ A config has a `theme` and a list of `rows`:
         "pr"
       ],
       "right": [
-        "python_env",
+        "python",
         "cargo"
       ]
     },
@@ -313,13 +313,14 @@ If the CLI is installed but not logged in it shows a logged-out user icon (``) u
 
 ### Language modules
 
-`python_env`, `nvm`, `java` and `cargo` share one behaviour and differ only in how they detect a project and
+`python`, `node`, `java` and `cargo` share one behaviour and differ only in how they detect a project and
 which files can pin a version. Each shows its language icon when the current directory belongs to a project, and
 adds the version when one is pinned. Every one takes a `version` option; it defaults to `true`, and setting it to
-`false` leaves just the icon.
+`false` leaves just the icon. `python` and `node` were previously called `python_env` and `nvm`; the old names
+still work in both the config and theme files.
 
 ```json
-{ "nvm": { "version": false } }
+{ "node": { "version": false } }
 ```
 
 Versions come first from [mise](https://mise.jdx.dev) configs (`mise.toml`, `.mise.toml`,
@@ -335,7 +336,7 @@ from mise. Themes can change or hide it with each module's `mise_icon`
 property. The marker stays even when `version` is `false`, since it says who manages the tool rather than which
 one is pinned.
 
-#### python_env
+#### python
 
 - **Detects** an active virtual env (venv, conda or mamba), or a directory pinned by `.python-version` or containing
   a `pyproject.toml`.
@@ -346,10 +347,10 @@ one is pinned.
   pinned version.
 
 ```json
-{ "python_env": { "version": true, "venv": false } }
+{ "python": { "version": true, "venv": false } }
 ```
 
-#### nvm
+#### node
 
 - **Detects** the Node version nvm has activated, or one pinned by `.nvmrc`.
 
@@ -395,8 +396,8 @@ A theme file has two keys, `defaults` and `modules`:
   `mise_icon` on the language modules - set it to `""` to hide the marker). Anything omitted falls back to
   `defaults`.
 
-Note that a couple of theme keys differ from the module names in the config: the `read_only` module is themed as
-`readonly` and `python_env` as `py`.
+Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
+old theme keys, `nvm` and `py`.
 
 Colours are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-colour code from
 `0` to `255`. [`example_theme.json`](example_theme.json) covers every module, and `src/themes/custom.rs` lists every
