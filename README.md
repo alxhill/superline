@@ -233,22 +233,19 @@ shown while a refresh continues in the background for the next prompt. Before an
 `loading…`.
 
 ```json
-{ "git": { "status_timeout_ms": 250 } }
+{ "git": { "status_timeout_ms": 250, "backend": "auto" } }
 ```
 
-Status is collected by running the `git` CLI, so `git` must be on your `PATH`. This is the fastest option on large
-working trees because it is the only backend that uses git's own
-[untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) and fsmonitor; enabling
-`core.untrackedCache` in a big repo typically cuts status time by two thirds. Two in-process backends are available
-when building from source, for machines without `git`:
+Status is produced by one of two backends, chosen with `backend`:
 
-```bash
-cargo install superline --features gitoxide   # pure Rust
-cargo install superline --features libgit     # libgit2
-```
-
-Both walk the whole working tree on every refresh and are two to four times slower than the CLI on repos with
-thousands of files.
+- `cli` shells out to the `git` binary. It is the fastest option on large working trees because it is the only
+  backend that uses git's own [untracked cache](https://git-scm.com/docs/git-update-index#_untracked_cache) and
+  fsmonitor; enabling `core.untrackedCache` in a big repo typically cuts status time by two thirds. It needs `git` on
+  your `PATH`.
+- `gitoxide` walks the working tree in-process with pure Rust. It needs no external binary, and is faster on small
+  repos where the CLI's process-spawn overhead dominates.
+- `auto` (the default) picks between them from the size of `.git/index`: the CLI for large working trees, gitoxide
+  for small ones. It falls back to gitoxide whenever `git` isn't on `PATH`.
 
 #### pr
 
