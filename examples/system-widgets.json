@@ -1,0 +1,29 @@
+{
+  "theme": "rainbow",
+  "update": {
+    "disable": true
+  },
+  "rows": [
+    {
+      "left": [
+        "os",
+        "username",
+        "hostname",
+        "local_ip",
+        { "text": "all widgets" }
+      ],
+      "right": [
+        "memory_usage",
+        "battery",
+        "sudo"
+      ]
+    },
+    {
+      "left": [
+        "jobs",
+        "cmd"
+      ],
+      "right": []
+    }
+  ]
+}

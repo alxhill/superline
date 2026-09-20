@@ -1,8 +1,9 @@
 use crate::colors::{black, dark_grey, grey, light_grey, Color};
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
+    MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme,
+    SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 use crate::update::UpdateScheme;
@@ -21,6 +22,16 @@ impl DefaultColors for SimpleTheme {
 }
 
 impl CompleteTheme for SimpleTheme {}
+
+impl BatteryScheme for SimpleTheme {
+    fn battery_fg() -> Color {
+        Color(15)
+    }
+
+    fn battery_bg() -> Color {
+        Color(161)
+    }
+}
 
 impl ShellScheme for SimpleTheme {}
 
@@ -121,6 +132,40 @@ impl HostScheme for SimpleTheme {
     }
     fn hostname_bg() -> Color {
         Color(238)
+    }
+}
+
+impl JobsScheme for SimpleTheme {}
+
+impl SudoScheme for SimpleTheme {
+    fn sudo_fg() -> Color {
+        Color(15)
+    }
+
+    fn sudo_bg() -> Color {
+        Color(31)
+    }
+}
+
+impl LocalIpScheme for SimpleTheme {
+    fn local_ip_fg() -> Color {
+        Color(250)
+    }
+
+    fn local_ip_bg() -> Color {
+        Color(238)
+    }
+}
+
+impl OsScheme for SimpleTheme {}
+
+impl MemoryUsageScheme for SimpleTheme {
+    fn memory_usage_fg() -> Color {
+        Color(15)
+    }
+
+    fn memory_usage_bg() -> Color {
+        Color(160)
     }
 }
 

@@ -7,8 +7,9 @@ use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::debug;
 use crate::modules::{
-    Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Node, Pr, Python,
-    ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
+    Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, LocalIp,
+    MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time,
+    Unknown, Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
 use crate::themes::CompleteTheme;
@@ -341,6 +342,7 @@ impl Powerline {
     ) {
         for module in modules {
             match module {
+                LineSegment::Battery => self.add_module(Battery::<T>::new()),
                 LineSegment::SmallSpacer => self.add_module(Spacer::<T>::small()),
                 LineSegment::LargeSpacer => self.add_module(Spacer::<T>::large()),
                 LineSegment::Python { version, venv } => {
@@ -360,11 +362,19 @@ impl Powerline {
                 LineSegment::Pr { status } => self.add_module(Pr::<T>::new(*status)),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
-                LineSegment::Host => self.add_module(Host::<T>::new()),
+                LineSegment::Host | LineSegment::Hostname => self.add_module(Hostname::<T>::new()),
+                LineSegment::Jobs => self.add_module(Jobs::<T>::new(runtime_data.job_count())),
+                LineSegment::LocalIp => self.add_module(LocalIp::<T>::new()),
+                LineSegment::Os => self.add_module(Os::<T>::new()),
+                LineSegment::MemoryUsage { threshold } => {
+                    self.add_module(MemoryUsage::<T>::new(*threshold))
+                }
+                LineSegment::Sudo => self.add_module(Sudo::<T>::new()),
                 LineSegment::Shell => {
                     self.add_module(ShellName::<T>::new(runtime_data.shell_name()))
                 }
-                LineSegment::User => self.add_module(User::<T>::new()),
+                LineSegment::Text(text) => self.add_module(Text::<T>::new(text.clone())),
+                LineSegment::User | LineSegment::Username => self.add_module(Username::<T>::new()),
                 LineSegment::Padding(size) => self.add_padding(*size),
                 LineSegment::Time { format } => match format {
                     Some(format) => self.add_module(Time::<T>::with_time_format(format.clone())),

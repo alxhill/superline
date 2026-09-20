@@ -24,11 +24,15 @@ function __pl_cache_duration --on-event fish_postexec
 end
 
 function fish_prompt
-  superline show -s $status -c $COLUMNS fish $__pl_duration
+  set -l __pl_status $status
+  set -l __pl_jobs (jobs -g 2>/dev/null | count)
+  superline show -s $__pl_status -c $COLUMNS fish $__pl_duration --jobs $__pl_jobs
 end
 
 function fish_right_prompt
-  superline show-right -s $status -c $COLUMNS fish $__pl_duration
+  set -l __pl_status $status
+  set -l __pl_jobs (jobs -g 2>/dev/null | count)
+  superline show-right -s $__pl_status -c $COLUMNS fish $__pl_duration --jobs $__pl_jobs
 end
 "#;
 
@@ -39,6 +43,7 @@ superline init fish | source
 
 const ZSH_CONF: &str = r#"
 export SUPERLINE_ZSH=1
+zmodload zsh/parameter
 
 function preexec() {
     if command -v gdate >/dev/null 2>&1; then
@@ -47,15 +52,28 @@ function preexec() {
 }
 
 function _update_ps1() {
+    __pl_status=$?
     if [ $__pl_timer ]; then
         _now=$(($(gdate +%s%0N)/1000000))
         if [ $_now -ge $__pl_timer ]; then
             _elapsed=$(($_now-$__pl_timer))
         fi
     fi
-    PS1="$(superline show -s $? -c $COLUMNS zsh $_elapsed)"
-    RPS1="$(superline show-right -s $? -c $COLUMNS zsh $_elapsed)"
-    unset __pl_timer _elapsed _now
+    __pl_jobs=${#jobstates[*]}
+    # Keep the rendered prompt in an indirection variable when PROMPT_SUBST
+    # is enabled. Zsh expands the variable once, but does not re-expand text
+    # returned by it, so literal `$()` and backticks in a Text widget remain
+    # literal instead of becoming commands.
+    __pl_prompt="$(superline show -s $__pl_status -c $COLUMNS zsh $_elapsed --jobs $__pl_jobs)"
+    __pl_right_prompt="$(superline show-right -s $__pl_status -c $COLUMNS zsh $_elapsed --jobs $__pl_jobs)"
+    if [[ -o promptsubst ]]; then
+        PS1='$__pl_prompt'
+        RPS1='$__pl_right_prompt'
+    else
+        PS1="$__pl_prompt"
+        RPS1="$__pl_right_prompt"
+    fi
+    unset __pl_status __pl_jobs __pl_timer _elapsed _now
 }
 
 precmd_functions=(_update_ps1)
@@ -71,7 +89,9 @@ const BASH_CONF: &str = r#"
 export SUPERLINE_BASH=1
 
 function _update_ps1() {
-    PS1="$(superline show -s $? -c $COLUMNS bash)"
+    local __pl_status=$?
+    local __pl_jobs=$(jobs -p 2>/dev/null | wc -l)
+    PS1="$(superline show -s $__pl_status -c $COLUMNS bash --jobs $__pl_jobs)"
 }
 
 if [ "$TERM" != "linux" ]; then
@@ -118,6 +138,10 @@ function global:prompt {
     if (-not $__pl_cols -or $__pl_cols -le 0) { $__pl_cols = 80 }
 
     $__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')
+    # Count every job in PowerShell's job table, including stopped jobs, just
+    # like the Unix shell initializers count every shell job.
+    $__pl_jobs = @(Get-Job).Count
+    $__pl_args += "--jobs=$__pl_jobs"
 
     # Duration of the last command, in milliseconds, from session history.
     $__pl_last = Get-History -Count 1
@@ -153,14 +177,16 @@ $env.PROMPT_INDICATOR = ""
 $env.config.render_right_prompt_on_last_line = true
 
 def __pl_prompt [subcommand: string]: nothing -> string {
+    let __pl_status = ($env.LAST_EXIT_CODE? | default 0)
     let columns = (term size).columns
+    let jobs = (try { job list | length } catch { 0 })
     # nushell seeds CMD_DURATION_MS with the placeholder "0823" before the first
     # command runs; real durations never carry a leading zero.
     let duration = ($env.CMD_DURATION_MS? | default "0823")
     if $duration == "0823" {
-        ^superline $subcommand -s $env.LAST_EXIT_CODE -c $columns nu
+        ^superline $subcommand -s $__pl_status -c $columns nu --jobs $jobs
     } else {
-        ^superline $subcommand -s $env.LAST_EXIT_CODE -c $columns nu $duration
+        ^superline $subcommand -s $__pl_status -c $columns nu $duration --jobs $jobs
     }
 }
 
@@ -186,10 +212,11 @@ enum PowerlineArgs {
     ShowRight(ShowArgs),
     Install(InstallArgs),
     Config,
-    /// Remove all cached data (git status, PR lookups, AI usage, update
-    /// checks) so the next prompt starts from a cold cache.
+    /// Remove all cached data (git status, PR lookups, AI usage, sudo and
+    /// update checks) so the next prompt starts from a cold cache.
     ClearCaches,
-    /// Internal: refresh one cached lookup (git status, PR, AI usage, ...).
+    /// Internal: refresh one cached lookup (git status, PR, AI usage, sudo,
+    /// ...).
     /// Spawned in the background by `superline::cache` - not intended to be
     /// called by hand.
     #[command(hide = true)]
@@ -238,6 +265,9 @@ struct ShowArgs {
     columns: usize,
     #[arg(short, long)]
     status: String,
+    /// Number of background jobs reported by the shell.
+    #[arg(long, default_value_t = 0)]
+    jobs: usize,
     #[arg(long)]
     config: Option<PathBuf>,
 }
@@ -273,6 +303,10 @@ impl TerminalRuntimeMetadata for &ShowArgs {
 
     fn last_command_status(&self) -> &str {
         self.status.as_str()
+    }
+
+    fn job_count(&self) -> usize {
+        self.jobs
     }
 }
 

@@ -10,6 +10,11 @@ pub trait TerminalRuntimeMetadata {
     fn total_columns(&self) -> usize;
     fn last_command_duration(&self) -> Option<Duration>;
     fn last_command_status(&self) -> &str;
+
+    /// Number of background jobs reported by the interactive shell.
+    fn job_count(&self) -> usize {
+        0
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -46,6 +51,7 @@ pub struct CommandLine {
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum LineSegment {
+    Battery,
     SmallSpacer,
     LargeSpacer,
     Separator(SeparatorStyle),
@@ -100,10 +106,26 @@ pub enum LineSegment {
         version: bool,
     },
     Host,
+    Hostname,
+    Jobs,
+    /// Show the primary non-loopback IPv4 address.
+    LocalIp,
+    /// Show used and total system memory, plus swap when it is available.
+    MemoryUsage {
+        /// Hide the segment below this percentage. With no threshold it is
+        /// always shown.
+        #[serde(default)]
+        threshold: Option<u8>,
+    },
+    Os,
+    Sudo,
     Shell,
     Time {
         format: Option<String>,
     },
+    /// Add literal text to the prompt. Control characters are rendered as
+    /// visible escapes so config values cannot inject terminal controls.
+    Text(String),
     AiUsage {
         provider: UsageProvider,
         #[serde(default = "default_true")]
@@ -129,6 +151,7 @@ pub enum LineSegment {
         session_time_remaining_only_at_limit: f64,
     },
     User,
+    Username,
     Cmd,
     LastCmdDuration {
         min_run_time: u64, // milliseconds
@@ -164,6 +187,7 @@ where
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum KnownLineSegment {
+    Battery,
     SmallSpacer,
     LargeSpacer,
     Separator(SeparatorStyle),
@@ -212,10 +236,21 @@ enum KnownLineSegment {
         version: bool,
     },
     Host,
+    Hostname,
+    Jobs,
+    #[serde(alias = "localip")]
+    LocalIp,
+    MemoryUsage {
+        #[serde(default)]
+        threshold: Option<u8>,
+    },
+    Os,
+    Sudo,
     Shell,
     Time {
         format: Option<String>,
     },
+    Text(String),
     AiUsage {
         provider: UsageProvider,
         #[serde(default = "default_true")]
@@ -242,6 +277,7 @@ enum KnownLineSegment {
         session_time_remaining_only_at_limit: f64,
     },
     User,
+    Username,
     Cmd,
     LastCmdDuration {
         min_run_time: u64,
@@ -258,6 +294,7 @@ enum KnownLineSegment {
 impl From<KnownLineSegment> for LineSegment {
     fn from(segment: KnownLineSegment) -> Self {
         match segment {
+            KnownLineSegment::Battery => LineSegment::Battery,
             KnownLineSegment::SmallSpacer => LineSegment::SmallSpacer,
             KnownLineSegment::LargeSpacer => LineSegment::LargeSpacer,
             KnownLineSegment::Separator(style) => LineSegment::Separator(style),
@@ -284,8 +321,15 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Java { version, jdk } => LineSegment::Java { version, jdk },
             KnownLineSegment::Cargo { version } => LineSegment::Cargo { version },
             KnownLineSegment::Host => LineSegment::Host,
+            KnownLineSegment::Hostname => LineSegment::Hostname,
+            KnownLineSegment::Jobs => LineSegment::Jobs,
+            KnownLineSegment::LocalIp => LineSegment::LocalIp,
+            KnownLineSegment::MemoryUsage { threshold } => LineSegment::MemoryUsage { threshold },
+            KnownLineSegment::Os => LineSegment::Os,
+            KnownLineSegment::Sudo => LineSegment::Sudo,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
+            KnownLineSegment::Text(text) => LineSegment::Text(text),
             KnownLineSegment::AiUsage {
                 provider,
                 session,
@@ -320,6 +364,7 @@ impl From<KnownLineSegment> for LineSegment {
                 session_time_remaining_only_at_limit,
             },
             KnownLineSegment::User => LineSegment::User,
+            KnownLineSegment::Username => LineSegment::Username,
             KnownLineSegment::Cmd => LineSegment::Cmd,
             KnownLineSegment::LastCmdDuration { min_run_time } => {
                 LineSegment::LastCmdDuration { min_run_time }
@@ -374,7 +419,8 @@ fn segment_name(value: &Value) -> Option<String> {
 fn is_known_segment_name(name: &str) -> bool {
     matches!(
         name,
-        "small_spacer"
+        "battery"
+            | "small_spacer"
             | "large_spacer"
             | "separator"
             | "cwd"
@@ -389,10 +435,19 @@ fn is_known_segment_name(name: &str) -> bool {
             | "sdkman"
             | "cargo"
             | "host"
+            | "hostname"
+            | "jobs"
+            | "local_ip"
+            | "localip"
+            | "memory_usage"
+            | "os"
+            | "sudo"
             | "shell"
             | "time"
+            | "text"
             | "ai_usage"
             | "user"
+            | "username"
             | "cmd"
             | "last_cmd_duration"
             | "padding"
@@ -518,12 +573,13 @@ impl Default for Config {
                             session_time_remaining_only_at_limit: 0.0,
                         },
                     ],
-                    right: Some(vec![]),
+                    right: Some(vec![LineSegment::Sudo, LineSegment::Battery]),
                 },
                 CommandLine {
                     left: vec![
                         LineSegment::Shell,
                         LineSegment::LastCmdDuration { min_run_time: 50 },
+                        LineSegment::Jobs,
                         LineSegment::Cmd,
                         LineSegment::Padding(1),
                     ],

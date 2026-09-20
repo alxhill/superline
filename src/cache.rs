@@ -189,8 +189,29 @@ impl<S: Source> Cached<S> {
 
     /// Reads the cache without triggering a refresh.
     pub fn read(&self) -> Option<Entry<S::Value>> {
-        let file = File::open(self.path.as_ref()?).ok()?;
-        serde_json::from_reader(file).ok()
+        let path = self.path.as_ref()?;
+
+        // Windows can briefly deny access while another writer replaces the
+        // cache entry. A short retry keeps that filesystem-level transition
+        // from looking like a missing or corrupt cache value.
+        for attempt in 0..3 {
+            let file = match File::open(path) {
+                Ok(file) => file,
+                Err(_) if attempt < 2 => {
+                    thread::sleep(Duration::from_millis(1));
+                    continue;
+                }
+                Err(_) => return None,
+            };
+
+            match serde_json::from_reader(file) {
+                Ok(entry) => return Some(entry),
+                Err(_) if attempt < 2 => thread::sleep(Duration::from_millis(1)),
+                Err(_) => return None,
+            }
+        }
+
+        None
     }
 
     /// Serves the cached value and refreshes it in the background when it is

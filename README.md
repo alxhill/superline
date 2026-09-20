@@ -121,7 +121,7 @@ last in full, left and right. The last row's `right` is drawn by the shell's own
 PowerShell have no right prompt, so on those shells the last row's `right` is not shown.
 
 Every module can be written either as a bare string or as an object with options, so `"git"` and `{ "git": {} }`
-are equivalent. Modules with required options (`cwd`, `last_cmd_duration`, `ai_usage`, `padding`, `separator`) must
+are equivalent. Modules with required options (`cwd`, `last_cmd_duration`, `ai_usage`, `padding`, `separator`, `text`) must
 use the object form.
 
 ### Layout
@@ -199,12 +199,115 @@ The name of the running shell (`fish`, `zsh`, ...).
 "shell"
 ```
 
-#### host and user
+#### hostname and username
 
-The hostname and the current username.
+The hostname and the current username. The username uses the root colour when
+the prompt is running as root.
 
 ```json
-"host"
+"hostname"
+```
+
+`"host"` remains accepted as a compatibility alias.
+
+```json
+"username"
+```
+
+`"user"` remains accepted as a compatibility alias.
+
+#### local_ip
+
+The primary non-loopback IPv4 address. superline reads the host's network
+interfaces directly, so rendering this segment does not open a socket or make
+a network request. If no usable address is available, the segment is hidden.
+Private and public unicast addresses are both eligible; only non-host address
+categories such as loopback, multicast, and broadcast are filtered out.
+`"localip"` is accepted as a legacy spelling.
+
+```json
+"local_ip"
+```
+
+#### memory_usage
+
+Shows a compact memory percentage. If swap is at least 1% used, its percentage
+is shown alongside RAM. The lookup is a small local read, so it does not use
+the background cache. Set `threshold` to hide the segment below a percentage;
+without a threshold it is always shown.
+
+```json
+"memory_usage"
+```
+
+```json
+{ "memory_usage": { "threshold": 75 } }
+```
+
+The segment is available on Linux, macOS and Windows; it is omitted when the
+operating system cannot provide a memory reading.
+
+#### os
+
+Shows a compact Nerd Font icon for the current operating-system family. It
+recognises Linux, macOS, Windows, Android and the common BSD/Unix targets
+without reading distro files or spawning a command, so it adds no prompt
+latency. The built-in themes use the Linux, Apple and Windows icons; custom
+themes may override the colours and symbol in their os module.
+
+```json
+"os"
+```
+
+#### jobs
+
+Shows background jobs owned by the current shell, including stopped jobs. It is
+hidden with no jobs, shows a gears icon for one job, and adds the count for two
+or more jobs.
+
+```json
+"jobs"
+```
+
+#### text
+
+Adds literal text to the prompt using the theme's default colours. Text is required and is supplied as a JSON string;
+printable Unicode and punctuation are preserved. Terminal control characters and line separators are shown as visible
+escape sequences so a value in the config cannot reset the prompt or inject another prompt line. Shell prompt syntax
+such as Bash command substitutions and zsh percent escapes is quoted before the value is returned.
+
+```json
+{ "text": "hello 🌈" }
+```
+
+#### battery
+
+Shows a low-battery warning with the current charge percentage and charging
+state. It appears when the aggregate charge is 10% or lower and stays hidden
+when no battery is available or the charge is above that threshold.
+
+```json
+"battery"
+```
+
+#### sudo
+
+Shows `⚿` when the current user's sudo credentials are already cached. The
+check is non-interactive (`sudo -Nnv`) and runs through superline's background
+cache, so it never asks for a password, runs a privileged command, or blocks
+prompt rendering. `-N` is important: it prevents the prompt from extending the
+sudo timestamp on every refresh. Systems or sudo policies without `-N` support
+leave the widget hidden rather than falling back to a timestamp-extending
+probe. It is also hidden when sudo is unavailable or credentials are not
+cached.
+
+Because the probe deliberately does not refresh sudo's timestamp, a cached
+marker can remain visible for up to the widget's 10-second refresh interval
+after authorization expires. That short stale window is the tradeoff for
+keeping a prompt renderer from extending administrative access.
+
+```json
+"sudo"
 ```
 
 #### time
