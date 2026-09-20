@@ -8,7 +8,7 @@ use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::debug;
 use crate::modules::{
     Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, Module, Node,
-    Pr,
+    Kubernetes, Pr,
     Python, ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
 };
 use crate::terminal::*;
@@ -427,6 +427,7 @@ impl Powerline {
                 LineSegment::Java { version, jdk } => {
                     self.add_module(Java::<T>::new(*version, *jdk))
                 }
+                LineSegment::Kubernetes => self.add_module(Kubernetes::<T>::new()),
                 LineSegment::Error { message } => {
                     self.add_module(ErrorMessage::<T>::new(message.clone()))
                 }

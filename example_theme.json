@@ -45,6 +45,11 @@
       "status_failure_fg": "warning_red",
       "status_pending_fg": "dark_yellow"
     },
+    "kubernetes": {
+      "fg": "white",
+      "bg": "blue",
+      "icon": "☸"
+    },
     "readonly": {
       "fg": 254,
       "bg": 124

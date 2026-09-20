@@ -17,6 +17,7 @@ mod user;
 mod cargo;
 mod cmd_duration;
 mod java;
+mod kubernetes;
 mod node;
 mod python;
 mod shell_name;
@@ -36,6 +37,7 @@ pub use git::{Git, GitScheme, GitStatus};
 pub use host::{Host, HostScheme, Hostname};
 pub use java::{Java, JavaScheme};
 pub use jobs::{Jobs, JobsScheme};
+pub use kubernetes::{Kubernetes, KubernetesContext, KubernetesLookup, KubernetesScheme};
 pub use node::{Node, NodeScheme};
 pub use pr::{Pr, PrLookup, PrScheme};
 pub use python::{Python, PythonScheme, PythonVersion};
@@ -61,6 +63,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         PrLookup::KIND => refresh_from_json::<PrLookup>(source),
         UsageLookup::KIND => refresh_from_json::<UsageLookup>(source),
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
+        KubernetesLookup::KIND => refresh_from_json::<KubernetesLookup>(source),
         UpdateLookup::KIND => refresh_from_json::<UpdateLookup>(source),
         _ => false,
     }

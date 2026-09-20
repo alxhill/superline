@@ -11,8 +11,8 @@ use thiserror::Error;
 use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
-    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, NodeScheme, PrScheme,
-    PythonScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
+    NodeScheme, PrScheme, PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -398,6 +398,17 @@ impl HostScheme for CustomTheme {
 impl JobsScheme for CustomTheme {
     color_from_json!(jobs_bg, jobs, bg, default_bg);
     color_from_json!(jobs_fg, jobs, fg, default_fg);
+}
+
+impl KubernetesScheme for CustomTheme {
+    color_from_json!(kubernetes_bg, kubernetes, bg, default_bg);
+    color_from_json!(kubernetes_fg, kubernetes, fg, default_fg);
+
+    fn kubernetes_icon() -> &'static str {
+        Self::get_str("kubernetes", "icon")
+            .map(|str| str.leak() as &'static str)
+            .unwrap_or("\u{2638}")
+    }
 }
 
 impl ShellScheme for CustomTheme {
