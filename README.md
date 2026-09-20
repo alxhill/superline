@@ -312,6 +312,20 @@ keeping a prompt renderer from extending administrative access.
 "sudo"
 ```
 
+#### kubernetes
+
+The active Kubernetes context and, when it is set in that context, its namespace. The module reads
+`$KUBECONFIG` (a platform-separated list of kubeconfig files) or `$HOME/.kube/config` and refreshes the
+lookup in the background so a large kubeconfig never blocks prompt rendering. It is hidden when there is no
+readable kubeconfig or no current context.
+
+```json
+"kubernetes"
+```
+
+The default label is `☸ context` or `☸ context (namespace)`. Set `modules.kubernetes.icon` in a custom theme to
+change the marker or set it to an empty string to hide it.
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)
@@ -510,8 +524,8 @@ A theme file has two keys, `defaults` and `modules`:
 
 - **defaults** - the `fg` and `bg` used for anything a module doesn't set.
 - **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colours (`git` has
-  `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`, and
-  `mise_icon` on the language modules - set it to `""` to hide the marker). Anything omitted falls back to
+  `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`,
+  `kubernetes.icon`, and `mise_icon` on the language modules - set a marker to `""` to hide it). Anything omitted falls back to
   `defaults`.
 
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
