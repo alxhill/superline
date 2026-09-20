@@ -1,5 +1,6 @@
 //! Drives the compiled binary against a pre-seeded update cache to check the
-//! notice renders once, links to the release, and then stays hidden.
+//! notice is printed above the prompt once, links to the release, and then
+//! stays hidden.
 
 use std::fs;
 use std::path::PathBuf;
@@ -16,7 +17,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new(label: &str, command: &str) -> Self {
+    fn new(label: &str, update_block: &str) -> Self {
         let root =
             std::env::temp_dir().join(format!("superline-update-{label}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -26,9 +27,7 @@ impl Fixture {
         let config = root.join("config.json");
         fs::write(
             &config,
-            format!(
-                r#"{{"theme":"rainbow","rows":[{{"left":[{{"update":{{"command":"{command}"}}}}]}}]}}"#
-            ),
+            format!(r#"{{"theme":"rainbow","rows":[{{"left":["shell"]}}]{update_block}}}"#),
         )
         .expect("write config");
         Fixture {
@@ -80,18 +79,31 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn a_newer_release_is_announced_once_with_the_upgrade_command() {
-    let fixture = Fixture::new("newer", "brew upgrade superline");
+fn a_newer_release_is_announced_once_above_the_prompt() {
+    let fixture = Fixture::new("newer", "");
     fixture.cache_release("v99.0.0");
 
     let first = fixture.render();
+    let mut lines = first.lines();
+    let notice = lines.next().expect("the notice line");
+    assert!(notice.contains("v99.0.0"), "stdout:\n{first}");
     assert!(
-        first.contains("superline v99.0.0 available: brew upgrade superline"),
-        "stdout:\n{first}"
+        notice.contains("available: cargo ") || notice.contains("available: brew "),
+        "the notice should end with the upgrade command\nstdout:\n{first}"
     );
     assert!(
-        first.contains("https://github.com/alxhill/superline/releases/tag/v99.0.0"),
+        notice.contains("https://github.com/alxhill/superline/releases/tag/v99.0.0"),
         "the notice should link to the release\nstdout:\n{first}"
+    );
+    // The icon sits on the theme's background (rainbow: nice_purple) and the
+    // text after it is reset to the terminal's default colours.
+    let icon_background = notice.find("\x1b[48;5;93m").expect("icon background");
+    let reset = notice.find("\x1b[0m").expect("reset before the text");
+    let text = notice.find(" superline ").expect("notice text");
+    assert!(icon_background < reset && reset < text, "stdout:\n{first}");
+    assert!(
+        lines.next().is_some_and(|prompt| prompt.contains("fish")),
+        "the prompt should follow on the next line\nstdout:\n{first}"
     );
     assert!(fixture.shown_marker().is_file());
 
@@ -99,11 +111,15 @@ fn a_newer_release_is_announced_once_with_the_upgrade_command() {
     // newer than this binary.
     let second = fixture.render();
     assert!(!second.contains("v99.0.0"), "stdout:\n{second}");
+    assert!(second
+        .lines()
+        .next()
+        .is_some_and(|line| line.contains("fish")));
 }
 
 #[test]
 fn a_notice_shown_yesterday_is_shown_again() {
-    let fixture = Fixture::new("yesterday", "cargo binstall superline");
+    let fixture = Fixture::new("yesterday", "");
     fixture.cache_release("v99.0.0");
     let yesterday = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -114,7 +130,7 @@ fn a_notice_shown_yesterday_is_shown_again() {
 
     let stdout = fixture.render();
     assert!(
-        stdout.contains("superline v99.0.0 available: cargo binstall superline"),
+        stdout.contains("superline \x1b]8;;https://github.com/alxhill/superline/releases/tag/v99.0.0\x1b\\v99.0.0\x1b]8;;\x1b\\ available: "),
         "stdout:\n{stdout}"
     );
 }
@@ -122,7 +138,7 @@ fn a_notice_shown_yesterday_is_shown_again() {
 #[test]
 fn the_running_version_and_older_releases_are_silent() {
     for version in [format!("v{CURRENT_VERSION}"), "v0.0.1".to_string()] {
-        let fixture = Fixture::new("silent", "brew upgrade superline");
+        let fixture = Fixture::new("silent", "");
         fixture.cache_release(&version);
 
         let stdout = fixture.render();
@@ -132,4 +148,14 @@ fn the_running_version_and_older_releases_are_silent() {
             "nothing was shown, so nothing should be recorded"
         );
     }
+}
+
+#[test]
+fn the_notice_can_be_disabled() {
+    let fixture = Fixture::new("disabled", r#","update":{"disable":true}"#);
+    fixture.cache_release("v99.0.0");
+
+    let stdout = fixture.render();
+    assert!(!stdout.contains("v99.0.0"), "stdout:\n{stdout}");
+    assert!(!fixture.shown_marker().exists());
 }

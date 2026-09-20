@@ -324,21 +324,6 @@ at 80% and above.
 **States.** Until the first reading is cached the widget shows `…`. If the provider CLI isn't on `PATH` it shows `?`.
 If the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
 
-#### update
-
-A once-a-day notice when a newer superline release is available, with the command that installs it. The latest
-release is looked up through the GitHub API (via `curl`, or `gh` when curl is missing) in the background at most
-once a day, and the notice renders on a single prompt and then stays hidden for another day. It links to the release
-page. Nothing is shown when you are already on the latest version, or until the first lookup has finished.
-
-The upgrade command is inferred from where the binary is installed: `brew upgrade superline` under Homebrew,
-otherwise `cargo binstall superline` when `cargo-binstall` is on `PATH` and `cargo install superline` if not. Set
-`command` to show something else.
-
-```json
-{ "update": { "command": "brew upgrade superline" } }
-```
-
 ### Language modules
 
 `python`, `node`, `java` and `cargo` share one behaviour and differ only in how they detect a project and
@@ -398,6 +383,27 @@ one is pinned.
 - **Detects** a `Cargo.toml` in the current directory.
 - **Pins** via `rust-toolchain.toml` or the legacy `rust-toolchain`, searched upwards from the current directory as
   rustup does, so workspace members pick up the pin at the workspace root.
+
+### Update notice
+
+Once a day superline looks up its latest release through the GitHub API (via `curl`, or `gh` when curl is missing)
+in the background. When a newer version exists, a line is printed above the prompt with the command that installs
+it, then hidden for another day:
+
+```
+  superline v0.17.0 available: brew upgrade superline
+```
+
+The command is inferred from where the binary is installed: `brew upgrade superline` under Homebrew, otherwise
+`cargo binstall superline` when `cargo-binstall` is on `PATH` and `cargo install superline` if not. The version
+links to the release page. Nothing is shown while you are on the latest version, or until the first lookup has
+finished. To turn the check off, add a top-level `update` block to the config:
+
+```json
+{ "theme": "rainbow", "rows": [ ... ], "update": { "disable": true } }
+```
+
+The icon is themed as `update` (`fg`, `bg`, `icon`); the text after it uses the terminal's default colours.
 
 ### Themes
 

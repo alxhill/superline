@@ -16,6 +16,16 @@ pub trait TerminalRuntimeMetadata {
 pub struct Config {
     pub theme: String,
     pub rows: Vec<CommandLine>,
+    #[serde(default)]
+    pub update: UpdateConfig,
+}
+
+/// The once-a-day check for a newer release, printed above the prompt.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateConfig {
+    /// Skip the check and never show the notice.
+    #[serde(default)]
+    pub disable: bool,
 }
 
 // single line of a command terminal
@@ -52,11 +62,6 @@ pub enum LineSegment {
         /// default; set to `false` to show just the PR number.
         #[serde(default = "default_true")]
         status: bool,
-    },
-    Update {
-        /// The command shown for installing a newer release. Inferred from
-        /// where the binary is installed when unset.
-        command: Option<String>,
     },
     Python {
         /// Show the interpreter version. On by default: inside a virtual env
@@ -171,9 +176,6 @@ enum KnownLineSegment {
         #[serde(default = "default_true")]
         status: bool,
     },
-    Update {
-        command: Option<String>,
-    },
     /// Named `python_env` before the language modules were renamed; both
     /// names parse.
     #[serde(alias = "python_env")]
@@ -269,7 +271,6 @@ impl From<KnownLineSegment> for LineSegment {
                 backend,
             },
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
-            KnownLineSegment::Update { command } => LineSegment::Update { command },
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
             KnownLineSegment::Node { version } => LineSegment::Node { version },
             KnownLineSegment::Java { version, jdk } => LineSegment::Java { version, jdk },
@@ -372,7 +373,6 @@ fn is_known_segment_name(name: &str) -> bool {
             | "read_only"
             | "git"
             | "pr"
-            | "update"
             | "python"
             | "python_env"
             | "node"
@@ -455,6 +455,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             theme: "rainbow".into(),
+            update: UpdateConfig::default(),
             rows: vec![
                 CommandLine {
                     left: vec![
@@ -508,8 +509,6 @@ impl Default for Config {
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
                         },
-                        LineSegment::Padding(2),
-                        LineSegment::Update { command: None },
                     ],
                     right: Some(vec![]),
                 },
@@ -859,7 +858,6 @@ mod tests {
             ),
             (r#""cargo""#, LineSegment::Cargo { version: true }),
             (r#""pr""#, LineSegment::Pr { status: true }),
-            (r#""update""#, LineSegment::Update { command: None }),
         ];
 
         for (json, expected) in cases {
@@ -870,16 +868,15 @@ mod tests {
     }
 
     #[test]
-    fn update_command_is_configurable() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#"{"update":{"command":"brew upgrade superline"}}"#)
-                .expect("configured update module should parse");
-        assert_eq!(
-            parsed,
-            LineSegment::Update {
-                command: Some("brew upgrade superline".to_string()),
-            }
-        );
+    fn update_notice_is_on_unless_disabled() {
+        let config: Config = serde_json::from_str(r#"{"theme":"rainbow","rows":[]}"#)
+            .expect("config without an update block should parse");
+        assert!(!config.update.disable);
+
+        let config: Config =
+            serde_json::from_str(r#"{"theme":"rainbow","rows":[],"update":{"disable":true}}"#)
+                .expect("config with the update block should parse");
+        assert!(config.update.disable);
     }
 
     #[test]

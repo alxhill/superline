@@ -8,7 +8,7 @@ use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::debug;
 use crate::modules::{
     Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Node, Pr, Python,
-    ReadOnly, ShellName, Spacer, Time, Unknown, Update, Usage, UsageWindows, User,
+    ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
 };
 use crate::terminal::*;
 use crate::themes::CompleteTheme;
@@ -358,9 +358,6 @@ impl Powerline {
                     *backend,
                 )),
                 LineSegment::Pr { status } => self.add_module(Pr::<T>::new(*status)),
-                LineSegment::Update { command } => {
-                    self.add_module(Update::<T>::new(command.clone()))
-                }
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
                 LineSegment::Host => self.add_module(Host::<T>::new()),

@@ -1,4 +1,5 @@
-//! A once-a-day notice that a newer superline release is available.
+//! A once-a-day notice, printed above the prompt, that a newer superline
+//! release is available.
 //!
 //! The latest release is looked up through the GitHub API in the background
 //! and cached for a day, so the network is touched at most once a day. When
@@ -6,20 +7,17 @@
 //! on one prompt and then suppressed for another day, using the same locked
 //! marker file the cache uses to rate-limit refreshes.
 
-use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{claim_slot, Cached, Lookup, Source};
+use crate::cache::{claim_slot, Cached, Source};
 use crate::colors::Color;
 use crate::platform::resolve_binary;
+use crate::terminal::{BgColor, FgColor, Hyperlink, Reset};
 use crate::themes::DefaultColors;
-use crate::{Powerline, Style};
-
-use super::Module;
 
 const REPO: &str = "alxhill/superline";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -27,11 +25,8 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const NOTICE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const FETCH_TIMEOUT_SECS: &str = "10";
 
-pub struct Update<S> {
-    command: Option<String>,
-    scheme: PhantomData<S>,
-}
-
+/// Colours for the icon that opens the notice. The text after it is printed
+/// in the terminal's default colours.
 pub trait UpdateScheme: DefaultColors {
     const DEFAULT_ICON: &'static str = "\u{f0aa}"; // nf-fa-arrow_circle_up
 
@@ -43,17 +38,6 @@ pub trait UpdateScheme: DefaultColors {
     }
     fn update_icon() -> &'static str {
         Self::DEFAULT_ICON
-    }
-}
-
-impl<S: UpdateScheme> Update<S> {
-    /// `command` overrides the upgrade command shown in the notice; when it is
-    /// `None` the command is inferred from how the binary was installed.
-    pub fn new(command: Option<String>) -> Update<S> {
-        Update {
-            command,
-            scheme: PhantomData,
-        }
     }
 }
 
@@ -91,35 +75,31 @@ impl Source for UpdateLookup {
     }
 }
 
-impl<S: UpdateScheme> Module for Update<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        let cached = Cached::new(UpdateLookup);
-        let Lookup::Ready(release) = cached.load() else {
-            return;
-        };
-        if !is_newer(&release.version, CURRENT_VERSION) {
-            return;
-        }
-        let Some(path) = cached.path() else {
-            return;
-        };
-        if !claim_slot(&shown_marker(path), NOTICE_INTERVAL) {
-            return;
-        }
-
-        let command = self.command.clone().unwrap_or_else(upgrade_command);
-        let label = format!(
-            "{} superline {} available: {command}",
-            S::update_icon(),
-            release.version
-        );
-        powerline.add_hyperlink_segment(
-            &label,
-            &release.url,
-            Style::simple(S::update_fg(), S::update_bg()),
-            None,
-        );
+/// The notice line to print above the prompt, when a newer release is cached
+/// and the notice has not been shown in the last day. Reading the cache also
+/// schedules the daily background check.
+pub fn notice<S: UpdateScheme>() -> Option<String> {
+    let cached = Cached::new(UpdateLookup);
+    let release = cached.load().ready()?;
+    if !is_newer(&release.version, CURRENT_VERSION) {
+        return None;
     }
+    if !claim_slot(&shown_marker(cached.path()?), NOTICE_INTERVAL) {
+        return None;
+    }
+
+    let command = upgrade_command();
+    Some(format!(
+        "{bg}{fg} {icon} {reset} superline {link} available: {command}",
+        bg = BgColor::from(S::update_bg()),
+        fg = FgColor::from(S::update_fg()),
+        icon = S::update_icon(),
+        reset = Reset,
+        link = Hyperlink {
+            url: &release.url,
+            label: &release.version,
+        },
+    ))
 }
 
 /// Records when the notice was last shown, next to the cache entry so
@@ -159,7 +139,7 @@ fn parse_version(text: &str) -> Option<Version> {
 /// binary lives: Homebrew keeps it under a `Cellar` directory, and otherwise it
 /// came from cargo, where `cargo binstall` is preferred when available since
 /// it downloads a prebuilt binary instead of compiling.
-pub fn upgrade_command() -> String {
+fn upgrade_command() -> String {
     let exe = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.canonicalize().ok());
