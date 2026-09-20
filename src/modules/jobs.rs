@@ -52,7 +52,7 @@ fn display_text<S: JobsScheme>(count: usize) -> Option<String> {
     match count {
         0 => None,
         1 => Some(S::jobs_symbol().to_string()),
-        count => Some(format!("{}{}", S::jobs_symbol(), count)),
+        count => Some(format!("{} {}", S::jobs_symbol(), count)),
     }
 }
 
@@ -87,6 +87,6 @@ mod tests {
 
     #[test]
     fn shows_symbol_and_count_for_multiple_jobs() {
-        assert_eq!(display_text::<TestTheme>(3).as_deref(), Some("\u{f085}3"));
+        assert_eq!(display_text::<TestTheme>(3).as_deref(), Some("\u{f085} 3"));
     }
 }

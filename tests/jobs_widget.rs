@@ -71,7 +71,7 @@ fn one_job_shows_only_the_symbol() {
 
 #[test]
 fn multiple_jobs_show_the_symbol_and_count() {
-    assert!(render(3).contains("\u{f085}3"));
+    assert!(render(3).contains("\u{f085} 3"));
 }
 
 #[test]
