@@ -12,7 +12,7 @@ use crate::colors::Color;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UpdateScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 
@@ -247,6 +247,17 @@ impl ErrorMessageScheme for CustomTheme {
 impl UnknownScheme for CustomTheme {
     color_from_json!(unknown_fg, unknown, fg, alert_fg);
     color_from_json!(unknown_bg, unknown, bg, alert_bg);
+}
+
+impl UpdateScheme for CustomTheme {
+    color_from_json!(update_fg, update, fg, default_fg);
+    color_from_json!(update_bg, update, bg, default_bg);
+
+    fn update_icon() -> &'static str {
+        Self::get_str("update", "icon")
+            .map(|str| str.leak() as &'static str)
+            .unwrap_or(Self::DEFAULT_ICON)
+    }
 }
 
 impl CmdScheme for CustomTheme {

@@ -3,7 +3,7 @@ use crate::colors::*;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UpdateScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 
@@ -49,6 +49,16 @@ impl UnknownScheme for RainbowTheme {
 
     fn unknown_bg() -> Color {
         warning_red()
+    }
+}
+
+impl UpdateScheme for RainbowTheme {
+    fn update_fg() -> Color {
+        white()
+    }
+
+    fn update_bg() -> Color {
+        nice_purple()
     }
 }
 

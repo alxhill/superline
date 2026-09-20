@@ -20,6 +20,7 @@ mod shell_name;
 mod spacer;
 mod time;
 mod unknown;
+mod update;
 mod usage;
 
 pub use cargo::{Cargo, CargoScheme};
@@ -39,6 +40,7 @@ pub use shell_name::{ShellName, ShellScheme};
 pub use spacer::{Spacer, SpacerScheme};
 pub use time::{Time, TimeScheme};
 pub use unknown::{Unknown, UnknownScheme};
+pub use update::{Update, UpdateLookup, UpdateScheme};
 pub use usage::{Usage, UsageLookup, UsageScheme, UsageWindow, UsageWindows};
 pub use user::{User, UserScheme};
 
@@ -56,6 +58,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         PrLookup::KIND => refresh_from_json::<PrLookup>(source),
         UsageLookup::KIND => refresh_from_json::<UsageLookup>(source),
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
+        UpdateLookup::KIND => refresh_from_json::<UpdateLookup>(source),
         _ => false,
     }
 }

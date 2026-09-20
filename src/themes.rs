@@ -6,7 +6,7 @@ use crate::colors::Color;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
     JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UpdateScheme, UsageScheme, UserScheme,
 };
 
 mod custom;
@@ -55,5 +55,6 @@ pub trait CompleteTheme:
     + JavaScheme
     + ErrorMessageScheme
     + UnknownScheme
+    + UpdateScheme
 {
 }

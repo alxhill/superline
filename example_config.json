@@ -25,7 +25,11 @@
             "status_timeout_ms": 250
           }
         },
-        { "pr": { "status": true } }
+        { "pr": { "status": true } },
+        {
+          "padding": 2
+        },
+        "update"
       ],
       "right": []
     },

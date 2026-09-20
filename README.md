@@ -324,6 +324,21 @@ at 80% and above.
 **States.** Until the first reading is cached the widget shows `…`. If the provider CLI isn't on `PATH` it shows `?`.
 If the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
 
+#### update
+
+A once-a-day notice when a newer superline release is available, with the command that installs it. The latest
+release is looked up through the GitHub API (via `curl`, or `gh` when curl is missing) in the background at most
+once a day, and the notice renders on a single prompt and then stays hidden for another day. It links to the release
+page. Nothing is shown when you are already on the latest version, or until the first lookup has finished.
+
+The upgrade command is inferred from where the binary is installed: `brew upgrade superline` under Homebrew,
+otherwise `cargo binstall superline` when `cargo-binstall` is on `PATH` and `cargo install superline` if not. Set
+`command` to show something else.
+
+```json
+{ "update": { "command": "brew upgrade superline" } }
+```
+
 ### Language modules
 
 `python`, `node`, `java` and `cargo` share one behaviour and differ only in how they detect a project and
@@ -423,7 +438,7 @@ module name and property.
 | `superline install <shell>` | Append the prompt loader to the shell's config file. |
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
 | `superline config` | Open the config file in `$EDITOR`. |
-| `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
+| `superline clear-caches` | Wipe cached git status, PR lookups, AI usage and update checks so the next prompt starts cold. |
 
 ## Debugging a slow prompt
 
