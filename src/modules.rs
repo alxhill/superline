@@ -49,7 +49,7 @@ pub use spacer::{Spacer, SpacerScheme};
 pub use time::{Time, TimeScheme};
 pub use unknown::{Unknown, UnknownScheme};
 pub use usage::{Usage, UsageLookup, UsageScheme, UsageWindow, UsageWindows};
-pub use user::{User, UserScheme};
+pub use user::{User, UserScheme, Username};
 
 pub trait Module {
     fn append_segments(&mut self, powerline: &mut Powerline);

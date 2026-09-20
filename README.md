@@ -199,15 +199,22 @@ The name of the running shell (`fish`, `zsh`, ...).
 "shell"
 ```
 
-#### hostname and user
+#### hostname and username
 
-The hostname and the current username.
+The hostname and the current username. The username uses the root colour when
+the prompt is running as root.
 
 ```json
 "hostname"
 ```
 
 `"host"` remains accepted as a compatibility alias.
+
+```json
+"username"
+```
+
+`"user"` remains accepted as a compatibility alias.
 
 #### jobs
 

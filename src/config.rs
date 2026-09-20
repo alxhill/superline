@@ -140,6 +140,7 @@ pub enum LineSegment {
         session_time_remaining_only_at_limit: f64,
     },
     User,
+    Username,
     Cmd,
     LastCmdDuration {
         min_run_time: u64, // milliseconds
@@ -259,6 +260,7 @@ enum KnownLineSegment {
         session_time_remaining_only_at_limit: f64,
     },
     User,
+    Username,
     Cmd,
     LastCmdDuration {
         min_run_time: u64,
@@ -342,6 +344,7 @@ impl From<KnownLineSegment> for LineSegment {
                 session_time_remaining_only_at_limit,
             },
             KnownLineSegment::User => LineSegment::User,
+            KnownLineSegment::Username => LineSegment::Username,
             KnownLineSegment::Cmd => LineSegment::Cmd,
             KnownLineSegment::LastCmdDuration { min_run_time } => {
                 LineSegment::LastCmdDuration { min_run_time }
@@ -421,6 +424,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "time"
             | "ai_usage"
             | "user"
+            | "username"
             | "cmd"
             | "last_cmd_duration"
             | "padding"
@@ -498,6 +502,7 @@ impl Default for Config {
                         LineSegment::Padding(2),
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::ReadOnly,
+                        LineSegment::Username,
                         LineSegment::Hostname,
                         LineSegment::LocalIp,
                         LineSegment::Cwd {
@@ -956,6 +961,23 @@ mod tests {
     }
 
     #[test]
+    fn username_segment_uses_the_starship_aligned_name() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""username""#).expect("username segment should parse");
+
+        assert_eq!(parsed, LineSegment::Username);
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), r#""username""#);
+    }
+
+    #[test]
+    fn user_segment_remains_a_compatibility_alias() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""user""#).expect("user segment should parse");
+
+        assert_eq!(parsed, LineSegment::User);
+    }
+
+    #[test]
     fn default_config_includes_hostname() {
         assert!(Config::default().rows.iter().any(|row| {
             row.left
@@ -972,6 +994,16 @@ mod tests {
                 .iter()
                 .chain(row.right.iter().flatten())
                 .any(|segment| matches!(segment, LineSegment::LocalIp))
+        }));
+    }
+
+    #[test]
+    fn default_config_includes_username() {
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::Username))
         }));
     }
 
