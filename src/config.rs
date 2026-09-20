@@ -494,6 +494,7 @@ impl Default for Config {
                         LineSegment::Padding(2),
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::ReadOnly,
+                        LineSegment::Username,
                         LineSegment::Hostname,
                         LineSegment::LocalIp,
                         LineSegment::Cwd {
@@ -943,6 +944,33 @@ mod tests {
                 .iter()
                 .chain(row.right.iter().flatten())
                 .any(|segment| matches!(segment, LineSegment::Hostname))
+        }));
+    }
+
+    #[test]
+    fn username_segment_uses_the_aligned_name() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""username""#).expect("username segment should parse");
+
+        assert_eq!(parsed, LineSegment::Username);
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), r#""username""#);
+    }
+
+    #[test]
+    fn user_segment_remains_a_compatibility_alias() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""user""#).expect("user segment should parse");
+
+        assert_eq!(parsed, LineSegment::User);
+    }
+
+    #[test]
+    fn default_config_includes_username() {
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::Username))
         }));
     }
 

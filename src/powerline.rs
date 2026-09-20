@@ -9,7 +9,7 @@ use crate::debug;
 use crate::modules::{
     Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, LocalIp,
     Module, Node, Pr,
-    Python, ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
+    Python, ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
 use crate::themes::CompleteTheme;
@@ -368,7 +368,9 @@ impl Powerline {
                 LineSegment::Shell => {
                     self.add_module(ShellName::<T>::new(runtime_data.shell_name()))
                 }
-                LineSegment::User => self.add_module(User::<T>::new()),
+                LineSegment::User | LineSegment::Username => {
+                    self.add_module(Username::<T>::new())
+                }
                 LineSegment::Padding(size) => self.add_padding(*size),
                 LineSegment::Time { format } => match format {
                     Some(format) => self.add_module(Time::<T>::with_time_format(format.clone())),
