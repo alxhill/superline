@@ -57,12 +57,15 @@ fn sanitize(text: &str) -> String {
 
 /// Escape prompt-language syntax after the terminal controls are gone.
 ///
-/// Bash expands `$` and backslash sequences in `PS1`; zsh expands `%`
-/// sequences. The other supported shells receive the rendered prompt as
+/// Bash expands `$`, backticks and backslash sequences in `PS1`; zsh expands
+/// `%` sequences. The other supported shells receive the rendered prompt as
 /// ordinary text, so their values need no additional quoting here.
 fn escape_for_shell(text: &str, shell: Option<&Shell>) -> String {
     match shell {
-        Some(Shell::Bash) => text.replace('\\', "\\\\").replace('$', "\\$"),
+        Some(Shell::Bash) => text
+            .replace('\\', "\\\\")
+            .replace('$', "\\$")
+            .replace('`', "\\`"),
         Some(Shell::Zsh) => text.replace('%', "%%"),
         Some(Shell::Bare) | None => text.to_string(),
     }
@@ -81,8 +84,11 @@ mod tests {
 
     #[test]
     fn escapes_terminal_controls_and_line_separators() {
-        let text = "before\x1b[31m\nnext\u{2028}last";
-        assert_eq!(sanitize(text), r#"before\u{1b}[31m\nnext\u{2028}last"#);
+        let text = "before\x1b[31m\r\nnext\x07bell\0nul\u{2028}last";
+        assert_eq!(
+            sanitize(text),
+            r#"before\u{1b}[31m\r\nnext\u{7}bell\u{0}nul\u{2028}last"#
+        );
         assert!(sanitize(text)
             .chars()
             .all(|character| !character.is_control()));
@@ -91,13 +97,28 @@ mod tests {
     #[test]
     fn escapes_bash_prompt_syntax() {
         assert_eq!(
-            escape_for_shell(r#"\$HOME"#, Some(&Shell::Bash)),
-            r#"\\\$HOME"#
+            escape_for_shell(
+                r#"$(printf INJECT) `printf INJECT` 100% \ [brackets]"#,
+                Some(&Shell::Bash),
+            ),
+            r#"\$(printf INJECT) \`printf INJECT\` 100% \\ [brackets]"#
         );
     }
 
     #[test]
     fn escapes_zsh_prompt_syntax() {
-        assert_eq!(escape_for_shell("100% %n", Some(&Shell::Zsh)), "100%% %%n");
+        assert_eq!(
+            escape_for_shell(
+                "$(printf INJECT) `printf INJECT` 100% %n ! ",
+                Some(&Shell::Zsh)
+            ),
+            "$(printf INJECT) `printf INJECT` 100%% %%n ! "
+        );
+    }
+
+    #[test]
+    fn leaves_bare_shell_text_unchanged() {
+        let text = r#"$(printf INJECT) `printf INJECT` 100% %n ! \ [brackets]"#;
+        assert_eq!(escape_for_shell(text, Some(&Shell::Bare)), text);
     }
 }
