@@ -512,6 +512,7 @@ pub enum SeparatorStyle {
     Chevron,
     Round,
     AngleLine,
+    None,
 }
 
 impl Default for Config {
