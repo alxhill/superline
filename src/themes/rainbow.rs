@@ -6,6 +6,7 @@ use crate::modules::{
     ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
+use crate::update::UpdateScheme;
 
 #[derive(Copy, Clone)]
 pub struct RainbowTheme;
@@ -49,6 +50,16 @@ impl UnknownScheme for RainbowTheme {
 
     fn unknown_bg() -> Color {
         warning_red()
+    }
+}
+
+impl UpdateScheme for RainbowTheme {
+    fn update_fg() -> Color {
+        white()
+    }
+
+    fn update_bg() -> Color {
+        nice_purple()
     }
 }
 

@@ -8,6 +8,7 @@ use crate::modules::{
     JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
     ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
+use crate::update::UpdateScheme;
 
 mod custom;
 mod rainbow;
@@ -55,5 +56,6 @@ pub trait CompleteTheme:
     + JavaScheme
     + ErrorMessageScheme
     + UnknownScheme
+    + UpdateScheme
 {
 }

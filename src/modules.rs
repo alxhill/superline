@@ -1,5 +1,6 @@
 use crate::cache::{refresh_from_json, Source};
 use crate::powerline::Powerline;
+use crate::update::UpdateLookup;
 
 mod cmd;
 mod cwd;
@@ -56,6 +57,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         PrLookup::KIND => refresh_from_json::<PrLookup>(source),
         UsageLookup::KIND => refresh_from_json::<UsageLookup>(source),
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
+        UpdateLookup::KIND => refresh_from_json::<UpdateLookup>(source),
         _ => false,
     }
 }

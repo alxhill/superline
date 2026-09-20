@@ -81,6 +81,11 @@
     "java": {
       "bg": "white",
       "fg": 160
+    },
+    "update": {
+      "bg": "nice_purple",
+      "fg": "white",
+      "icon": "\uf0aa"
     }
   }
 }

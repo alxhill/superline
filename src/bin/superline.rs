@@ -14,7 +14,7 @@ use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadat
 use superline::debug;
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
-use superline::Powerline;
+use superline::{update, Powerline};
 
 const FISH_CONF: &str = r#"
 set -gx SUPERLINE_FISH 1
@@ -186,8 +186,8 @@ enum PowerlineArgs {
     ShowRight(ShowArgs),
     Install(InstallArgs),
     Config,
-    /// Remove all cached data (git status, PR lookups, AI usage) so the next
-    /// prompt starts from a cold cache.
+    /// Remove all cached data (git status, PR lookups, AI usage, update
+    /// checks) so the next prompt starts from a cold cache.
     ClearCaches,
     /// Internal: refresh one cached lookup (git status, PR, AI usage, ...).
     /// Spawned in the background by `superline::cache` - not intended to be
@@ -574,6 +574,19 @@ fn render_right(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
 }
 
 fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
+    if !conf.update.disable {
+        let span = debug::span("update notice");
+        let notice = match theme {
+            LoadedTheme::Rainbow => update::notice::<RainbowTheme>(),
+            LoadedTheme::Simple => update::notice::<SimpleTheme>(),
+            LoadedTheme::Custom => update::notice::<CustomTheme>(),
+        };
+        span.finish();
+        if let Some(notice) = notice {
+            println!("{notice}");
+        }
+    }
+
     let mut powerlines = conf
         .rows
         .into_iter()

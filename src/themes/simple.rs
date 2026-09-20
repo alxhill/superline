@@ -5,6 +5,7 @@ use crate::modules::{
     ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
+use crate::update::UpdateScheme;
 
 #[derive(Copy, Clone)]
 pub struct SimpleTheme;
@@ -42,6 +43,16 @@ impl UnknownScheme for SimpleTheme {
 
     fn unknown_bg() -> Color {
         Color(161)
+    }
+}
+
+impl UpdateScheme for SimpleTheme {
+    fn update_fg() -> Color {
+        Color(15)
+    }
+
+    fn update_bg() -> Color {
+        Color(31)
     }
 }
 

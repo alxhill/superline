@@ -17,6 +17,7 @@ use serde_json::{json, Value};
 use crate::cache::{Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::config::{UsageDisplay, UsageProvider};
+use crate::platform::resolve_binary;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -915,24 +916,6 @@ fn cleanup_claude_probe_sessions(probe_directory: &Path) {
 
 fn provider_is_installed(provider: UsageProvider) -> bool {
     resolve_binary(provider.as_str()).is_some()
-}
-
-fn resolve_binary(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    for directory in std::env::split_paths(&path) {
-        let candidate = directory.join(name);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-        #[cfg(windows)]
-        for extension in ["exe", "cmd", "bat"] {
-            let candidate = directory.join(format!("{name}.{extension}"));
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
 }
 
 #[derive(Debug, PartialEq)]

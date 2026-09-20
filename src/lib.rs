@@ -8,6 +8,7 @@ pub mod platform;
 pub mod powerline;
 pub mod terminal;
 pub mod themes;
+pub mod update;
 
 pub(crate) mod utils;
 

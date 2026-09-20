@@ -248,7 +248,7 @@ impl<S: Source> Cached<S> {
         }
 
         let marker = marker_path(path);
-        if !claim_refresh(&marker, S::REFRESH_INTERVAL) {
+        if !claim_slot(&marker, S::REFRESH_INTERVAL) {
             // Someone else is already refreshing this entry. They release the
             // slot only once the cache has been written, so the marker
             // vanishing is the completion signal to wait on.
@@ -354,7 +354,7 @@ impl<S: Source> Cached<S> {
         }
 
         let marker = marker_path(path);
-        if !claim_refresh(&marker, S::REFRESH_INTERVAL) {
+        if !claim_slot(&marker, S::REFRESH_INTERVAL) {
             // Someone else holds the slot, so a refresh is already on its way.
             return true;
         }
@@ -439,11 +439,13 @@ fn now_millis() -> u128 {
         .unwrap_or(0)
 }
 
-/// Atomically claims the refresh slot guarded by `marker`. The marker records
-/// when the slot was last claimed; a claim younger than `interval` is still
-/// held. Locking the marker while reading and rewriting it stops concurrent
-/// prompt processes from both winning as it expires.
-fn claim_refresh(marker: &Path, interval: Duration) -> bool {
+/// Atomically claims the slot guarded by `marker`. The marker records when the
+/// slot was last claimed; a claim younger than `interval` is still held.
+/// Locking the marker while reading and rewriting it stops concurrent prompt
+/// processes from both winning as it expires. Refreshes use it to run once per
+/// [`Source::REFRESH_INTERVAL`]; anything else that must happen at most once
+/// per interval across prompt processes can use it too.
+pub(crate) fn claim_slot(marker: &Path, interval: Duration) -> bool {
     let Ok(mut file) = OpenOptions::new()
         .read(true)
         .write(true)
@@ -766,7 +768,7 @@ mod tests {
         assert!(!cached.refresh_now());
         assert_eq!(cached.read().unwrap().value, "old");
         assert!(marker_path(cached.path().unwrap()).exists());
-        assert!(!claim_refresh(
+        assert!(!claim_slot(
             &marker_path(cached.path().unwrap()),
             Probe::REFRESH_INTERVAL
         ));
@@ -904,7 +906,7 @@ mod tests {
                 let marker = marker.clone();
                 thread::spawn(move || {
                     barrier.wait();
-                    claim_refresh(&marker, interval)
+                    claim_slot(&marker, interval)
                 })
             })
             .collect::<Vec<_>>();
@@ -915,8 +917,8 @@ mod tests {
             .count();
 
         assert_eq!(winners, 1);
-        assert!(!claim_refresh(&marker, interval));
-        assert!(claim_refresh(&marker, Duration::ZERO));
+        assert!(!claim_slot(&marker, interval));
+        assert!(claim_slot(&marker, Duration::ZERO));
         fs::remove_dir_all(dir).ok();
     }
 

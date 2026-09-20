@@ -16,6 +16,24 @@ pub trait TerminalRuntimeMetadata {
 pub struct Config {
     pub theme: String,
     pub rows: Vec<CommandLine>,
+    /// Left out of the written default config: the check is on unless a
+    /// config opts out.
+    #[serde(default, skip_serializing_if = "UpdateConfig::is_default")]
+    pub update: UpdateConfig,
+}
+
+/// The once-a-day check for a newer release, printed above the prompt.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateConfig {
+    /// Skip the check and never show the notice.
+    #[serde(default)]
+    pub disable: bool,
+}
+
+impl UpdateConfig {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 // single line of a command terminal
@@ -445,6 +463,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             theme: "rainbow".into(),
+            update: UpdateConfig::default(),
             rows: vec![
                 CommandLine {
                     left: vec![
@@ -854,6 +873,21 @@ mod tests {
                 serde_json::from_str(json).unwrap_or_else(|_| panic!("{json} should parse"));
             assert_eq!(parsed, expected, "{json}");
         }
+    }
+
+    #[test]
+    fn update_notice_is_on_unless_disabled() {
+        let config: Config = serde_json::from_str(r#"{"theme":"rainbow","rows":[]}"#)
+            .expect("config without an update block should parse");
+        assert!(!config.update.disable);
+
+        let config: Config =
+            serde_json::from_str(r#"{"theme":"rainbow","rows":[],"update":{"disable":true}}"#)
+                .expect("config with the update block should parse");
+        assert!(config.update.disable);
+
+        let json = serde_json::to_string(&Config::default()).expect("default config serializes");
+        assert!(!json.contains("update"), "{json}");
     }
 
     #[test]
