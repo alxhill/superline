@@ -118,6 +118,7 @@ pub enum LineSegment {
         #[serde(default = "default_true")]
         version: bool,
     },
+    Kubernetes,
     Host,
     Hostname,
     Jobs,
@@ -248,6 +249,7 @@ enum KnownLineSegment {
         #[serde(default = "default_true")]
         version: bool,
     },
+    Kubernetes,
     Host,
     Hostname,
     Jobs,
@@ -333,6 +335,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Node { version } => LineSegment::Node { version },
             KnownLineSegment::Java { version, jdk } => LineSegment::Java { version, jdk },
             KnownLineSegment::Cargo { version } => LineSegment::Cargo { version },
+            KnownLineSegment::Kubernetes => LineSegment::Kubernetes,
             KnownLineSegment::Host => LineSegment::Host,
             KnownLineSegment::Hostname => LineSegment::Hostname,
             KnownLineSegment::Jobs => LineSegment::Jobs,
@@ -447,6 +450,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "java"
             | "sdkman"
             | "cargo"
+            | "kubernetes"
             | "host"
             | "hostname"
             | "jobs"
@@ -543,6 +547,7 @@ impl Default for Config {
                             wanted_seg_num: 5,
                             resolve_symlinks: false,
                         },
+                        LineSegment::Kubernetes,
                         LineSegment::Padding(2),
                         LineSegment::Git {
                             status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,

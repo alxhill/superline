@@ -10,7 +10,8 @@ use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::debug;
 use crate::modules::{
     Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, LocalIp,
-    MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time,
+    Kubernetes, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text,
+    Time,
     Unknown, Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
@@ -378,6 +379,7 @@ impl Powerline {
                     self.add_module(MemoryUsage::<T>::new(*threshold))
                 }
                 LineSegment::Sudo => self.add_module(Sudo::<T>::new()),
+                LineSegment::Kubernetes => self.add_module(Kubernetes::<T>::new()),
                 LineSegment::Shell => {
                     self.add_module(ShellName::<T>::new(runtime_data.shell_name()))
                 }

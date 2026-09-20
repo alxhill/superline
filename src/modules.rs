@@ -19,6 +19,7 @@ mod user;
 mod cargo;
 mod cmd_duration;
 mod java;
+mod kubernetes;
 mod memory_usage;
 mod node;
 mod os;
@@ -42,6 +43,7 @@ pub use git::{preresolve_system_gitconfig, Git, GitScheme, GitStatus};
 pub use host::{Host, HostScheme, Hostname};
 pub use java::{Java, JavaScheme};
 pub use jobs::{Jobs, JobsScheme};
+pub use kubernetes::{Kubernetes, KubernetesContext, KubernetesLookup, KubernetesScheme};
 pub use local_ip::{LocalIp, LocalIpScheme};
 pub use memory_usage::{MemoryUsage, MemoryUsageScheme};
 pub use node::{Node, NodeScheme};
@@ -73,6 +75,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         UsageLookup::KIND => refresh_from_json::<UsageLookup>(source),
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
         SudoLookup::KIND => refresh_from_json::<SudoLookup>(source),
+        KubernetesLookup::KIND => refresh_from_json::<KubernetesLookup>(source),
         UpdateLookup::KIND => refresh_from_json::<UpdateLookup>(source),
         AutoUpgrade::KIND => refresh_from_json::<AutoUpgrade>(source),
         _ => false,
