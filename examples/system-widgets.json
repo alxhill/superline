@@ -10,8 +10,6 @@
         "username",
         "hostname",
         "local_ip",
-        "kubernetes",
-        "nats",
         { "text": "all widgets" }
       ],
       "right": [

@@ -18,8 +18,8 @@ use super::Module;
 const MEMORY_ICON: &str = "\u{f035b}";
 
 /// Show the widget only when memory pressure is high enough to be useful in a
-/// prompt. This mirrors Starship's default threshold without adding another
-/// option to superline's intentionally small configuration surface.
+/// prompt. This provides a useful default without adding another option to
+/// superline's intentionally small configuration surface.
 const RAM_DISPLAY_THRESHOLD_PERCENT: u8 = 75;
 
 /// A fraction of a percent is too noisy to call out in a prompt. Round-down

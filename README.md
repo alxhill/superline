@@ -230,7 +230,7 @@ interfaces directly, so rendering this segment does not open a socket or make
 a network request. If no usable address is available, the segment is hidden.
 Private and public unicast addresses are both eligible; only non-host address
 categories such as loopback, multicast, and broadcast are filtered out.
-`"localip"` is accepted as a Starship-compatible spelling.
+`"localip"` is accepted as a legacy spelling.
 
 ```json
 "local_ip"

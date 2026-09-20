@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
-use starship_battery::units::{energy::watt_hour, ratio::percent};
-use starship_battery::{self as battery, State};
+use battery::units::{energy::watt_hour, ratio::percent};
+use battery::{Manager, State};
 
 use crate::colors::Color;
 use crate::themes::DefaultColors;
@@ -104,7 +104,7 @@ fn should_display(status: &BatteryStatus) -> bool {
 /// used as the weight so a small accessory battery cannot skew a laptop's
 /// aggregate percentage. A malformed or zero-capacity battery is ignored.
 fn battery_status() -> Option<BatteryStatus> {
-    let manager = battery::Manager::new().ok()?;
+    let manager = Manager::new().ok()?;
     let batteries = manager.batteries().ok()?;
 
     let readings = batteries.filter_map(|entry| {

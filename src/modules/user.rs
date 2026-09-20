@@ -10,7 +10,7 @@ use super::Module;
 ///
 /// `User` remains as a type alias for source compatibility with the original
 /// superline API. New code should use `Username`, which matches the name used
-/// by Starship and in the configuration format.
+/// by the configuration format.
 pub struct Username<S: UserScheme> {
     show_on_local: bool,
     scheme: PhantomData<S>,

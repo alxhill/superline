@@ -73,9 +73,9 @@ impl OsKind {
     /// family-level defaults rather than a distro database: the widget stays
     /// instant and predictable on Linux distributions and BSD variants alike.
     ///
-    /// The BSD and Illumos values follow Starship's Nerd Font preset. Solaris
-    /// and Haiku do not have a built-in Starship symbol, so they use the
-    /// neutral platform marker instead of borrowing the Linux logo.
+    /// The BSD and Illumos values use their dedicated Nerd Font glyphs.
+    /// Solaris and Haiku use the neutral platform marker instead of borrowing
+    /// the Linux logo.
     pub fn default_symbol(self) -> &'static str {
         match self {
             Self::Android => "\u{f17b}",
@@ -93,7 +93,7 @@ impl OsKind {
 }
 
 /// A neutral, widely supported Nerd Font marker for OS families without a
-/// dedicated Starship symbol.
+/// dedicated symbol.
 const GENERIC_UNIX_SYMBOL: &str = "\u{f0ac}";
 
 /// Shows a compact icon for the current operating system.
@@ -204,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn targets_without_a_starship_symbol_use_the_neutral_marker() {
+    fn targets_without_a_dedicated_symbol_use_the_neutral_marker() {
         for kind in [OsKind::Solaris, OsKind::Haiku, OsKind::Unknown] {
             assert_eq!(kind.default_symbol(), GENERIC_UNIX_SYMBOL);
             assert_ne!(kind.default_symbol(), "?");

@@ -979,7 +979,7 @@ mod tests {
     }
 
     #[test]
-    fn hostname_segment_uses_the_starship_aligned_name() {
+    fn hostname_segment_uses_the_canonical_name() {
         let parsed: LineSegment =
             serde_json::from_str(r#""hostname""#).expect("hostname segment should parse");
 
