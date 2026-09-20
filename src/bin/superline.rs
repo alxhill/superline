@@ -127,7 +127,9 @@ function global:prompt {
     if (-not $__pl_cols -or $__pl_cols -le 0) { $__pl_cols = 80 }
 
     $__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')
-    $__pl_jobs = @(Get-Job | Where-Object { $_.State -eq 'Running' }).Count
+    # Count every job in PowerShell's job table, including stopped jobs, just
+    # like the Unix shell initializers count every shell job.
+    $__pl_jobs = @(Get-Job).Count
     $__pl_args += "--jobs=$__pl_jobs"
 
     # Duration of the last command, in milliseconds, from session history.
@@ -164,15 +166,16 @@ $env.PROMPT_INDICATOR = ""
 $env.config.render_right_prompt_on_last_line = true
 
 def __pl_prompt [subcommand: string]: nothing -> string {
+    let __pl_status = ($env.LAST_EXIT_CODE? | default 0)
     let columns = (term size).columns
     let jobs = (try { job list | length } catch { 0 })
     # nushell seeds CMD_DURATION_MS with the placeholder "0823" before the first
     # command runs; real durations never carry a leading zero.
     let duration = ($env.CMD_DURATION_MS? | default "0823")
     if $duration == "0823" {
-        ^superline $subcommand -s $env.LAST_EXIT_CODE -c $columns nu --jobs $jobs
+        ^superline $subcommand -s $__pl_status -c $columns nu --jobs $jobs
     } else {
-        ^superline $subcommand -s $env.LAST_EXIT_CODE -c $columns nu $duration --jobs $jobs
+        ^superline $subcommand -s $__pl_status -c $columns nu $duration --jobs $jobs
     }
 }
 

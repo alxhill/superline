@@ -6,7 +6,8 @@ use crate::{Powerline, Style};
 
 use super::Module;
 
-/// Shows the number of background jobs owned by the current shell.
+/// Shows the number of background jobs owned by the current shell, including
+/// stopped jobs.
 ///
 /// The shell supplies the count when it invokes superline. Keeping the lookup
 /// in the shell is important: a child process cannot see the parent's job

@@ -211,8 +211,8 @@ The hostname and the current username.
 
 #### jobs
 
-Shows background jobs owned by the current shell. It is hidden with no jobs,
-shows `✦` for one job, and shows `✦N` for two or more jobs.
+Shows background jobs owned by the current shell, including stopped jobs. It is
+hidden with no jobs, shows `✦` for one job, and shows `✦N` for two or more jobs.
 
 ```json
 "jobs"

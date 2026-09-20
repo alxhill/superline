@@ -89,3 +89,49 @@ fn every_supported_shell_passes_a_job_count() {
         );
     }
 }
+
+#[test]
+fn every_shell_captures_status_before_counting_jobs() {
+    let cases = [
+        ("bash", "local __pl_status=$?", "local __pl_jobs="),
+        ("zsh", "__pl_status=$?", "__pl_jobs=${#jobstates[*]}"),
+        ("fish", "set -l __pl_status $status", "set -l __pl_jobs"),
+        ("pwsh", "$__pl_ok = $?", "$__pl_jobs = @(Get-Job).Count"),
+        (
+            "nu",
+            "let __pl_status = ($env.LAST_EXIT_CODE? | default 0)",
+            "job list | length",
+        ),
+    ];
+
+    for (shell, status_marker, jobs_marker) in cases {
+        let output = Command::new(BIN)
+            .args(["init", shell])
+            .output()
+            .unwrap_or_else(|_| panic!("run init {shell}"));
+        assert!(output.status.success(), "init {shell} failed");
+        let init = String::from_utf8_lossy(&output.stdout);
+        let status_offset = init
+            .find(status_marker)
+            .unwrap_or_else(|| panic!("init {shell} has no status capture:\n{init}"));
+        let jobs_offset = init
+            .find(jobs_marker)
+            .unwrap_or_else(|| panic!("init {shell} has no jobs lookup:\n{init}"));
+        assert!(
+            status_offset < jobs_offset,
+            "init {shell} looks up jobs before preserving status:\n{init}"
+        );
+    }
+}
+
+#[test]
+fn powershell_counts_stopped_jobs_too() {
+    let output = Command::new(BIN)
+        .args(["init", "pwsh"])
+        .output()
+        .expect("run init pwsh");
+    let init = String::from_utf8_lossy(&output.stdout);
+
+    assert!(init.contains("$__pl_jobs = @(Get-Job).Count"));
+    assert!(!init.contains("Where-Object { $_.State -eq 'Running' }"));
+}
