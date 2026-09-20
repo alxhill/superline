@@ -12,8 +12,9 @@ use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
-    LocalIpScheme, NatsScheme, NodeScheme, OsKind, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    LocalIpScheme, MemoryUsageScheme, NatsScheme, NodeScheme, OsKind, OsScheme, PrScheme,
+    PythonScheme, ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme,
+    UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 use crate::update::UpdateScheme;
@@ -437,6 +438,11 @@ impl OsScheme for CustomTheme {
             .map(|symbol| symbol.leak() as &'static str)
             .unwrap_or_else(|| kind.default_symbol())
     }
+}
+
+impl MemoryUsageScheme for CustomTheme {
+    color_from_json!(memory_usage_fg, memory_usage, fg, default_fg);
+    color_from_json!(memory_usage_bg, memory_usage, bg, default_bg);
 }
 
 impl ShellScheme for CustomTheme {

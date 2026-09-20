@@ -6,7 +6,7 @@ use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
-    LocalIpScheme, NatsScheme, NodeScheme, OsScheme, PrScheme, PythonScheme,
+    LocalIpScheme, MemoryUsageScheme, NatsScheme, NodeScheme, OsScheme, PrScheme, PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::update::UpdateScheme;
@@ -52,6 +52,7 @@ pub trait CompleteTheme:
     + JobsScheme
     + KubernetesScheme
     + LocalIpScheme
+    + MemoryUsageScheme
     + NatsScheme
     + OsScheme
     + ShellScheme

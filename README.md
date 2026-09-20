@@ -285,6 +285,19 @@ themes may override the colours and symbol in their os module.
 "os"
 ```
 
+#### memory_usage
+
+Shows used and total physical memory with binary units. If the system reports
+swap, its used and total size is shown after the RAM value. The lookup is a
+small local read, so it does not use the background cache.
+
+```json
+"memory_usage"
+```
+
+The segment is available on Linux, macOS and Windows; it is omitted when the
+operating system cannot provide a memory reading.
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)

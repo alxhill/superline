@@ -113,6 +113,8 @@ pub enum LineSegment {
     LocalIp,
     Nats,
     Os,
+    /// Show used and total system memory, plus swap when it is available.
+    MemoryUsage,
     Shell,
     Time {
         format: Option<String>,
@@ -234,6 +236,7 @@ enum KnownLineSegment {
     LocalIp,
     Nats,
     Os,
+    MemoryUsage,
     Shell,
     Time {
         format: Option<String>,
@@ -314,6 +317,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::LocalIp => LineSegment::LocalIp,
             KnownLineSegment::Nats => LineSegment::Nats,
             KnownLineSegment::Os => LineSegment::Os,
+            KnownLineSegment::MemoryUsage => LineSegment::MemoryUsage,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -428,6 +432,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "localip"
             | "nats"
             | "os"
+            | "memory_usage"
             | "shell"
             | "time"
             | "ai_usage"
@@ -515,6 +520,7 @@ impl Default for Config {
                         LineSegment::LocalIp,
                         LineSegment::Nats,
                         LineSegment::Os,
+                        LineSegment::MemoryUsage,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,
@@ -1011,6 +1017,20 @@ mod tests {
             serde_json::from_str(r#""user""#).expect("user segment should parse");
 
         assert_eq!(parsed, LineSegment::User);
+    }
+
+    #[test]
+    fn memory_usage_segment_parses_and_is_enabled_by_default() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""memory_usage""#).expect("memory_usage segment should parse");
+
+        assert_eq!(parsed, LineSegment::MemoryUsage);
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::MemoryUsage))
+        }));
     }
 
     #[test]
