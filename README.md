@@ -261,9 +261,10 @@ themes may override the colours and symbol in their os module.
 
 #### jobs
 
-Shows background jobs owned by the current shell, including stopped jobs. It is
-hidden with no jobs, shows a gears icon for one job, and adds the count for two
-or more jobs.
+Shows a gears icon and the number of running background jobs owned by the
+current shell. It is hidden when nothing is running. Stopped jobs are not
+counted: several shells keep them in the job table indefinitely, which would
+leave the icon on the prompt for good.
 
 ```json
 "jobs"

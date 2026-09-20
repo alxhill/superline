@@ -63,10 +63,9 @@ fn jobs_are_hidden_when_the_shell_reports_none() {
 }
 
 #[test]
-fn one_job_shows_only_the_symbol() {
+fn one_job_shows_the_symbol_and_count() {
     let prompt = render(1);
-    assert!(prompt.contains(JOBS_SYMBOL), "prompt was: {prompt}");
-    assert!(!prompt.contains("\u{f085}1"), "prompt was: {prompt}");
+    assert!(prompt.contains("\u{f085} 1"), "prompt was: {prompt}");
 }
 
 #[test]
@@ -94,13 +93,13 @@ fn every_supported_shell_passes_a_job_count() {
 fn every_shell_captures_status_before_counting_jobs() {
     let cases = [
         ("bash", "local __pl_status=$?", "local __pl_jobs="),
-        ("zsh", "__pl_status=$?", "__pl_jobs=${#jobstates[*]}"),
+        ("zsh", "__pl_status=$?", "__pl_running=("),
         ("fish", "set -l __pl_status $status", "set -l __pl_jobs"),
-        ("pwsh", "$__pl_ok = $?", "$__pl_jobs = @(Get-Job).Count"),
+        ("pwsh", "$__pl_ok = $?", "$__pl_jobs = @(Get-Job"),
         (
             "nu",
             "let __pl_status = ($env.LAST_EXIT_CODE? | default 0)",
-            "job list | length",
+            "job list | where",
         ),
     ];
 
@@ -124,14 +123,53 @@ fn every_shell_captures_status_before_counting_jobs() {
     }
 }
 
+/// Stopped jobs linger in the job table long after the user has forgotten
+/// them - fish and PowerShell keep them indefinitely - so every initializer
+/// has to count running jobs only, or the widget never leaves the prompt.
 #[test]
-fn powershell_counts_stopped_jobs_too() {
-    let output = Command::new(BIN)
-        .args(["init", "pwsh"])
-        .output()
-        .expect("run init pwsh");
-    let init = String::from_utf8_lossy(&output.stdout);
+fn every_shell_counts_running_jobs_only() {
+    let cases = [
+        (
+            "bash",
+            "$(jobs -pr 2>/dev/null | wc -l)",
+            "$(jobs -p 2>/dev/null | wc -l)",
+        ),
+        (
+            "zsh",
+            "${(M)${(@v)jobstates}:#running*}",
+            "${#jobstates[*]}",
+        ),
+        (
+            "fish",
+            r"string match -r --entire '\trunning\t'",
+            "jobs -g 2>/dev/null | count",
+        ),
+        (
+            "pwsh",
+            "@(Get-Job | Where-Object { $_.State -eq 'Running' }).Count",
+            "@(Get-Job).Count",
+        ),
+        (
+            "nu",
+            r#"where {|j| $j.type? != "frozen" }"#,
+            "job list | length",
+        ),
+    ];
 
-    assert!(init.contains("$__pl_jobs = @(Get-Job).Count"));
-    assert!(!init.contains("Where-Object { $_.State -eq 'Running' }"));
+    for (shell, running_only, counts_everything) in cases {
+        let output = Command::new(BIN)
+            .args(["init", shell])
+            .output()
+            .unwrap_or_else(|_| panic!("run init {shell}"));
+        assert!(output.status.success(), "init {shell} failed");
+        let init = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            init.contains(running_only),
+            "init {shell} does not filter out stopped jobs:\n{init}"
+        );
+        assert!(
+            !init.contains(counts_everything),
+            "init {shell} still counts every job:\n{init}"
+        );
+    }
 }
