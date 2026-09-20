@@ -11,6 +11,7 @@ mod git;
 mod host;
 mod jobs;
 mod local_ip;
+mod nats;
 mod pr;
 mod readonly;
 mod user;
@@ -40,6 +41,7 @@ pub use java::{Java, JavaScheme};
 pub use jobs::{Jobs, JobsScheme};
 pub use kubernetes::{Kubernetes, KubernetesContext, KubernetesLookup, KubernetesScheme};
 pub use local_ip::{LocalIp, LocalIpScheme};
+pub use nats::{Nats, NatsLookup, NatsScheme};
 pub use node::{Node, NodeScheme};
 pub use pr::{Pr, PrLookup, PrScheme};
 pub use python::{Python, PythonScheme, PythonVersion};
@@ -66,6 +68,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         UsageLookup::KIND => refresh_from_json::<UsageLookup>(source),
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
         KubernetesLookup::KIND => refresh_from_json::<KubernetesLookup>(source),
+        NatsLookup::KIND => refresh_from_json::<NatsLookup>(source),
         UpdateLookup::KIND => refresh_from_json::<UpdateLookup>(source),
         _ => false,
     }

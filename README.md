@@ -22,7 +22,7 @@ configurable modules and themes.
 - **Fast**: a few tens of milliseconds per prompt, git status included.
 - **Lazy**: backends only run when needed, so there is no git cost outside a git repo and no Python cost outside a
   project.
-- **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
+- **Never blocks**: slow lookups (git status on big repos, PR status, AI usage, NATS context) are refreshed in the background and
   served from a cache.
 - **Flexible layout**: multiple rows, each with an optional right-aligned side.
 - **Themeable**: two built-in themes, or point at your own theme JSON file.
@@ -262,6 +262,16 @@ categories such as loopback, multicast, and broadcast are filtered out.
 "local_ip"
 ```
 
+#### nats
+
+Shows the selected NATS context from the `nats` CLI. The context lookup is
+cached and refreshed in the background, so the prompt stays responsive; the
+module stays hidden when the CLI is not installed or has no selected context.
+
+```json
+"nats"
+```
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)
@@ -478,7 +488,7 @@ module name and property.
 | `superline install <shell>` | Append the prompt loader to the shell's config file. |
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
 | `superline config` | Open the config file in `$EDITOR`. |
-| `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
+| `superline clear-caches` | Wipe cached git status, PR lookups, AI usage and NATS context so the next prompt starts cold. |
 
 ## Debugging a slow prompt
 

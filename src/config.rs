@@ -111,6 +111,7 @@ pub enum LineSegment {
     Jobs,
     /// Show the primary non-loopback IPv4 address.
     LocalIp,
+    Nats,
     Shell,
     Time {
         format: Option<String>,
@@ -230,6 +231,7 @@ enum KnownLineSegment {
     Jobs,
     #[serde(alias = "localip")]
     LocalIp,
+    Nats,
     Shell,
     Time {
         format: Option<String>,
@@ -308,6 +310,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Hostname => LineSegment::Hostname,
             KnownLineSegment::Jobs => LineSegment::Jobs,
             KnownLineSegment::LocalIp => LineSegment::LocalIp,
+            KnownLineSegment::Nats => LineSegment::Nats,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -420,6 +423,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "jobs"
             | "local_ip"
             | "localip"
+            | "nats"
             | "shell"
             | "time"
             | "ai_usage"
@@ -505,6 +509,7 @@ impl Default for Config {
                         LineSegment::Username,
                         LineSegment::Hostname,
                         LineSegment::LocalIp,
+                        LineSegment::Nats,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,
@@ -637,6 +642,15 @@ mod tests {
             serde_json::from_str(r#""jobs""#).expect("jobs shorthand should parse");
 
         assert_eq!(parsed, LineSegment::Jobs);
+    }
+
+    #[test]
+    fn nats_string_shorthand_parses() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""nats""#).expect("nats shorthand should parse");
+
+        assert_eq!(parsed, LineSegment::Nats);
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), r#""nats""#);
     }
 
     #[test]
@@ -1004,6 +1018,16 @@ mod tests {
                 .iter()
                 .chain(row.right.iter().flatten())
                 .any(|segment| matches!(segment, LineSegment::Username))
+        }));
+    }
+
+    #[test]
+    fn default_config_includes_nats() {
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::Nats))
         }));
     }
 
