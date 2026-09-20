@@ -229,6 +229,18 @@ categories such as loopback, multicast, and broadcast are filtered out.
 "local_ip"
 ```
 
+#### os
+
+Shows a compact Nerd Font icon for the current operating-system family. It
+recognises Linux, macOS, Windows, Android and the common BSD/Unix targets
+without reading distro files or spawning a command, so it adds no prompt
+latency. The built-in themes use the Linux, Apple and Windows icons; custom
+themes may override the colours and symbol in their os module.
+
+```json
+"os"
+```
+
 #### jobs
 
 Shows background jobs owned by the current shell, including stopped jobs. It is

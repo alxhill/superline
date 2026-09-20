@@ -110,6 +110,7 @@ pub enum LineSegment {
     Jobs,
     /// Show the primary non-loopback IPv4 address.
     LocalIp,
+    Os,
     Shell,
     Time {
         format: Option<String>,
@@ -227,6 +228,7 @@ enum KnownLineSegment {
     Jobs,
     #[serde(alias = "localip")]
     LocalIp,
+    Os,
     Shell,
     Time {
         format: Option<String>,
@@ -303,6 +305,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Hostname => LineSegment::Hostname,
             KnownLineSegment::Jobs => LineSegment::Jobs,
             KnownLineSegment::LocalIp => LineSegment::LocalIp,
+            KnownLineSegment::Os => LineSegment::Os,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -413,6 +416,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "jobs"
             | "local_ip"
             | "localip"
+            | "os"
             | "shell"
             | "time"
             | "ai_usage"
@@ -497,6 +501,7 @@ impl Default for Config {
                         LineSegment::Username,
                         LineSegment::Hostname,
                         LineSegment::LocalIp,
+                        LineSegment::Os,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,
@@ -995,6 +1000,24 @@ mod tests {
                 .iter()
                 .chain(row.right.iter().flatten())
                 .any(|segment| matches!(segment, LineSegment::LocalIp))
+        }));
+    }
+
+    #[test]
+    fn os_string_shorthand_parses() {
+        let parsed: LineSegment = serde_json::from_str(r#""os""#)
+            .expect("os module should parse");
+
+        assert_eq!(parsed, LineSegment::Os);
+    }
+
+    #[test]
+    fn default_config_includes_os() {
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::Os))
         }));
     }
 

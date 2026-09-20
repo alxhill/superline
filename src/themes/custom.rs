@@ -12,7 +12,7 @@ use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
-    NodeScheme, PrScheme,
+    NodeScheme, OsKind, OsScheme, PrScheme,
     PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
@@ -404,6 +404,18 @@ impl JobsScheme for CustomTheme {
 impl LocalIpScheme for CustomTheme {
     color_from_json!(local_ip_bg, local_ip, bg, default_bg);
     color_from_json!(local_ip_fg, local_ip, fg, default_fg);
+}
+
+impl OsScheme for CustomTheme {
+    color_from_json!(os_bg, os, bg, default_bg);
+    color_from_json!(os_fg, os, fg, default_fg);
+
+    fn os_symbol(kind: OsKind) -> &'static str {
+        CustomTheme::get_str("os", kind.theme_key())
+            .or_else(|| CustomTheme::get_str("os", "symbol"))
+            .map(|symbol| symbol.leak() as &'static str)
+            .unwrap_or_else(|| kind.default_symbol())
+    }
 }
 
 impl ShellScheme for CustomTheme {
