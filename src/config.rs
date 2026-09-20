@@ -113,6 +113,7 @@ pub enum LineSegment {
     /// Show used and total system memory, plus swap when it is available.
     MemoryUsage,
     Os,
+    Sudo,
     Shell,
     Time {
         format: Option<String>,
@@ -232,6 +233,7 @@ enum KnownLineSegment {
     LocalIp,
     MemoryUsage,
     Os,
+    Sudo,
     Shell,
     Time {
         format: Option<String>,
@@ -310,6 +312,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::LocalIp => LineSegment::LocalIp,
             KnownLineSegment::MemoryUsage => LineSegment::MemoryUsage,
             KnownLineSegment::Os => LineSegment::Os,
+            KnownLineSegment::Sudo => LineSegment::Sudo,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -422,6 +425,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "localip"
             | "memory_usage"
             | "os"
+            | "sudo"
             | "shell"
             | "time"
             | "ai_usage"
@@ -508,6 +512,7 @@ impl Default for Config {
                         LineSegment::LocalIp,
                         LineSegment::MemoryUsage,
                         LineSegment::Os,
+                        LineSegment::Sudo,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,
@@ -564,6 +569,7 @@ impl Default for Config {
                         LineSegment::Shell,
                         LineSegment::LastCmdDuration { min_run_time: 50 },
                         LineSegment::Jobs,
+                        LineSegment::Sudo,
                         LineSegment::Cmd,
                         LineSegment::Padding(1),
                     ],
@@ -639,6 +645,14 @@ mod tests {
             serde_json::from_str(r#""jobs""#).expect("jobs shorthand should parse");
 
         assert_eq!(parsed, LineSegment::Jobs);
+    }
+
+    #[test]
+    fn sudo_string_shorthand_parses() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""sudo""#).expect("sudo shorthand should parse");
+
+        assert_eq!(parsed, LineSegment::Sudo);
     }
 
     #[test]

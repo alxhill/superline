@@ -274,6 +274,21 @@ when no battery is available or the charge is above that threshold.
 "battery"
 ```
 
+#### sudo
+
+Shows `⚿` when the current user's sudo credentials are already cached. The
+check is non-interactive (`sudo -Nnv`) and runs through superline's background
+cache, so it never asks for a password, runs a privileged command, or blocks
+prompt rendering. `-N` is important: it prevents the prompt from extending the
+sudo timestamp on every refresh. Systems or sudo policies without `-N` support
+leave the widget hidden rather than falling back to a timestamp-extending
+probe. It is also hidden when sudo is unavailable or credentials are not
+cached.
+
+```json
+"sudo"
+```
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)

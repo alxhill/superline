@@ -7,7 +7,7 @@ use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
     MemoryUsageScheme, NodeScheme, OsScheme, PrScheme,
-    PythonScheme,
+    PythonScheme, SudoScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::update::UpdateScheme;
@@ -54,6 +54,7 @@ pub trait CompleteTheme:
     + LocalIpScheme
     + OsScheme
     + MemoryUsageScheme
+    + SudoScheme
     + ShellScheme
     + UserScheme
     + CargoScheme
