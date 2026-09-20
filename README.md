@@ -218,6 +218,16 @@ hidden with no jobs, shows `✦` for one job, and shows `✦N` for two or more j
 "jobs"
 ```
 
+#### battery
+
+Shows a low-battery warning with the current charge percentage and charging
+state. It appears when the aggregate charge is 10% or lower and stays hidden
+when no battery is available or the charge is above that threshold.
+
+```json
+"battery"
+```
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)

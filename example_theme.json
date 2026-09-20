@@ -4,6 +4,10 @@
     "bg": "black"
   },
   "modules": {
+    "battery": {
+      "fg": "white",
+      "bg": "warning_red"
+    },
     "cargo": {
       "fg": "black",
       "bg": "burnt_orange"

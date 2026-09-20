@@ -51,6 +51,7 @@ pub struct CommandLine {
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum LineSegment {
+    Battery,
     SmallSpacer,
     LargeSpacer,
     Separator(SeparatorStyle),
@@ -171,6 +172,7 @@ where
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum KnownLineSegment {
+    Battery,
     SmallSpacer,
     LargeSpacer,
     Separator(SeparatorStyle),
@@ -267,6 +269,7 @@ enum KnownLineSegment {
 impl From<KnownLineSegment> for LineSegment {
     fn from(segment: KnownLineSegment) -> Self {
         match segment {
+            KnownLineSegment::Battery => LineSegment::Battery,
             KnownLineSegment::SmallSpacer => LineSegment::SmallSpacer,
             KnownLineSegment::LargeSpacer => LineSegment::LargeSpacer,
             KnownLineSegment::Separator(style) => LineSegment::Separator(style),
@@ -385,7 +388,8 @@ fn segment_name(value: &Value) -> Option<String> {
 fn is_known_segment_name(name: &str) -> bool {
     matches!(
         name,
-        "small_spacer"
+        "battery"
+            | "small_spacer"
             | "large_spacer"
             | "separator"
             | "cwd"
@@ -496,6 +500,7 @@ impl Default for Config {
                         },
                         LineSegment::Pr { status: true },
                         LineSegment::Padding(2),
+                        LineSegment::Battery,
                         LineSegment::AiUsage {
                             provider: UsageProvider::Claude,
                             session: true,
@@ -584,6 +589,14 @@ mod tests {
         let reserialized = serde_json::to_string_pretty(&parsed)
             .expect("reparsed config should serialize to JSON");
         assert_eq!(json, reserialized);
+    }
+
+    #[test]
+    fn battery_is_a_bare_segment() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""battery""#).expect("battery module should parse");
+
+        assert_eq!(parsed, LineSegment::Battery);
     }
 
     #[test]

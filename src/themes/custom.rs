@@ -10,8 +10,9 @@ use thiserror::Error;
 
 use crate::colors::Color;
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, JobsScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme,
+    BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, NodeScheme, PrScheme,
+    PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -183,6 +184,11 @@ macro_rules! color_from_json {
                 .unwrap_or_else(Self::$default)
         }
     };
+}
+
+impl BatteryScheme for CustomTheme {
+    color_from_json!(battery_fg, battery, fg, alert_fg);
+    color_from_json!(battery_bg, battery, bg, alert_bg);
 }
 
 impl JavaScheme for CustomTheme {

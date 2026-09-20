@@ -7,7 +7,8 @@ use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::debug;
 use crate::modules::{
-    Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, Module, Node, Pr,
+    Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, Module, Node,
+    Pr,
     Python, ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
 };
 use crate::terminal::*;
@@ -341,6 +342,7 @@ impl Powerline {
     ) {
         for module in modules {
             match module {
+                LineSegment::Battery => self.add_module(Battery::<T>::new()),
                 LineSegment::SmallSpacer => self.add_module(Spacer::<T>::small()),
                 LineSegment::LargeSpacer => self.add_module(Spacer::<T>::large()),
                 LineSegment::Python { version, venv } => {
