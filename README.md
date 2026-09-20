@@ -265,7 +265,8 @@ categories such as loopback, multicast, and broadcast are filtered out.
 #### nats
 
 Shows the selected NATS context from the `nats` CLI. The context lookup is
-cached and refreshed in the background, so the prompt stays responsive; the
+cached for roughly one second and refreshed in the background, so the prompt
+stays responsive while a recent `nats context select` appears promptly; the
 module stays hidden when the CLI is not installed or has no selected context.
 
 ```json
