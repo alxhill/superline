@@ -3,9 +3,8 @@ use crate::colors::*;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
-    MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, SudoScheme,
-    PythonScheme,
-    ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme,
+    SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 use crate::update::UpdateScheme;

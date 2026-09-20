@@ -146,6 +146,7 @@ pub enum LineSegment {
         session_time_remaining_only_at_limit: f64,
     },
     User,
+    Username,
     Cmd,
     LastCmdDuration {
         min_run_time: u64, // milliseconds
@@ -268,6 +269,7 @@ enum KnownLineSegment {
         session_time_remaining_only_at_limit: f64,
     },
     User,
+    Username,
     Cmd,
     LastCmdDuration {
         min_run_time: u64,
@@ -354,6 +356,7 @@ impl From<KnownLineSegment> for LineSegment {
                 session_time_remaining_only_at_limit,
             },
             KnownLineSegment::User => LineSegment::User,
+            KnownLineSegment::Username => LineSegment::Username,
             KnownLineSegment::Cmd => LineSegment::Cmd,
             KnownLineSegment::LastCmdDuration { min_run_time } => {
                 LineSegment::LastCmdDuration { min_run_time }
@@ -436,6 +439,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "text"
             | "ai_usage"
             | "user"
+            | "username"
             | "cmd"
             | "last_cmd_duration"
             | "padding"
@@ -1058,8 +1062,7 @@ mod tests {
 
     #[test]
     fn os_string_shorthand_parses() {
-        let parsed: LineSegment = serde_json::from_str(r#""os""#)
-            .expect("os module should parse");
+        let parsed: LineSegment = serde_json::from_str(r#""os""#).expect("os module should parse");
 
         assert_eq!(parsed, LineSegment::Os);
     }

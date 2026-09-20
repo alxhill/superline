@@ -12,8 +12,8 @@ use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
-    MemoryUsageScheme, NodeScheme, OsKind, OsScheme, PrScheme, PythonScheme, SudoScheme,
-    ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    MemoryUsageScheme, NodeScheme, OsKind, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme,
+    ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 use crate::update::UpdateScheme;
