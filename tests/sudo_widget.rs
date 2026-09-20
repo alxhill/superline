@@ -48,6 +48,7 @@ fn render(cached: bool) -> String {
         .env("HOME", &home)
         .env("USERPROFILE", &home)
         .env("XDG_CACHE_HOME", &cache)
+        .env("LOCALAPPDATA", &cache)
         .output()
         .expect("run superline");
     assert!(
