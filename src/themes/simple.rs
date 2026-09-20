@@ -2,7 +2,7 @@ use crate::colors::{black, dark_grey, grey, light_grey, Color};
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
-    NodeScheme, PrScheme, PythonScheme,
+    LocalIpScheme, NodeScheme, PrScheme, PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -137,6 +137,15 @@ impl HostScheme for SimpleTheme {
 
 impl JobsScheme for SimpleTheme {}
 impl KubernetesScheme for SimpleTheme {}
+impl LocalIpScheme for SimpleTheme {
+    fn local_ip_fg() -> Color {
+        Color(250)
+    }
+
+    fn local_ip_bg() -> Color {
+        Color(238)
+    }
+}
 
 impl ReadOnlyScheme for SimpleTheme {
     fn readonly_fg() -> Color {

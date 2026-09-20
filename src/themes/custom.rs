@@ -12,7 +12,7 @@ use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
-    NodeScheme, PrScheme, PythonScheme,
+    LocalIpScheme, NodeScheme, PrScheme, PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -409,6 +409,11 @@ impl KubernetesScheme for CustomTheme {
             .map(|str| str.leak() as &'static str)
             .unwrap_or("\u{2638}")
     }
+}
+
+impl LocalIpScheme for CustomTheme {
+    color_from_json!(local_ip_bg, local_ip, bg, default_bg);
+    color_from_json!(local_ip_fg, local_ip, fg, default_fg);
 }
 
 impl ShellScheme for CustomTheme {

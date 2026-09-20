@@ -242,6 +242,17 @@ readable kubeconfig or no current context.
 The default label is `☸ context` or `☸ context (namespace)`. Set `modules.kubernetes.icon` in a custom theme to
 change the marker or set it to an empty string to hide it.
 
+#### local_ip
+
+The primary non-loopback IPv4 address. superline reads the host's network
+interfaces directly, so rendering this segment does not open a socket or make
+a network request. If no usable address is available, the segment is hidden.
+`"localip"` is accepted as a Starship-compatible spelling.
+
+```json
+"local_ip"
+```
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)

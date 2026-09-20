@@ -8,7 +8,7 @@ use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::debug;
 use crate::modules::{
     Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, Module, Node,
-    Kubernetes, Pr,
+    Kubernetes, LocalIp, Pr,
     Python, ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
 };
 use crate::terminal::*;
@@ -364,6 +364,7 @@ impl Powerline {
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
                 LineSegment::Host | LineSegment::Hostname => self.add_module(Hostname::<T>::new()),
                 LineSegment::Jobs => self.add_module(Jobs::<T>::new(runtime_data.job_count())),
+                LineSegment::LocalIp => self.add_module(LocalIp::<T>::new()),
                 LineSegment::Shell => {
                     self.add_module(ShellName::<T>::new(runtime_data.shell_name()))
                 }

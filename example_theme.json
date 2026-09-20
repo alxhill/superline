@@ -64,6 +64,10 @@
       "bg": "dark_grey",
       "fg": "mid_grey"
     },
+    "local_ip": {
+      "bg": "dark_grey",
+      "fg": "white"
+    },
     "ai_usage": {
       "claude_bg": "burnt_orange",
       "claude_fg": "black",

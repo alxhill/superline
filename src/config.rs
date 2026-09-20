@@ -109,6 +109,8 @@ pub enum LineSegment {
     Host,
     Hostname,
     Jobs,
+    /// Show the primary non-loopback IPv4 address.
+    LocalIp,
     Shell,
     Time {
         format: Option<String>,
@@ -225,6 +227,8 @@ enum KnownLineSegment {
     Host,
     Hostname,
     Jobs,
+    #[serde(alias = "localip")]
+    LocalIp,
     Shell,
     Time {
         format: Option<String>,
@@ -301,6 +305,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Host => LineSegment::Host,
             KnownLineSegment::Hostname => LineSegment::Hostname,
             KnownLineSegment::Jobs => LineSegment::Jobs,
+            KnownLineSegment::LocalIp => LineSegment::LocalIp,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -410,6 +415,8 @@ fn is_known_segment_name(name: &str) -> bool {
             | "host"
             | "hostname"
             | "jobs"
+            | "local_ip"
+            | "localip"
             | "shell"
             | "time"
             | "ai_usage"
@@ -492,6 +499,7 @@ impl Default for Config {
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::ReadOnly,
                         LineSegment::Hostname,
+                        LineSegment::LocalIp,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,
@@ -934,12 +942,36 @@ mod tests {
     }
 
     #[test]
+    fn local_ip_segment_accepts_the_snake_case_name_and_starship_alias() {
+        for name in ["local_ip", "localip"] {
+            let parsed: LineSegment = serde_json::from_str(&format!(r#""{name}""#))
+                .unwrap_or_else(|_| panic!("{name} segment should parse"));
+            assert_eq!(parsed, LineSegment::LocalIp);
+        }
+
+        assert_eq!(
+            serde_json::to_string(&LineSegment::LocalIp).unwrap(),
+            r#""local_ip""#
+        );
+    }
+
+    #[test]
     fn default_config_includes_hostname() {
         assert!(Config::default().rows.iter().any(|row| {
             row.left
                 .iter()
                 .chain(row.right.iter().flatten())
                 .any(|segment| matches!(segment, LineSegment::Hostname))
+        }));
+    }
+
+    #[test]
+    fn default_config_includes_local_ip() {
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::LocalIp))
         }));
     }
 
