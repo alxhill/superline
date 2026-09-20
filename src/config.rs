@@ -120,6 +120,9 @@ pub enum LineSegment {
     Time {
         format: Option<String>,
     },
+    /// Add literal text to the prompt. Control characters are rendered as
+    /// visible escapes so config values cannot inject terminal controls.
+    Text(String),
     AiUsage {
         provider: UsageProvider,
         #[serde(default = "default_true")]
@@ -243,6 +246,7 @@ enum KnownLineSegment {
     Time {
         format: Option<String>,
     },
+    Text(String),
     AiUsage {
         provider: UsageProvider,
         #[serde(default = "default_true")]
@@ -323,6 +327,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Sudo => LineSegment::Sudo,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
+            KnownLineSegment::Text(text) => LineSegment::Text(text),
             KnownLineSegment::AiUsage {
                 provider,
                 session,
@@ -439,6 +444,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "sudo"
             | "shell"
             | "time"
+            | "text"
             | "ai_usage"
             | "user"
             | "username"
@@ -583,6 +589,7 @@ impl Default for Config {
                         LineSegment::LastCmdDuration { min_run_time: 50 },
                         LineSegment::Jobs,
                         LineSegment::Sudo,
+                        LineSegment::Text("superline".into()),
                         LineSegment::Cmd,
                         LineSegment::Padding(1),
                     ],
@@ -692,6 +699,32 @@ mod tests {
             serde_json::from_str(r#""sudo""#).expect("sudo shorthand should parse");
 
         assert_eq!(parsed, LineSegment::Sudo);
+    }
+
+    #[test]
+    fn text_segment_preserves_literal_json_string() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#"{"text":"café 🌈 $HOME 100% \\ [brackets]"}"#)
+                .expect("text segment should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Text("café 🌈 $HOME 100% \\ [brackets]".to_string())
+        );
+        assert_eq!(
+            serde_json::to_string(&parsed).expect("text segment should serialize"),
+            r#"{"text":"café 🌈 $HOME 100% \\ [brackets]"}"#
+        );
+    }
+
+    #[test]
+    fn default_config_includes_text() {
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::Text(text) if text == "superline"))
+        }));
     }
 
     #[test]

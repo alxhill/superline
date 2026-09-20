@@ -121,7 +121,7 @@ last in full, left and right. The last row's `right` is drawn by the shell's own
 PowerShell have no right prompt, so on those shells the last row's `right` is not shown.
 
 Every module can be written either as a bare string or as an object with options, so `"git"` and `{ "git": {} }`
-are equivalent. Modules with required options (`cwd`, `last_cmd_duration`, `ai_usage`, `padding`, `separator`) must
+are equivalent. Modules with required options (`cwd`, `last_cmd_duration`, `ai_usage`, `padding`, `separator`, `text`) must
 use the object form.
 
 ### Layout
@@ -223,6 +223,16 @@ hidden with no jobs, shows `✦` for one job, and shows `✦N` for two or more j
 
 ```json
 "jobs"
+```
+
+#### text
+
+Adds literal text to the prompt using the theme's default colours. Text is required and is supplied as a JSON string;
+printable Unicode and punctuation are preserved. Terminal control characters and line separators are shown as visible
+escape sequences so a value in the config cannot reset the prompt or inject another prompt line.
+
+```json
+{ "text": "hello 🌈" }
 ```
 
 #### battery
