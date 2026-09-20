@@ -11,8 +11,8 @@ use thiserror::Error;
 use crate::colors::Color;
 use crate::modules::{
     CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    JavaScheme, JobsScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme,
+    ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 use crate::update::UpdateScheme;
@@ -387,6 +387,11 @@ impl SpacerScheme for CustomTheme {
 impl HostScheme for CustomTheme {
     color_from_json!(hostname_bg, hostname, bg, default_bg);
     color_from_json!(hostname_fg, hostname, fg, default_fg);
+}
+
+impl JobsScheme for CustomTheme {
+    color_from_json!(jobs_bg, jobs, bg, default_bg);
+    color_from_json!(jobs_fg, jobs, fg, default_fg);
 }
 
 impl ShellScheme for CustomTheme {

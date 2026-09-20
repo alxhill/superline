@@ -209,6 +209,15 @@ The hostname and the current username.
 
 `"host"` remains accepted as a compatibility alias.
 
+#### jobs
+
+Shows background jobs owned by the current shell. It is hidden with no jobs,
+shows `✦` for one job, and shows `✦N` for two or more jobs.
+
+```json
+"jobs"
+```
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)
