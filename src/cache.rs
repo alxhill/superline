@@ -42,6 +42,7 @@ use std::fs::{self, File, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -59,6 +60,8 @@ const PRUNE_MARKER: &str = ".last-pruned";
 /// How often [`Cached::load_with_timeout`] checks whether the refresh it is
 /// waiting on has finished. A `stat` per tick keeps the wait cheap.
 const REFRESH_POLL_INTERVAL: Duration = Duration::from_millis(1);
+/// Distinguishes the temp files of writers within one process.
+static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// A slow lookup whose result is served from an on-disk cache.
 ///
@@ -401,13 +404,23 @@ impl<S: Source> Cached<S> {
         }
 
         // Write to a temp file and rename so a concurrent reader never sees a
-        // half-written cache.
-        let tmp = path.with_extension("tmp");
+        // half-written cache. The temp file is unique to this writer: a timed
+        // load can leave an in-process worker and a detached child writing
+        // the same entry at once, and a shared temp path lets one truncate the
+        // other's finished write just before it is renamed into place.
+        let tmp = path.with_extension(format!(
+            "{}-{}.tmp",
+            std::process::id(),
+            WRITE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
         let Ok(mut file) = File::create(&tmp) else {
             return;
         };
-        if serde_json::to_writer(&mut file, &Entry::now(value)).is_ok() && file.flush().is_ok() {
-            let _ = fs::rename(&tmp, path);
+        let written =
+            serde_json::to_writer(&mut file, &Entry::now(value)).is_ok() && file.flush().is_ok();
+        drop(file);
+        if !written || fs::rename(&tmp, path).is_err() {
+            let _ = fs::remove_file(&tmp);
         }
     }
 }
@@ -557,7 +570,7 @@ fn modified_age(path: &Path, now: SystemTime) -> Option<Duration> {
 mod tests {
     use std::fs::{self, File, FileTimes};
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::AtomicU32;
     use std::sync::{Arc, Barrier, Mutex};
 
     use super::*;
@@ -885,6 +898,43 @@ mod tests {
             Some("cached")
         );
         assert_eq!(spawned_probe_kinds("timeout-failed"), 0);
+        fs::remove_dir_all(dir).ok();
+    }
+
+    /// The timed load can leave an in-process worker and a detached child
+    /// fetching the same entry, so two writers may finish at the same moment.
+    /// A reader must never see a half-written or empty entry.
+    #[test]
+    fn concurrent_writers_never_expose_a_partial_entry() {
+        let dir = unique_temp_dir("concurrent-writers");
+        let cached = Arc::new(Cached::in_dir(
+            Probe::instant("concurrent-writers", "unused", &dir),
+            Some(dir.clone()),
+        ));
+        cached.write(&"seed".to_string());
+
+        let writers = (0..4)
+            .map(|writer| {
+                let cached = cached.clone();
+                thread::spawn(move || {
+                    for n in 0..200 {
+                        cached.write(&format!("writer {writer} value {n}"));
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut unreadable = 0;
+        for _ in 0..2000 {
+            if cached.read().is_none() {
+                unreadable += 1;
+            }
+        }
+        for writer in writers {
+            writer.join().expect("writer thread");
+        }
+
+        assert_eq!(unreadable, 0, "a reader saw an unreadable cache entry");
+        assert!(cached.read().is_some());
         fs::remove_dir_all(dir).ok();
     }
 
