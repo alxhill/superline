@@ -310,6 +310,11 @@ leave the widget hidden rather than falling back to a timestamp-extending
 probe. It is also hidden when sudo is unavailable or credentials are not
 cached.
 
+Because the probe deliberately does not refresh sudo's timestamp, a cached
+marker can remain visible for up to the widget's 10-second refresh interval
+after authorization expires. That short stale window is the tradeoff for
+keeping a prompt renderer from extending administrative access.
+
 ```json
 "sudo"
 ```
