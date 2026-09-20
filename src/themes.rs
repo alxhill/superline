@@ -7,7 +7,7 @@ use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
     LocalIpScheme, MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::update::UpdateScheme;
 

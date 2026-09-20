@@ -9,10 +9,9 @@ use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::debug;
 use crate::modules::{
-    Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, LocalIp,
-    Kubernetes, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text,
-    Time,
-    Unknown, Usage, UsageWindows, Username,
+    Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes, LastCmdDuration,
+    LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text,
+    Time, Unknown, Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
 use crate::themes::CompleteTheme;
