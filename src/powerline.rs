@@ -36,6 +36,7 @@ pub enum Separator {
     Chevron,
     Round,
     AngleLine,
+    None,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -45,15 +46,22 @@ enum Direction {
 }
 
 impl Separator {
-    fn for_direction(&self, direction: Direction) -> char {
+    fn for_direction(&self, direction: Direction) -> &'static str {
         match (self, direction) {
-            (Separator::Chevron, Direction::Right) => '\u{e0b0}',
-            (Separator::Chevron, Direction::Left) => '\u{e0b2}',
-            (Separator::Round, Direction::Right) => '\u{e0b4}',
-            (Separator::Round, Direction::Left) => '\u{e0b6}',
-            (Separator::AngleLine, Direction::Right) => '\u{e0b1}',
-            (Separator::AngleLine, Direction::Left) => '\u{e0b3}',
+            (Separator::Chevron, Direction::Right) => "\u{e0b0}",
+            (Separator::Chevron, Direction::Left) => "\u{e0b2}",
+            (Separator::Round, Direction::Right) => "\u{e0b4}",
+            (Separator::Round, Direction::Left) => "\u{e0b6}",
+            (Separator::AngleLine, Direction::Right) => "\u{e0b1}",
+            (Separator::AngleLine, Direction::Left) => "\u{e0b3}",
+            (Separator::None, _) => "",
         }
+    }
+
+    /// Column width of the glyph itself, so a zero-character separator
+    /// doesn't throw off left/right prompt alignment.
+    fn width(&self) -> usize {
+        self.for_direction(Direction::Left).chars().count()
     }
 }
 
@@ -63,6 +71,7 @@ impl From<&SeparatorStyle> for Separator {
             SeparatorStyle::Chevron => Separator::Chevron,
             SeparatorStyle::Round => Separator::Round,
             SeparatorStyle::AngleLine => Separator::AngleLine,
+            SeparatorStyle::None => Separator::None,
         }
     }
 }
@@ -204,7 +213,7 @@ impl Powerline {
         }
 
         if let Some(Style { sep_fg, .. }) = self.last_style {
-            self.left_columns += 1;
+            self.left_columns += self.separator.width();
             write!(
                 self.left_buffer,
                 "{}{}{}",
@@ -253,7 +262,7 @@ impl Powerline {
             self.separator.for_direction(Direction::Left),
             style.bg
         )?;
-        self.right_columns += 1;
+        self.right_columns += self.separator.width();
 
         if self.last_style_right.as_ref().map(|s| s.sep_fg) != Some(style.fg) {
             write!(self.right_buffer, "{}", style.fg)?;
@@ -449,7 +458,7 @@ impl Powerline {
                 // close out the buffer, write the padding, and leave the next write_segment
                 // to handle adding the alternate separator
                 self.close_left_buffer();
-                self.left_columns += len + 1;
+                self.left_columns += len + self.separator.width();
                 let _ = write!(self.left_buffer, "{}{}", Reset, padding);
             }
             Direction::Right => {
@@ -465,7 +474,7 @@ impl Powerline {
                         padding
                     )
                     .unwrap();
-                    self.right_columns += 1;
+                    self.right_columns += self.separator.width();
                 } else {
                     write!(self.right_buffer, "{}", padding).unwrap();
                 }
@@ -524,8 +533,41 @@ impl Powerline {
                 Reset
             )
             .unwrap();
-            self.left_columns += 1;
+            self.left_columns += self.separator.width();
         }
         self.last_style = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::colors::Color;
+
+    #[test]
+    fn none_separator_has_no_glyph() {
+        assert_eq!(Separator::None.for_direction(Direction::Left), "");
+        assert_eq!(Separator::None.for_direction(Direction::Right), "");
+        assert_eq!(Separator::None.width(), 0);
+    }
+
+    #[test]
+    fn other_separators_are_a_single_column_wide() {
+        for sep in [Separator::Chevron, Separator::Round, Separator::AngleLine] {
+            assert_eq!(sep.width(), 1);
+        }
+    }
+
+    #[test]
+    fn none_separator_does_not_widen_the_left_prompt() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.set_separator(Separator::None);
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        powerline.add_segment("one", style.clone());
+        powerline.add_segment("two", style);
+
+        // " one " (5) + " two " (5), no separator glyph counted between them
+        assert_eq!(powerline.left_columns, 10);
     }
 }

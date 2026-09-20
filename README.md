@@ -131,8 +131,9 @@ array.
 
 #### separator
 
-Sets the shape used between segments. Options are `"chevron"` (the default), `"round"` and `"angle_line"`. It is
-stateful: the style applies to every following segment on the same side until changed again.
+Sets the shape used between segments. Options are `"chevron"` (the default), `"round"`, `"angle_line"` and `"none"`
+(no separator glyph, segments sit flush against each other). It is stateful: the style applies to every following
+segment on the same side until changed again.
 
 ```json
 { "separator": "round" }
