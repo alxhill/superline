@@ -6,12 +6,14 @@ use crate::{Powerline, Style};
 
 use super::Module;
 
-/// Shows the number of background jobs owned by the current shell, including
-/// stopped jobs.
+/// Shows the number of running background jobs owned by the current shell.
 ///
 /// The shell supplies the count when it invokes superline. Keeping the lookup
 /// in the shell is important: a child process cannot see the parent's job
 /// table, and the shell already has the most accurate view of job groups.
+///
+/// Stopped jobs are left out: some shells keep them in the job table long
+/// after they are gone, which would pin the widget to the prompt forever.
 pub struct Jobs<S: JobsScheme> {
     count: usize,
     scheme: PhantomData<S>,
@@ -49,11 +51,7 @@ impl<S: JobsScheme> Module for Jobs<S> {
 }
 
 fn display_text<S: JobsScheme>(count: usize) -> Option<String> {
-    match count {
-        0 => None,
-        1 => Some(S::jobs_symbol().to_string()),
-        count => Some(format!("{} {}", S::jobs_symbol(), count)),
-    }
+    (count > 0).then(|| format!("{} {}", S::jobs_symbol(), count))
 }
 
 #[cfg(test)]
@@ -81,12 +79,12 @@ mod tests {
     }
 
     #[test]
-    fn shows_symbol_for_one_job() {
-        assert_eq!(display_text::<TestTheme>(1).as_deref(), Some("\u{f085}"));
+    fn shows_the_count_for_a_single_job() {
+        assert_eq!(display_text::<TestTheme>(1).as_deref(), Some("\u{f085} 1"));
     }
 
     #[test]
-    fn shows_symbol_and_count_for_multiple_jobs() {
+    fn shows_the_count_for_multiple_jobs() {
         assert_eq!(display_text::<TestTheme>(3).as_deref(), Some("\u{f085} 3"));
     }
 }

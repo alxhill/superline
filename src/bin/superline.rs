@@ -25,13 +25,13 @@ end
 
 function fish_prompt
   set -l __pl_status $status
-  set -l __pl_jobs (jobs -g 2>/dev/null | count)
+  set -l __pl_jobs (jobs 2>/dev/null | string match -r --entire '\trunning\t' | count)
   superline show -s $__pl_status -c $COLUMNS fish $__pl_duration --jobs $__pl_jobs
 end
 
 function fish_right_prompt
   set -l __pl_status $status
-  set -l __pl_jobs (jobs -g 2>/dev/null | count)
+  set -l __pl_jobs (jobs 2>/dev/null | string match -r --entire '\trunning\t' | count)
   superline show-right -s $__pl_status -c $COLUMNS fish $__pl_duration --jobs $__pl_jobs
 end
 "#;
@@ -59,7 +59,11 @@ function _update_ps1() {
             _elapsed=$(($_now-$__pl_timer))
         fi
     fi
-    __pl_jobs=${#jobstates[*]}
+    # jobstates values look like `running:+:4242=running` or
+    # `suspended:+:4242=suspended (signal)`. Keep the running ones: a suspended
+    # job can sit in the table indefinitely.
+    __pl_running=(${(M)${(@v)jobstates}:#running*})
+    __pl_jobs=${#__pl_running}
     # Keep the rendered prompt in an indirection variable when PROMPT_SUBST
     # is enabled. Zsh expands the variable once, but does not re-expand text
     # returned by it, so literal `$()` and backticks in a Text widget remain
@@ -73,7 +77,7 @@ function _update_ps1() {
         PS1="$__pl_prompt"
         RPS1="$__pl_right_prompt"
     fi
-    unset __pl_status __pl_jobs __pl_timer _elapsed _now
+    unset __pl_status __pl_jobs __pl_running __pl_timer _elapsed _now
 }
 
 precmd_functions=(_update_ps1)
@@ -90,7 +94,7 @@ export SUPERLINE_BASH=1
 
 function _update_ps1() {
     local __pl_status=$?
-    local __pl_jobs=$(jobs -p 2>/dev/null | wc -l)
+    local __pl_jobs=$(jobs -pr 2>/dev/null | wc -l)
     PS1="$(superline show -s $__pl_status -c $COLUMNS bash --jobs $__pl_jobs)"
 }
 
@@ -138,9 +142,10 @@ function global:prompt {
     if (-not $__pl_cols -or $__pl_cols -le 0) { $__pl_cols = 80 }
 
     $__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')
-    # Count every job in PowerShell's job table, including stopped jobs, just
-    # like the Unix shell initializers count every shell job.
-    $__pl_jobs = @(Get-Job).Count
+    # Count only running jobs, like the Unix shell initializers do. PowerShell
+    # keeps completed, failed and stopped jobs in the table until Remove-Job,
+    # so counting every job would pin the widget to the prompt forever.
+    $__pl_jobs = @(Get-Job | Where-Object { $_.State -eq 'Running' }).Count
     $__pl_args += "--jobs=$__pl_jobs"
 
     # Duration of the last command, in milliseconds, from session history.
@@ -179,7 +184,10 @@ $env.config.render_right_prompt_on_last_line = true
 def __pl_prompt [subcommand: string]: nothing -> string {
     let __pl_status = ($env.LAST_EXIT_CODE? | default 0)
     let columns = (term size).columns
-    let jobs = (try { job list | length } catch { 0 })
+    # `job list` reports a Ctrl-Z'd job with type "frozen"; it stays listed
+    # until it is unfrozen, so leave those out. The optional cell path keeps
+    # this working on nushell versions without a type column.
+    let jobs = (try { job list | where {|j| $j.type? != "frozen" } | length } catch { 0 })
     # nushell seeds CMD_DURATION_MS with the placeholder "0823" before the first
     # command runs; real durations never carry a leading zero.
     let duration = ($env.CMD_DURATION_MS? | default "0823")
