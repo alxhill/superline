@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use superline::cache::{hash_id, Source};
+use superline::cache::hash_id;
+#[cfg(unix)]
+use superline::cache::Source;
 use superline::modules::NatsLookup;
 
 const BIN: &str = env!("CARGO_BIN_EXE_superline");
