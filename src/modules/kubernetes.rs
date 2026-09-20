@@ -160,12 +160,14 @@ fn read_current_context(paths: &[PathBuf]) -> Option<KubernetesContext> {
         };
 
         if current_context.is_none() {
-            current_context = config
-                .current_context
-                .filter(|context| !context.trim().is_empty());
+            current_context = config.current_context.and_then(trim_non_empty);
         }
 
-        for context in config.contexts {
+        for mut context in config.contexts {
+            let Some(name) = trim_non_empty(context.name) else {
+                continue;
+            };
+            context.name = name;
             if !contexts
                 .iter()
                 .any(|existing: &NamedContext| existing.name == context.name)
@@ -177,12 +179,14 @@ fn read_current_context(paths: &[PathBuf]) -> Option<KubernetesContext> {
 
     let name = current_context?;
     let context = contexts.into_iter().find(|context| context.name == name)?;
-    let namespace = context
-        .context
-        .namespace
-        .filter(|namespace| !namespace.trim().is_empty());
+    let namespace = context.context.namespace.and_then(trim_non_empty);
 
     Some(KubernetesContext { name, namespace })
+}
+
+fn trim_non_empty(value: String) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_owned())
 }
 
 fn format_context(icon: &str, context: &KubernetesContext) -> String {
@@ -217,13 +221,13 @@ mod tests {
         fs::write(
             &path,
             r#"
-current-context: staging
+current-context: "  staging  "
 contexts:
-  - name: staging
+  - name: "  staging  "
     context:
       cluster: staging-cluster
       user: staging-user
-      namespace: payments
+      namespace: "  payments  "
   - name: unused
     context:
       namespace: ignored
