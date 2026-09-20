@@ -100,6 +100,7 @@ pub enum LineSegment {
         version: bool,
     },
     Host,
+    Hostname,
     Shell,
     Time {
         format: Option<String>,
@@ -212,6 +213,7 @@ enum KnownLineSegment {
         version: bool,
     },
     Host,
+    Hostname,
     Shell,
     Time {
         format: Option<String>,
@@ -284,6 +286,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Java { version, jdk } => LineSegment::Java { version, jdk },
             KnownLineSegment::Cargo { version } => LineSegment::Cargo { version },
             KnownLineSegment::Host => LineSegment::Host,
+            KnownLineSegment::Hostname => LineSegment::Hostname,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -389,6 +392,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "sdkman"
             | "cargo"
             | "host"
+            | "hostname"
             | "shell"
             | "time"
             | "ai_usage"
@@ -470,6 +474,7 @@ impl Default for Config {
                         LineSegment::Padding(2),
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::ReadOnly,
+                        LineSegment::Hostname,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,
@@ -873,6 +878,33 @@ mod tests {
                 serde_json::from_str(json).unwrap_or_else(|_| panic!("{json} should parse"));
             assert_eq!(parsed, expected, "{json}");
         }
+    }
+
+    #[test]
+    fn hostname_segment_uses_the_starship_aligned_name() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""hostname""#).expect("hostname segment should parse");
+
+        assert_eq!(parsed, LineSegment::Hostname);
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), r#""hostname""#);
+    }
+
+    #[test]
+    fn host_segment_remains_a_compatibility_alias() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""host""#).expect("host segment should parse");
+
+        assert_eq!(parsed, LineSegment::Host);
+    }
+
+    #[test]
+    fn default_config_includes_hostname() {
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::Hostname))
+        }));
     }
 
     #[test]

@@ -30,7 +30,7 @@ pub use cwd::{Cwd, CwdScheme};
 pub use error_message::{ErrorMessage, ErrorMessageScheme};
 pub use exit_code::{ExitCode, ExitCodeScheme};
 pub use git::{Git, GitScheme, GitStatus};
-pub use host::{Host, HostScheme};
+pub use host::{Host, HostScheme, Hostname};
 pub use java::{Java, JavaScheme};
 pub use node::{Node, NodeScheme};
 pub use pr::{Pr, PrLookup, PrScheme};

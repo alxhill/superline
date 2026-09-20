@@ -199,13 +199,15 @@ The name of the running shell (`fish`, `zsh`, ...).
 "shell"
 ```
 
-#### host and user
+#### hostname and user
 
 The hostname and the current username.
 
 ```json
-"host"
+"hostname"
 ```
+
+`"host"` remains accepted as a compatibility alias.
 
 #### time
 
