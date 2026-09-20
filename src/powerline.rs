@@ -538,3 +538,36 @@ impl Powerline {
         self.last_style = None;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::colors::Color;
+
+    #[test]
+    fn none_separator_has_no_glyph() {
+        assert_eq!(Separator::None.for_direction(Direction::Left), "");
+        assert_eq!(Separator::None.for_direction(Direction::Right), "");
+        assert_eq!(Separator::None.width(), 0);
+    }
+
+    #[test]
+    fn other_separators_are_a_single_column_wide() {
+        for sep in [Separator::Chevron, Separator::Round, Separator::AngleLine] {
+            assert_eq!(sep.width(), 1);
+        }
+    }
+
+    #[test]
+    fn none_separator_does_not_widen_the_left_prompt() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.set_separator(Separator::None);
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        powerline.add_segment("one", style.clone());
+        powerline.add_segment("two", style);
+
+        // " one " (5) + " two " (5), no separator glyph counted between them
+        assert_eq!(powerline.left_columns, 10);
+    }
+}
