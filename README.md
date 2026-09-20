@@ -177,6 +177,8 @@ Shows a lock icon when the current directory is not writable.
 #### cmd
 
 The prompt character shown before your input. It turns red and shows the exit code when the previous command failed.
+Each exit code is reported once: redrawing the prompt (pressing enter on an empty line, say) shows the plain prompt
+character again rather than repeating the code until the next command runs.
 
 ```json
 "cmd"

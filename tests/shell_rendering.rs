@@ -30,8 +30,13 @@ fn scratch_home(label: &str) -> PathBuf {
 /// Render the default prompt for `shell` against the given `$HOME`, returning
 /// the raw stdout (escape sequences and all).
 fn render_in(home: &PathBuf, shell: &str) -> String {
+    render_status_in(home, shell, "0")
+}
+
+/// As [`render_in`], with the exit status the shell would have passed.
+fn render_status_in(home: &PathBuf, shell: &str, status: &str) -> String {
     let output = Command::new(BIN)
-        .args(["show", shell, "-s", "0", "-c", "80"])
+        .args(["show", shell, "-s", status, "-c", "80"])
         // Home lookup keys off $HOME on Unix and %USERPROFILE% on Windows.
         .env("HOME", home)
         .env("USERPROFILE", home)
@@ -139,6 +144,70 @@ fn nushell_init_renders_right_prompt_on_last_line() {
         init.contains("$env.PROMPT_COMMAND = ") && init.contains("$env.PROMPT_COMMAND_RIGHT = "),
         "nu init must set both prompt closures; got:\n{init}",
     );
+}
+
+/// A shell that has nothing to report - no command has run since the last
+/// prompt was drawn - passes an empty status, which must render as the plain
+/// prompt character rather than as a failure whose code happens to be blank.
+#[test]
+fn empty_status_renders_like_a_successful_command() {
+    let home = scratch_home("empty-status");
+    let _ = render_in(&home, "fish");
+
+    let empty = render_status_in(&home, "fish", "");
+    let success = render_status_in(&home, "fish", "0");
+    let failure = render_status_in(&home, "fish", "1");
+    let _ = fs::remove_dir_all(&home);
+
+    assert_eq!(
+        empty, success,
+        "an empty status should render exactly like a successful command",
+    );
+    assert_ne!(
+        empty, failure,
+        "a failing command should still render differently",
+    );
+}
+
+/// Every shell snippet has to decide whether the status it is about to pass
+/// belongs to a command that just ran or to one whose status was already shown
+/// on an earlier draw of the prompt. Pin the signal each one keys off, since
+/// losing it silently brings back the repeated exit code.
+#[test]
+fn each_shell_init_reports_a_status_once() {
+    assert!(
+        init("fish").contains("--on-event fish_postexec") && init("fish").contains("__pl_ran"),
+        "fish init must gate the status on the postexec event",
+    );
+    assert!(
+        init("zsh").contains("function preexec()") && init("zsh").contains("__pl_ran"),
+        "zsh init must gate the status on preexec",
+    );
+    assert!(
+        init("bash").contains("$HISTCMD"),
+        "bash init must gate the status on the history number",
+    );
+    assert!(
+        init("pwsh").contains("Get-History") && init("pwsh").contains("__pl_histid"),
+        "pwsh init must gate the status on the session history id",
+    );
+    assert!(
+        init("nu").contains("hooks.pre_execution") && init("nu").contains("__pl_ran"),
+        "nu init must gate the status on the pre_execution hook",
+    );
+}
+
+/// The snippet `superline init <shell>` prints.
+fn init(shell: &str) -> String {
+    let output = Command::new(BIN)
+        .args(["init", shell])
+        .output()
+        .expect("failed to run `superline init`");
+    assert!(
+        output.status.success(),
+        "`init {shell}` exited with failure"
+    );
+    String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
 #[test]

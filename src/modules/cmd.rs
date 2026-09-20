@@ -55,7 +55,9 @@ impl<S: CmdScheme> Module for Cmd<S> {
             S::cmd_user_symbol()
         };
         let (symbol, fg, bg) = match self.status.as_ref() {
-            "0" => (user_symbol, S::cmd_passed_fg(), S::cmd_passed_bg()),
+            // An empty status is a shell saying it has nothing to report: no
+            // command has run since the last prompt was drawn.
+            "" | "0" => (user_symbol, S::cmd_passed_fg(), S::cmd_passed_bg()),
             non_zero_code => (non_zero_code, S::cmd_failed_fg(), S::cmd_failed_bg()),
         };
 

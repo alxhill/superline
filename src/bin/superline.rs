@@ -18,17 +18,29 @@ use superline::{update, Powerline};
 
 const FISH_CONF: &str = r#"
 set -gx SUPERLINE_FISH 1
+set -g __pl_status 0
 
-function __pl_cache_duration --on-event fish_postexec
+# fish skips this event for an empty commandline, so it marks the one prompt
+# that follows a command actually being run.
+function __pl_postexec --on-event fish_postexec
   set -gx __pl_duration $CMD_DURATION
+  set -g __pl_ran 1
 end
 
 function fish_prompt
-  superline show -s $status -c $COLUMNS fish $__pl_duration
+  set -g __pl_status $status
+  if set -q __pl_ran
+    set -e __pl_ran
+  else
+    # Only a redraw: the exit status belongs to a command already reported.
+    set -g __pl_status 0
+  end
+  superline show -s "$__pl_status" -c $COLUMNS fish $__pl_duration
 end
 
+# Always drawn right after fish_prompt, so it reuses the status it settled on.
 function fish_right_prompt
-  superline show-right -s $status -c $COLUMNS fish $__pl_duration
+  superline show-right -s "$__pl_status" -c $COLUMNS fish $__pl_duration
 end
 "#;
 
@@ -41,21 +53,29 @@ const ZSH_CONF: &str = r#"
 export SUPERLINE_ZSH=1
 
 function preexec() {
+    # zsh skips preexec for an empty line, so this marks the one prompt that
+    # follows a command actually being run.
+    __pl_ran=1
     if command -v gdate >/dev/null 2>&1; then
         __pl_timer=$(($(gdate +%s%0N)/1000000))
     fi
 }
 
 function _update_ps1() {
+    local __pl_st=$?
+    # Only a redraw: the exit status belongs to a command already reported.
+    if [ -z "$__pl_ran" ]; then
+        __pl_st=0
+    fi
     if [ $__pl_timer ]; then
         _now=$(($(gdate +%s%0N)/1000000))
         if [ $_now -ge $__pl_timer ]; then
             _elapsed=$(($_now-$__pl_timer))
         fi
     fi
-    PS1="$(superline show -s $? -c $COLUMNS zsh $_elapsed)"
-    RPS1="$(superline show-right -s $? -c $COLUMNS zsh $_elapsed)"
-    unset __pl_timer _elapsed _now
+    PS1="$(superline show -s $__pl_st -c $COLUMNS zsh $_elapsed)"
+    RPS1="$(superline show-right -s $__pl_st -c $COLUMNS zsh $_elapsed)"
+    unset __pl_ran __pl_timer _elapsed _now
 }
 
 precmd_functions=(_update_ps1)
@@ -71,7 +91,16 @@ const BASH_CONF: &str = r#"
 export SUPERLINE_BASH=1
 
 function _update_ps1() {
-    PS1="$(superline show -s $? -c $COLUMNS bash)"
+    local __pl_st=$?
+    # bash has no preexec hook, but the history number only moves when a
+    # command runs (history is on by default in an interactive shell). An
+    # unchanged one means this is a redraw of the prompt and the exit status
+    # belongs to a command already reported.
+    if [ -n "$HISTCMD" ] && [ "$HISTCMD" = "$__pl_histcmd" ]; then
+        __pl_st=0
+    fi
+    __pl_histcmd=$HISTCMD
+    PS1="$(superline show -s $__pl_st -c $COLUMNS bash)"
 }
 
 if [ "$TERM" != "linux" ]; then
@@ -113,6 +142,18 @@ function global:prompt {
         $__pl_status = 1
     }
 
+    # The prompt is redrawn for an empty line too, where $? and $LASTEXITCODE
+    # still describe the command before it. Session history only grows when a
+    # command actually runs, so an unchanged id means this status was already
+    # reported.
+    $__pl_last = Get-History -Count 1
+    if ($__pl_last) { $__pl_id = $__pl_last.Id } else { $__pl_id = 0 }
+    if ($__pl_id -eq $global:__pl_histid) {
+        $__pl_status = 0
+    } else {
+        $global:__pl_histid = $__pl_id
+    }
+
     $__pl_cols = 0
     try { $__pl_cols = $Host.UI.RawUI.WindowSize.Width } catch {}
     if (-not $__pl_cols -or $__pl_cols -le 0) { $__pl_cols = 80 }
@@ -120,7 +161,6 @@ function global:prompt {
     $__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')
 
     # Duration of the last command, in milliseconds, from session history.
-    $__pl_last = Get-History -Count 1
     if ($__pl_last) {
         $__pl_ms = [long][math]::Round(($__pl_last.EndExecutionTime - $__pl_last.StartExecutionTime).TotalMilliseconds)
         if ($__pl_ms -ge 0) { $__pl_args += $__pl_ms }
@@ -152,15 +192,29 @@ $env.PROMPT_INDICATOR = ""
 # by default, which superline has already filled, so move it to the last line.
 $env.config.render_right_prompt_on_last_line = true
 
+# nushell redraws the prompt for an empty line too, where LAST_EXIT_CODE still
+# describes the command before it. pre_execution only runs for a real command,
+# so the pair of hooks settles on a status that is reported exactly once. If a
+# nushell build does not carry env changes out of its hooks, __pl_status stays
+# unset and the prompt falls back to LAST_EXIT_CODE.
+$env.config.hooks.pre_execution = ($env.config.hooks.pre_execution? | default [] | append {||
+    $env.__pl_ran = true
+})
+$env.config.hooks.pre_prompt = ($env.config.hooks.pre_prompt? | default [] | append {||
+    $env.__pl_status = (if ($env.__pl_ran? | default false) { $env.LAST_EXIT_CODE } else { 0 })
+    $env.__pl_ran = false
+})
+
 def __pl_prompt [subcommand: string]: nothing -> string {
     let columns = (term size).columns
+    let exit_status = ($env.__pl_status? | default $env.LAST_EXIT_CODE)
     # nushell seeds CMD_DURATION_MS with the placeholder "0823" before the first
     # command runs; real durations never carry a leading zero.
     let duration = ($env.CMD_DURATION_MS? | default "0823")
     if $duration == "0823" {
-        ^superline $subcommand -s $env.LAST_EXIT_CODE -c $columns nu
+        ^superline $subcommand -s $exit_status -c $columns nu
     } else {
-        ^superline $subcommand -s $env.LAST_EXIT_CODE -c $columns nu $duration
+        ^superline $subcommand -s $exit_status -c $columns nu $duration
     }
 }
 
