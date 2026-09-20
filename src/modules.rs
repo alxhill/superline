@@ -2,6 +2,7 @@ use crate::cache::{refresh_from_json, Source};
 use crate::powerline::Powerline;
 use crate::update::UpdateLookup;
 
+mod battery;
 mod cmd;
 mod cwd;
 mod error_message;
@@ -24,6 +25,7 @@ mod time;
 mod unknown;
 mod usage;
 
+pub use battery::{Battery, BatteryScheme};
 pub use cargo::{Cargo, CargoScheme};
 pub use cmd::{Cmd, CmdScheme};
 pub use cmd_duration::{LastCmdDuration, LastCmdDurationScheme};

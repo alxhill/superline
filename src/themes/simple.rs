@@ -1,7 +1,8 @@
 use crate::colors::{black, dark_grey, grey, light_grey, Color};
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, JobsScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme,
+    BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, NodeScheme, PrScheme,
+    PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -21,6 +22,16 @@ impl DefaultColors for SimpleTheme {
 }
 
 impl CompleteTheme for SimpleTheme {}
+
+impl BatteryScheme for SimpleTheme {
+    fn battery_fg() -> Color {
+        Color(15)
+    }
+
+    fn battery_bg() -> Color {
+        Color(161)
+    }
+}
 
 impl ShellScheme for SimpleTheme {}
 
