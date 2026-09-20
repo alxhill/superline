@@ -74,7 +74,7 @@
       "fg": "white"
     },
     "memory_usage": {
-      "bg": "dark_blue",
+      "bg": "warning_red",
       "fg": "white"
     },
     "ai_usage": {

@@ -188,7 +188,7 @@ impl MemoryUsageScheme for RainbowTheme {
     }
 
     fn memory_usage_bg() -> Color {
-        dark_blue()
+        warning_red()
     }
 }
 

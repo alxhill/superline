@@ -287,9 +287,10 @@ themes may override the colours and symbol in their os module.
 
 #### memory_usage
 
-Shows used and total physical memory with binary units. If the system reports
-swap, its used and total size is shown after the RAM value. The lookup is a
-small local read, so it does not use the background cache.
+An alert-style memory indicator: it stays hidden below 75% RAM usage, then
+shows a compact percentage. If swap is at least 1% used, its percentage is
+shown alongside RAM. The lookup is a small local read, so it does not use the
+background cache.
 
 ```json
 "memory_usage"
