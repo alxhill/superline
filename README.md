@@ -384,27 +384,6 @@ one is pinned.
 - **Pins** via `rust-toolchain.toml` or the legacy `rust-toolchain`, searched upwards from the current directory as
   rustup does, so workspace members pick up the pin at the workspace root.
 
-### Update notice
-
-Once a day superline looks up its latest release through the GitHub API (via `curl`, or `gh` when curl is missing)
-in the background. When a newer version exists, a line is printed above the prompt with the command that installs
-it, then hidden for another day:
-
-```
-  superline v0.17.0 available: brew upgrade superline
-```
-
-The command is inferred from where the binary is installed: `brew upgrade superline` under Homebrew, otherwise
-`cargo binstall superline` when `cargo-binstall` is on `PATH` and `cargo install superline` if not. The version
-links to the release page. Nothing is shown while you are on the latest version, or until the first lookup has
-finished. To turn the check off, add a top-level `update` block to the config:
-
-```json
-{ "theme": "rainbow", "rows": [ ... ], "update": { "disable": true } }
-```
-
-The icon is themed as `update` (`fg`, `bg`, `icon`); the text after it uses the terminal's default colours.
-
 ### Themes
 
 `theme` is `"rainbow"`, `"simple"`, or a path to a theme JSON file. Paths starting with `/` are absolute; anything
@@ -444,7 +423,7 @@ module name and property.
 | `superline install <shell>` | Append the prompt loader to the shell's config file. |
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
 | `superline config` | Open the config file in `$EDITOR`. |
-| `superline clear-caches` | Wipe cached git status, PR lookups, AI usage and update checks so the next prompt starts cold. |
+| `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
 
 ## Debugging a slow prompt
 
