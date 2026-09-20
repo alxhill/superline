@@ -96,7 +96,15 @@ impl Ipv4Candidate {
 }
 
 fn is_useful_ipv4(ip: Ipv4Addr) -> bool {
-    !ip.is_unspecified() && !ip.is_loopback() && !ip.is_link_local() && !ip.is_multicast()
+    // Private and public unicast addresses are both useful prompt values. The
+    // standard-library predicates below only remove addresses that cannot
+    // identify this host: unspecified, loopback, link-local, multicast, and
+    // the limited broadcast address.
+    !ip.is_unspecified()
+        && !ip.is_loopback()
+        && !ip.is_link_local()
+        && !ip.is_multicast()
+        && !ip.is_broadcast()
 }
 
 #[cfg(test)]
@@ -131,11 +139,22 @@ mod tests {
             Ipv4Addr::new(127, 0, 0, 1),
             Ipv4Addr::new(169, 254, 1, 2),
             Ipv4Addr::new(224, 0, 0, 1),
+            Ipv4Addr::BROADCAST,
         ] {
             assert!(!is_useful_ipv4(ip), "{ip} should not be displayed");
         }
+    }
 
-        assert!(is_useful_ipv4(Ipv4Addr::new(192, 168, 1, 20)));
+    #[test]
+    fn keeps_private_and_public_unicast_addresses() {
+        for ip in [
+            Ipv4Addr::new(10, 0, 0, 8),
+            Ipv4Addr::new(172, 16, 4, 2),
+            Ipv4Addr::new(192, 168, 1, 20),
+            Ipv4Addr::new(8, 8, 8, 8),
+        ] {
+            assert!(is_useful_ipv4(ip), "{ip} should remain eligible");
+        }
     }
 
     #[test]
