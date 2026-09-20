@@ -10,6 +10,11 @@ pub trait TerminalRuntimeMetadata {
     fn total_columns(&self) -> usize;
     fn last_command_duration(&self) -> Option<Duration>;
     fn last_command_status(&self) -> &str;
+
+    /// Number of background jobs reported by the interactive shell.
+    fn job_count(&self) -> usize {
+        0
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -101,6 +106,7 @@ pub enum LineSegment {
     },
     Host,
     Hostname,
+    Jobs,
     Shell,
     Time {
         format: Option<String>,
@@ -214,6 +220,7 @@ enum KnownLineSegment {
     },
     Host,
     Hostname,
+    Jobs,
     Shell,
     Time {
         format: Option<String>,
@@ -287,6 +294,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Cargo { version } => LineSegment::Cargo { version },
             KnownLineSegment::Host => LineSegment::Host,
             KnownLineSegment::Hostname => LineSegment::Hostname,
+            KnownLineSegment::Jobs => LineSegment::Jobs,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -393,6 +401,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "cargo"
             | "host"
             | "hostname"
+            | "jobs"
             | "shell"
             | "time"
             | "ai_usage"
@@ -529,6 +538,7 @@ impl Default for Config {
                     left: vec![
                         LineSegment::Shell,
                         LineSegment::LastCmdDuration { min_run_time: 50 },
+                        LineSegment::Jobs,
                         LineSegment::Cmd,
                         LineSegment::Padding(1),
                     ],
@@ -588,6 +598,14 @@ mod tests {
                 backend: GitBackend::Auto,
             }
         );
+    }
+
+    #[test]
+    fn jobs_string_shorthand_parses() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""jobs""#).expect("jobs shorthand should parse");
+
+        assert_eq!(parsed, LineSegment::Jobs);
     }
 
     #[test]
