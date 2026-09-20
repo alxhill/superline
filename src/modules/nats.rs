@@ -62,8 +62,10 @@ pub struct NatsLookup {
 impl Source for NatsLookup {
     type Value = String;
     const KIND: &'static str = "nats";
-    const TTL: Duration = Duration::from_secs(60);
-    const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+    // Context selection is an interactive operation; keep the cache short so
+    // `nats context select` is reflected on the next prompt or two.
+    const TTL: Duration = Duration::from_secs(1);
+    const REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
     fn cache_id(&self) -> String {
         hash_id(&self.binary)
@@ -114,7 +116,15 @@ fn parse_context_name(stdout: &[u8]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_context_name;
+    use super::{parse_context_name, NatsLookup};
+    use crate::cache::Source;
+    use std::time::Duration;
+
+    #[test]
+    fn context_cache_is_short_lived_for_interactive_selection() {
+        assert_eq!(NatsLookup::TTL, Duration::from_secs(1));
+        assert_eq!(NatsLookup::REFRESH_INTERVAL, Duration::from_secs(1));
+    }
 
     #[test]
     fn reads_the_context_name_from_nats_json() {
