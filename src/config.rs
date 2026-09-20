@@ -112,6 +112,7 @@ pub enum LineSegment {
     /// Show the primary non-loopback IPv4 address.
     LocalIp,
     Nats,
+    Os,
     Shell,
     Time {
         format: Option<String>,
@@ -232,6 +233,7 @@ enum KnownLineSegment {
     #[serde(alias = "localip")]
     LocalIp,
     Nats,
+    Os,
     Shell,
     Time {
         format: Option<String>,
@@ -311,6 +313,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Jobs => LineSegment::Jobs,
             KnownLineSegment::LocalIp => LineSegment::LocalIp,
             KnownLineSegment::Nats => LineSegment::Nats,
+            KnownLineSegment::Os => LineSegment::Os,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -424,6 +427,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "local_ip"
             | "localip"
             | "nats"
+            | "os"
             | "shell"
             | "time"
             | "ai_usage"
@@ -510,6 +514,7 @@ impl Default for Config {
                         LineSegment::Hostname,
                         LineSegment::LocalIp,
                         LineSegment::Nats,
+                        LineSegment::Os,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,
@@ -651,6 +656,23 @@ mod tests {
 
         assert_eq!(parsed, LineSegment::Nats);
         assert_eq!(serde_json::to_string(&parsed).unwrap(), r#""nats""#);
+    }
+
+    #[test]
+    fn os_string_shorthand_parses() {
+        let parsed: LineSegment = serde_json::from_str(r#""os""#).expect("os module should parse");
+
+        assert_eq!(parsed, LineSegment::Os);
+    }
+
+    #[test]
+    fn default_config_includes_os() {
+        assert!(Config::default().rows.iter().any(|row| {
+            row.left
+                .iter()
+                .chain(row.right.iter().flatten())
+                .any(|segment| matches!(segment, LineSegment::Os))
+        }));
     }
 
     #[test]

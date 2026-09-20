@@ -273,6 +273,18 @@ module stays hidden when the CLI is not installed or has no selected context.
 "nats"
 ```
 
+#### os
+
+Shows a compact Nerd Font icon for the current operating-system family. It
+recognises Linux, macOS, Windows, Android and the common BSD/Unix targets
+without reading distro files or spawning a command, so it adds no prompt
+latency. The built-in themes use the Linux, Apple and Windows icons; custom
+themes may override the colours and symbol in their os module.
+
+```json
+"os"
+```
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)

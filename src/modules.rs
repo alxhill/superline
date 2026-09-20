@@ -21,6 +21,7 @@ mod cmd_duration;
 mod java;
 mod kubernetes;
 mod node;
+mod os;
 mod python;
 mod shell_name;
 mod spacer;
@@ -43,6 +44,7 @@ pub use kubernetes::{Kubernetes, KubernetesContext, KubernetesLookup, Kubernetes
 pub use local_ip::{LocalIp, LocalIpScheme};
 pub use nats::{Nats, NatsLookup, NatsScheme};
 pub use node::{Node, NodeScheme};
+pub use os::{Os, OsKind, OsScheme};
 pub use pr::{Pr, PrLookup, PrScheme};
 pub use python::{Python, PythonScheme, PythonVersion};
 pub use readonly::{ReadOnly, ReadOnlyScheme};

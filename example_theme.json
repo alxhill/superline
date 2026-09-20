@@ -104,6 +104,10 @@
       "bg": "nice_purple",
       "fg": "white",
       "icon": "\uf0aa"
+    },
+    "os": {
+      "bg": "dark_grey",
+      "fg": "white"
     }
   }
 }
