@@ -46,8 +46,7 @@ impl<S: BatteryScheme> Default for Battery<S> {
 impl<S: BatteryScheme> Battery<S> {
     pub fn new() -> Self {
         Self {
-            status: battery_status()
-                .filter(|status| status.percentage <= DISPLAY_THRESHOLD_PERCENT),
+            status: battery_status().filter(should_display),
             scheme: PhantomData,
         }
     }
@@ -95,6 +94,10 @@ fn symbol_for_state(state: State) -> &'static str {
         State::Unknown => UNKNOWN_SYMBOL,
         State::Empty => EMPTY_SYMBOL,
     }
+}
+
+fn should_display(status: &BatteryStatus) -> bool {
+    status.percentage.is_finite() && status.percentage <= DISPLAY_THRESHOLD_PERCENT
 }
 
 /// Read and combine all batteries reported by the operating system. Energy is
@@ -218,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn low_battery_is_visible_at_threshold_and_hidden_above_it() {
+    fn low_battery_display_requires_finite_percentage_at_or_below_threshold() {
         let at_threshold = BatteryStatus {
             percentage: DISPLAY_THRESHOLD_PERCENT,
             state: State::Discharging,
@@ -227,9 +230,14 @@ mod tests {
             percentage: DISPLAY_THRESHOLD_PERCENT + 0.01,
             state: State::Discharging,
         };
+        let non_finite = BatteryStatus {
+            percentage: f32::NAN,
+            state: State::Discharging,
+        };
 
-        assert!(at_threshold.percentage <= DISPLAY_THRESHOLD_PERCENT);
-        assert!(above_threshold.percentage > DISPLAY_THRESHOLD_PERCENT);
+        assert!(should_display(&at_threshold));
+        assert!(!should_display(&above_threshold));
+        assert!(!should_display(&non_finite));
     }
 
     #[test]
