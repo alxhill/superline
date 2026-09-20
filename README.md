@@ -209,6 +209,19 @@ The hostname and the current username.
 
 `"host"` remains accepted as a compatibility alias.
 
+#### local_ip
+
+The primary non-loopback IPv4 address. superline reads the host's network
+interfaces directly, so rendering this segment does not open a socket or make
+a network request. If no usable address is available, the segment is hidden.
+Private and public unicast addresses are both eligible; only non-host address
+categories such as loopback, multicast, and broadcast are filtered out.
+`"localip"` is accepted as a Starship-compatible spelling.
+
+```json
+"local_ip"
+```
+
 #### jobs
 
 Shows background jobs owned by the current shell, including stopped jobs. It is

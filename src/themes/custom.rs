@@ -11,7 +11,8 @@ use thiserror::Error;
 use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
-    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, NodeScheme, PrScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
+    NodeScheme, PrScheme,
     PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
@@ -398,6 +399,11 @@ impl HostScheme for CustomTheme {
 impl JobsScheme for CustomTheme {
     color_from_json!(jobs_bg, jobs, bg, default_bg);
     color_from_json!(jobs_fg, jobs, fg, default_fg);
+}
+
+impl LocalIpScheme for CustomTheme {
+    color_from_json!(local_ip_bg, local_ip, bg, default_bg);
+    color_from_json!(local_ip_fg, local_ip, fg, default_fg);
 }
 
 impl ShellScheme for CustomTheme {

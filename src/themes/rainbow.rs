@@ -2,7 +2,8 @@ use crate::colors::Color;
 use crate::colors::*;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
-    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, NodeScheme, PrScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
+    NodeScheme, PrScheme,
     PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
@@ -151,6 +152,16 @@ impl HostScheme for RainbowTheme {
 }
 
 impl JobsScheme for RainbowTheme {}
+
+impl LocalIpScheme for RainbowTheme {
+    fn local_ip_fg() -> Color {
+        white()
+    }
+
+    fn local_ip_bg() -> Color {
+        dark_grey()
+    }
+}
 
 impl ShellScheme for RainbowTheme {}
 

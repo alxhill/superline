@@ -15,6 +15,7 @@ bin-dir = "{ bin }{ binary-ext }"
 
 [dependencies]
 hostname = "0.3"
+if-addrs = "0.15"
 starship-battery = "0.11.1"
 # Pure-Rust git backend, used in-process for small working trees (see
 # `src/modules/git.rs`). `status`/`revision` cover the status walk and the
