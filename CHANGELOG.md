@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/alxhill/superline/compare/v0.16.0...v0.17.0) - 2026-09-20
+
+### Added
+
+- *(update)* print a once-a-day notice above the prompt when a newer release is out ([#112](https://github.com/alxhill/superline/pull/112))
+
+### Fixed
+
+- *(cache)* give each cache writer its own temp file so concurrent refreshes never expose an empty entry ([#115](https://github.com/alxhill/superline/pull/115))
+
 ## [0.16.0](https://github.com/alxhill/superline/compare/v0.15.2...v0.16.0) - 2026-09-19
 
 ### Added
