@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1](https://github.com/alxhill/superline/compare/v0.18.0...v0.18.1) - 2026-09-20
+
+### Fixed
+
+- *(jobs)* separate the cog glyph from the job count so they stop overlapping ([#122](https://github.com/alxhill/superline/pull/122))
+
 ## [0.18.0](https://github.com/alxhill/superline/compare/v0.17.0...v0.18.0) - 2026-09-20
 
 ### Added
