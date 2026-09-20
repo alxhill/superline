@@ -12,7 +12,7 @@ use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
-    LocalIpScheme, MemoryUsageScheme, NodeScheme, OsKind, OsScheme, PrScheme, PythonScheme,
+    LocalIpScheme, MemoryUsageScheme, NatsScheme, NodeScheme, OsKind, OsScheme, PrScheme, PythonScheme,
     ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme,
     UserScheme,
 };
@@ -190,6 +190,17 @@ macro_rules! color_from_json {
 impl BatteryScheme for CustomTheme {
     color_from_json!(battery_fg, battery, fg, alert_fg);
     color_from_json!(battery_bg, battery, bg, alert_bg);
+}
+
+impl NatsScheme for CustomTheme {
+    color_from_json!(nats_fg, nats, fg, default_fg);
+    color_from_json!(nats_bg, nats, bg, default_bg);
+
+    fn nats_icon() -> &'static str {
+        Self::get_str("nats", "icon")
+            .map(|str| str.leak() as &'static str)
+            .unwrap_or("✉️ ")
+    }
 }
 
 impl JavaScheme for CustomTheme {

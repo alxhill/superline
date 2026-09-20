@@ -118,6 +118,7 @@ pub enum LineSegment {
         #[serde(default)]
         threshold: Option<u8>,
     },
+    Nats,
     Os,
     Sudo,
     Shell,
@@ -246,6 +247,7 @@ enum KnownLineSegment {
         #[serde(default)]
         threshold: Option<u8>,
     },
+    Nats,
     Os,
     Sudo,
     Shell,
@@ -328,6 +330,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Jobs => LineSegment::Jobs,
             KnownLineSegment::LocalIp => LineSegment::LocalIp,
             KnownLineSegment::MemoryUsage { threshold } => LineSegment::MemoryUsage { threshold },
+            KnownLineSegment::Nats => LineSegment::Nats,
             KnownLineSegment::Os => LineSegment::Os,
             KnownLineSegment::Sudo => LineSegment::Sudo,
             KnownLineSegment::Shell => LineSegment::Shell,
@@ -444,6 +447,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "local_ip"
             | "localip"
             | "memory_usage"
+            | "nats"
             | "os"
             | "sudo"
             | "shell"
@@ -530,6 +534,7 @@ impl Default for Config {
                         LineSegment::Padding(2),
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::ReadOnly,
+                        LineSegment::Nats,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,

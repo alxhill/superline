@@ -50,6 +50,11 @@
       "bg": "blue",
       "icon": "☸"
     },
+    "nats": {
+      "fg": "white",
+      "bg": "nice_purple",
+      "icon": "✉️ "
+    },
     "readonly": {
       "fg": 254,
       "bg": 124

@@ -20,6 +20,7 @@ mod cmd_duration;
 mod java;
 mod kubernetes;
 mod memory_usage;
+mod nats;
 mod node;
 mod os;
 mod python;
@@ -45,6 +46,7 @@ pub use jobs::{Jobs, JobsScheme};
 pub use kubernetes::{Kubernetes, KubernetesContext, KubernetesLookup, KubernetesScheme};
 pub use local_ip::{LocalIp, LocalIpScheme};
 pub use memory_usage::{MemoryUsage, MemoryUsageScheme};
+pub use nats::{Nats, NatsLookup, NatsScheme};
 pub use node::{Node, NodeScheme};
 pub use os::{Os, OsKind, OsScheme};
 pub use pr::{Pr, PrLookup, PrScheme};
@@ -75,6 +77,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
         SudoLookup::KIND => refresh_from_json::<SudoLookup>(source),
         KubernetesLookup::KIND => refresh_from_json::<KubernetesLookup>(source),
+        NatsLookup::KIND => refresh_from_json::<NatsLookup>(source),
         UpdateLookup::KIND => refresh_from_json::<UpdateLookup>(source),
         _ => false,
     }

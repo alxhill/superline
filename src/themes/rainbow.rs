@@ -3,7 +3,8 @@ use crate::colors::*;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
-    LocalIpScheme, MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme,
+    LocalIpScheme, MemoryUsageScheme, NatsScheme, NodeScheme, OsScheme, PrScheme, PythonScheme,
+    ReadOnlyScheme,
     ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -153,6 +154,16 @@ impl HostScheme for RainbowTheme {
 impl JobsScheme for RainbowTheme {}
 
 impl KubernetesScheme for RainbowTheme {}
+
+impl NatsScheme for RainbowTheme {
+    fn nats_fg() -> Color {
+        white()
+    }
+
+    fn nats_bg() -> Color {
+        nice_purple()
+    }
+}
 
 impl SudoScheme for RainbowTheme {
     fn sudo_fg() -> Color {
