@@ -137,8 +137,8 @@ impl<S: OsScheme> Os<S> {
 
 impl<S: OsScheme> Module for Os<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_short_segment(
-            format!("{} ", S::os_symbol(self.kind)),
+        powerline.add_segment(
+            S::os_symbol(self.kind),
             Style::simple(S::os_fg(), S::os_bg()),
         );
     }
