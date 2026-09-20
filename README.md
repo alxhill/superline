@@ -268,7 +268,8 @@ hidden with no jobs, shows `✦` for one job, and shows `✦N` for two or more j
 
 Adds literal text to the prompt using the theme's default colours. Text is required and is supplied as a JSON string;
 printable Unicode and punctuation are preserved. Terminal control characters and line separators are shown as visible
-escape sequences so a value in the config cannot reset the prompt or inject another prompt line.
+escape sequences so a value in the config cannot reset the prompt or inject another prompt line. Shell prompt syntax
+such as Bash command substitutions and zsh percent escapes is quoted before the value is returned.
 
 ```json
 { "text": "hello 🌈" }

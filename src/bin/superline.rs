@@ -60,8 +60,19 @@ function _update_ps1() {
         fi
     fi
     __pl_jobs=${#jobstates[*]}
-    PS1="$(superline show -s $__pl_status -c $COLUMNS zsh $_elapsed --jobs $__pl_jobs)"
-    RPS1="$(superline show-right -s $__pl_status -c $COLUMNS zsh $_elapsed --jobs $__pl_jobs)"
+    # Keep the rendered prompt in an indirection variable when PROMPT_SUBST
+    # is enabled. Zsh expands the variable once, but does not re-expand text
+    # returned by it, so literal `$()` and backticks in a Text widget remain
+    # literal instead of becoming commands.
+    __pl_prompt="$(superline show -s $__pl_status -c $COLUMNS zsh $_elapsed --jobs $__pl_jobs)"
+    __pl_right_prompt="$(superline show-right -s $__pl_status -c $COLUMNS zsh $_elapsed --jobs $__pl_jobs)"
+    if [[ -o promptsubst ]]; then
+        PS1='$__pl_prompt'
+        RPS1='$__pl_right_prompt'
+    else
+        PS1="$__pl_prompt"
+        RPS1="$__pl_right_prompt"
+    fi
     unset __pl_status __pl_jobs __pl_timer _elapsed _now
 }
 
