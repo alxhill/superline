@@ -87,6 +87,13 @@ On first run superline writes a default config to `$HOME/.config/superline/confi
 next prompt - no reload needed. [`example_config.json`](example_config.json) shows a complete setup and
 `src/config.rs` is the authoritative definition of every option.
 
+To preview all Starship-inspired system widgets without replacing your live
+configuration, run:
+
+```sh
+superline show --config examples/starship-widgets.json -s 0 -c 160 fish --jobs 2
+```
+
 A config has a `theme` and a list of `rows`:
 
 ```json
