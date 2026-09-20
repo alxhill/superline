@@ -13,14 +13,8 @@ use crate::{Powerline, Style};
 
 use super::Module;
 
-/// The Nerd Font `memory` glyph. It is deliberately fixed for now: the
-/// module has no user-facing formatting knobs yet.
+/// The Nerd Font `memory` glyph.
 const MEMORY_ICON: &str = "\u{f035b}";
-
-/// Show the widget only when memory pressure is high enough to be useful in a
-/// prompt. This provides a useful default without adding another option to
-/// superline's intentionally small configuration surface.
-const RAM_DISPLAY_THRESHOLD_PERCENT: u8 = 75;
 
 /// A fraction of a percent is too noisy to call out in a prompt. Round-down
 /// percentage formatting means this also keeps a displayed `0%` out of the
@@ -58,18 +52,20 @@ pub trait MemoryUsageScheme: DefaultColors {
 }
 
 pub struct MemoryUsage<S: MemoryUsageScheme> {
+    threshold: Option<u8>,
     scheme: PhantomData<S>,
 }
 
 impl<S: MemoryUsageScheme> Default for MemoryUsage<S> {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
 impl<S: MemoryUsageScheme> MemoryUsage<S> {
-    pub fn new() -> Self {
+    pub fn new(threshold: Option<u8>) -> Self {
         Self {
+            threshold,
             scheme: PhantomData,
         }
     }
@@ -81,7 +77,7 @@ impl<S: MemoryUsageScheme> Module for MemoryUsage<S> {
             return;
         };
 
-        if let Some(text) = format_memory(stats) {
+        if let Some(text) = format_memory(stats, self.threshold) {
             powerline.add_segment(
                 text,
                 Style::simple(S::memory_usage_fg(), S::memory_usage_bg()),
@@ -90,12 +86,11 @@ impl<S: MemoryUsageScheme> Module for MemoryUsage<S> {
     }
 }
 
-fn format_memory(stats: MemoryStats) -> Option<String> {
-    if !memory_is_alerting(stats) {
+fn format_memory(stats: MemoryStats, threshold: Option<u8>) -> Option<String> {
+    let ram_percent = usage_percent(stats.used(), stats.total)?;
+    if threshold.is_some_and(|threshold| ram_percent < threshold) {
         return None;
     }
-
-    let ram_percent = usage_percent(stats.used(), stats.total)?;
     let mut text = format!("{MEMORY_ICON} {ram_percent}%");
 
     if let Some(swap_percent) = meaningful_swap_percent(stats) {
@@ -103,11 +98,6 @@ fn format_memory(stats: MemoryStats) -> Option<String> {
     }
 
     Some(text)
-}
-
-fn memory_is_alerting(stats: MemoryStats) -> bool {
-    usage_percent(stats.used(), stats.total)
-        .is_some_and(|percent| percent >= RAM_DISPLAY_THRESHOLD_PERCENT)
 }
 
 fn meaningful_swap_percent(stats: MemoryStats) -> Option<u8> {
@@ -317,17 +307,18 @@ mod tests {
 
     #[test]
     fn hides_memory_below_threshold_and_shows_at_threshold() {
-        assert!(!memory_is_alerting(stats(74, 100, 0, 0)));
-        assert!(memory_is_alerting(stats(75, 100, 0, 0)));
-        assert!(memory_is_alerting(stats(76, 100, 0, 0)));
-        assert_eq!(format_memory(stats(74, 100, 0, 0)), None);
+        assert_eq!(format_memory(stats(74, 100, 0, 0), Some(75)), None);
         assert_eq!(
-            format_memory(stats(75, 100, 0, 0)),
+            format_memory(stats(75, 100, 0, 0), Some(75)),
             Some("\u{f035b} 75%".into())
         );
         assert_eq!(
-            format_memory(stats(76, 100, 0, 0)),
+            format_memory(stats(76, 100, 0, 0), Some(75)),
             Some("\u{f035b} 76%".into())
+        );
+        assert_eq!(
+            format_memory(stats(1, 100, 0, 0), None),
+            Some("\u{f035b} 1%".into())
         );
     }
 
@@ -336,22 +327,22 @@ mod tests {
         assert_eq!(meaningful_swap_percent(stats(80, 100, 0, 100)), None);
         assert_eq!(meaningful_swap_percent(stats(80, 100, 1, 100)), Some(1));
         assert_eq!(
-            format_memory(stats(80, 100, 0, 100)),
+            format_memory(stats(80, 100, 0, 100), None),
             Some("\u{f035b} 80%".into())
         );
         assert_eq!(
-            format_memory(stats(80, 100, 1, 100)),
+            format_memory(stats(80, 100, 1, 100), None),
             Some("\u{f035b} 80% | swap 1%".into())
         );
         assert_eq!(
-            format_memory(stats(80, 100, 100, 100)),
+            format_memory(stats(80, 100, 100, 100), None),
             Some("\u{f035b} 80% | swap 100%".into())
         );
     }
 
     #[test]
     fn unusable_totals_do_not_render() {
-        assert_eq!(format_memory(stats(0, 0, 0, 0)), None);
+        assert_eq!(format_memory(stats(0, 0, 0, 0), None), None);
     }
 
     #[cfg(target_os = "linux")]

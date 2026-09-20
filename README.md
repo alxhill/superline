@@ -87,13 +87,6 @@ On first run superline writes a default config to `$HOME/.config/superline/confi
 next prompt - no reload needed. [`example_config.json`](example_config.json) shows a complete setup and
 `src/config.rs` is the authoritative definition of every option.
 
-To preview all system widgets without replacing your live
-configuration, run:
-
-```sh
-superline show --config examples/system-widgets.json -s 0 -c 160 fish --jobs 2
-```
-
 A config has a `theme` and a list of `rows`:
 
 ```json
@@ -238,13 +231,17 @@ categories such as loopback, multicast, and broadcast are filtered out.
 
 #### memory_usage
 
-An alert-style memory indicator: it stays hidden below 75% RAM usage, then
-shows a compact percentage. If swap is at least 1% used, its percentage is
-shown alongside RAM. The lookup is a small local read, so it does not use the
-background cache.
+Shows a compact memory percentage. If swap is at least 1% used, its percentage
+is shown alongside RAM. The lookup is a small local read, so it does not use
+the background cache. Set `threshold` to hide the segment below a percentage;
+without a threshold it is always shown.
 
 ```json
 "memory_usage"
+```
+
+```json
+{ "memory_usage": { "threshold": 75 } }
 ```
 
 The segment is available on Linux, macOS and Windows; it is omitted when the
@@ -265,7 +262,8 @@ themes may override the colours and symbol in their os module.
 #### jobs
 
 Shows background jobs owned by the current shell, including stopped jobs. It is
-hidden with no jobs, shows `✦` for one job, and shows `✦N` for two or more jobs.
+hidden with no jobs, shows a gears icon for one job, and adds the count for two
+or more jobs.
 
 ```json
 "jobs"

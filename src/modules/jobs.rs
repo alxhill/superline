@@ -27,7 +27,7 @@ pub trait JobsScheme: DefaultColors {
     }
 
     fn jobs_symbol() -> &'static str {
-        "✦"
+        "\u{f085}" // nf-fa-gears
     }
 }
 
@@ -82,11 +82,11 @@ mod tests {
 
     #[test]
     fn shows_symbol_for_one_job() {
-        assert_eq!(display_text::<TestTheme>(1).as_deref(), Some("✦"));
+        assert_eq!(display_text::<TestTheme>(1).as_deref(), Some("\u{f085}"));
     }
 
     #[test]
     fn shows_symbol_and_count_for_multiple_jobs() {
-        assert_eq!(display_text::<TestTheme>(3).as_deref(), Some("✦3"));
+        assert_eq!(display_text::<TestTheme>(3).as_deref(), Some("\u{f085}3"));
     }
 }

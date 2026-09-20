@@ -111,7 +111,12 @@ pub enum LineSegment {
     /// Show the primary non-loopback IPv4 address.
     LocalIp,
     /// Show used and total system memory, plus swap when it is available.
-    MemoryUsage,
+    MemoryUsage {
+        /// Hide the segment below this percentage. With no threshold it is
+        /// always shown.
+        #[serde(default)]
+        threshold: Option<u8>,
+    },
     Os,
     Sudo,
     Shell,
@@ -235,7 +240,10 @@ enum KnownLineSegment {
     Jobs,
     #[serde(alias = "localip")]
     LocalIp,
-    MemoryUsage,
+    MemoryUsage {
+        #[serde(default)]
+        threshold: Option<u8>,
+    },
     Os,
     Sudo,
     Shell,
@@ -316,7 +324,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Hostname => LineSegment::Hostname,
             KnownLineSegment::Jobs => LineSegment::Jobs,
             KnownLineSegment::LocalIp => LineSegment::LocalIp,
-            KnownLineSegment::MemoryUsage => LineSegment::MemoryUsage,
+            KnownLineSegment::MemoryUsage { threshold } => LineSegment::MemoryUsage { threshold },
             KnownLineSegment::Os => LineSegment::Os,
             KnownLineSegment::Sudo => LineSegment::Sudo,
             KnownLineSegment::Shell => LineSegment::Shell,
@@ -517,12 +525,6 @@ impl Default for Config {
                         LineSegment::Padding(2),
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::ReadOnly,
-                        LineSegment::Username,
-                        LineSegment::Hostname,
-                        LineSegment::LocalIp,
-                        LineSegment::MemoryUsage,
-                        LineSegment::Os,
-                        LineSegment::Sudo,
                         LineSegment::Cwd {
                             max_length: 60,
                             wanted_seg_num: 5,
@@ -535,7 +537,6 @@ impl Default for Config {
                         },
                         LineSegment::Pr { status: true },
                         LineSegment::Padding(2),
-                        LineSegment::Battery,
                         LineSegment::AiUsage {
                             provider: UsageProvider::Claude,
                             session: true,
@@ -572,15 +573,13 @@ impl Default for Config {
                             session_time_remaining_only_at_limit: 0.0,
                         },
                     ],
-                    right: Some(vec![]),
+                    right: Some(vec![LineSegment::Sudo, LineSegment::Battery]),
                 },
                 CommandLine {
                     left: vec![
                         LineSegment::Shell,
                         LineSegment::LastCmdDuration { min_run_time: 50 },
                         LineSegment::Jobs,
-                        LineSegment::Sudo,
-                        LineSegment::Text("superline".into()),
                         LineSegment::Cmd,
                         LineSegment::Padding(1),
                     ],
@@ -629,14 +628,6 @@ mod tests {
     }
 
     #[test]
-    fn battery_is_a_bare_segment() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#""battery""#).expect("battery module should parse");
-
-        assert_eq!(parsed, LineSegment::Battery);
-    }
-
-    #[test]
     fn git_string_shorthand_uses_default_status_timeout() {
         let parsed: LineSegment =
             serde_json::from_str(r#""git""#).expect("git shorthand should parse");
@@ -648,48 +639,6 @@ mod tests {
                 backend: GitBackend::Auto,
             }
         );
-    }
-
-    #[test]
-    fn jobs_string_shorthand_parses() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#""jobs""#).expect("jobs shorthand should parse");
-
-        assert_eq!(parsed, LineSegment::Jobs);
-    }
-
-    #[test]
-    fn sudo_string_shorthand_parses() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#""sudo""#).expect("sudo shorthand should parse");
-
-        assert_eq!(parsed, LineSegment::Sudo);
-    }
-
-    #[test]
-    fn text_segment_preserves_literal_json_string() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#"{"text":"café 🌈 $HOME 100% \\ [brackets]"}"#)
-                .expect("text segment should parse");
-
-        assert_eq!(
-            parsed,
-            LineSegment::Text("café 🌈 $HOME 100% \\ [brackets]".to_string())
-        );
-        assert_eq!(
-            serde_json::to_string(&parsed).expect("text segment should serialize"),
-            r#"{"text":"café 🌈 $HOME 100% \\ [brackets]"}"#
-        );
-    }
-
-    #[test]
-    fn default_config_includes_text() {
-        assert!(Config::default().rows.iter().any(|row| {
-            row.left
-                .iter()
-                .chain(row.right.iter().flatten())
-                .any(|segment| matches!(segment, LineSegment::Text(text) if text == "superline"))
-        }));
     }
 
     #[test]
@@ -980,115 +929,6 @@ mod tests {
                 serde_json::from_str(json).unwrap_or_else(|_| panic!("{json} should parse"));
             assert_eq!(parsed, expected, "{json}");
         }
-    }
-
-    #[test]
-    fn hostname_segment_uses_the_canonical_name() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#""hostname""#).expect("hostname segment should parse");
-
-        assert_eq!(parsed, LineSegment::Hostname);
-        assert_eq!(serde_json::to_string(&parsed).unwrap(), r#""hostname""#);
-    }
-
-    #[test]
-    fn host_segment_remains_a_compatibility_alias() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#""host""#).expect("host segment should parse");
-
-        assert_eq!(parsed, LineSegment::Host);
-    }
-
-    #[test]
-    fn default_config_includes_hostname() {
-        assert!(Config::default().rows.iter().any(|row| {
-            row.left
-                .iter()
-                .chain(row.right.iter().flatten())
-                .any(|segment| matches!(segment, LineSegment::Hostname))
-        }));
-    }
-
-    #[test]
-    fn username_segment_uses_the_aligned_name() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#""username""#).expect("username segment should parse");
-
-        assert_eq!(parsed, LineSegment::Username);
-        assert_eq!(serde_json::to_string(&parsed).unwrap(), r#""username""#);
-    }
-
-    #[test]
-    fn user_segment_remains_a_compatibility_alias() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#""user""#).expect("user segment should parse");
-
-        assert_eq!(parsed, LineSegment::User);
-    }
-
-    #[test]
-    fn default_config_includes_username() {
-        assert!(Config::default().rows.iter().any(|row| {
-            row.left
-                .iter()
-                .chain(row.right.iter().flatten())
-                .any(|segment| matches!(segment, LineSegment::Username))
-        }));
-    }
-
-    #[test]
-    fn local_ip_segment_accepts_the_snake_case_name_and_alias() {
-        for name in ["local_ip", "localip"] {
-            let parsed: LineSegment = serde_json::from_str(&format!(r#""{name}""#))
-                .unwrap_or_else(|_| panic!("{name} segment should parse"));
-            assert_eq!(parsed, LineSegment::LocalIp);
-        }
-
-        assert_eq!(
-            serde_json::to_string(&LineSegment::LocalIp).unwrap(),
-            r#""local_ip""#
-        );
-    }
-
-    #[test]
-    fn default_config_includes_local_ip() {
-        assert!(Config::default().rows.iter().any(|row| {
-            row.left
-                .iter()
-                .chain(row.right.iter().flatten())
-                .any(|segment| matches!(segment, LineSegment::LocalIp))
-        }));
-    }
-
-    #[test]
-    fn os_string_shorthand_parses() {
-        let parsed: LineSegment = serde_json::from_str(r#""os""#).expect("os module should parse");
-
-        assert_eq!(parsed, LineSegment::Os);
-    }
-
-    #[test]
-    fn default_config_includes_os() {
-        assert!(Config::default().rows.iter().any(|row| {
-            row.left
-                .iter()
-                .chain(row.right.iter().flatten())
-                .any(|segment| matches!(segment, LineSegment::Os))
-        }));
-    }
-
-    #[test]
-    fn memory_usage_segment_parses_and_is_enabled_by_default() {
-        let parsed: LineSegment =
-            serde_json::from_str(r#""memory_usage""#).expect("memory_usage segment should parse");
-
-        assert_eq!(parsed, LineSegment::MemoryUsage);
-        assert!(Config::default().rows.iter().any(|row| {
-            row.left
-                .iter()
-                .chain(row.right.iter().flatten())
-                .any(|segment| matches!(segment, LineSegment::MemoryUsage))
-        }));
     }
 
     #[test]

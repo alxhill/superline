@@ -14,11 +14,11 @@ use super::Module;
 /// case while still making the low-battery warning hard to miss.
 const DISPLAY_THRESHOLD_PERCENT: f32 = 10.0;
 
-const FULL_SYMBOL: &str = "\u{f0079}";
-const CHARGING_SYMBOL: &str = "\u{f0084}";
-const DISCHARGING_SYMBOL: &str = "\u{f0083}";
-const UNKNOWN_SYMBOL: &str = "\u{f0091}";
-const EMPTY_SYMBOL: &str = "\u{f008e}";
+const FULL_SYMBOL: &str = "\u{f0079}"; // nf-md-battery
+const CHARGING_SYMBOL: &str = "\u{f0084}"; // nf-md-battery_charging
+const DISCHARGING_SYMBOL: &str = "\u{f0083}"; // nf-md-battery_alert
+const UNKNOWN_SYMBOL: &str = "\u{f0091}"; // nf-md-battery_unknown
+const EMPTY_SYMBOL: &str = "\u{f008e}"; // nf-md-battery_outline
 
 pub struct Battery<S> {
     status: Option<BatteryStatus>,

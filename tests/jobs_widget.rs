@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_superline");
-const JOBS_SYMBOL: &str = "✦";
+const JOBS_SYMBOL: &str = "\u{f085}";
 
 fn scratch_dir(label: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("superline-jobs-{}-{label}", std::process::id()));
@@ -66,12 +66,12 @@ fn jobs_are_hidden_when_the_shell_reports_none() {
 fn one_job_shows_only_the_symbol() {
     let prompt = render(1);
     assert!(prompt.contains(JOBS_SYMBOL), "prompt was: {prompt}");
-    assert!(!prompt.contains("✦1"), "prompt was: {prompt}");
+    assert!(!prompt.contains("\u{f085}1"), "prompt was: {prompt}");
 }
 
 #[test]
 fn multiple_jobs_show_the_symbol_and_count() {
-    assert!(render(3).contains("✦3"));
+    assert!(render(3).contains("\u{f085}3"));
 }
 
 #[test]

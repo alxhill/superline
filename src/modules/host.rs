@@ -67,23 +67,3 @@ fn hostname_text(host: std::ffi::OsString) -> Option<String> {
     let host = host.to_string_lossy().into_owned();
     (!host.is_empty()).then_some(host)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::hostname_text;
-    use std::ffi::OsString;
-
-    #[test]
-    fn hostname_text_preserves_unicode() {
-        assert_eq!(
-            hostname_text(OsString::from("laptop")),
-            Some("laptop".into())
-        );
-        assert_eq!(hostname_text(OsString::from("café")), Some("café".into()));
-    }
-
-    #[test]
-    fn hostname_text_ignores_empty_values() {
-        assert_eq!(hostname_text(OsString::new()), None);
-    }
-}

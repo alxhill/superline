@@ -366,7 +366,9 @@ impl Powerline {
                 LineSegment::Jobs => self.add_module(Jobs::<T>::new(runtime_data.job_count())),
                 LineSegment::LocalIp => self.add_module(LocalIp::<T>::new()),
                 LineSegment::Os => self.add_module(Os::<T>::new()),
-                LineSegment::MemoryUsage => self.add_module(MemoryUsage::<T>::new()),
+                LineSegment::MemoryUsage { threshold } => {
+                    self.add_module(MemoryUsage::<T>::new(*threshold))
+                }
                 LineSegment::Sudo => self.add_module(Sudo::<T>::new()),
                 LineSegment::Shell => {
                     self.add_module(ShellName::<T>::new(runtime_data.shell_name()))
