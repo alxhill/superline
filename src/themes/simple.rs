@@ -156,7 +156,7 @@ impl MemoryUsageScheme for SimpleTheme {
     }
 
     fn memory_usage_bg() -> Color {
-        Color(31)
+        Color(160)
     }
 }
 

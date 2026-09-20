@@ -17,6 +17,16 @@ use super::Module;
 /// module has no user-facing formatting knobs yet.
 const MEMORY_ICON: &str = "\u{f035b}";
 
+/// Show the widget only when memory pressure is high enough to be useful in a
+/// prompt. This mirrors Starship's default threshold without adding another
+/// option to superline's intentionally small configuration surface.
+const RAM_DISPLAY_THRESHOLD_PERCENT: u8 = 75;
+
+/// A fraction of a percent is too noisy to call out in a prompt. Round-down
+/// percentage formatting means this also keeps a displayed `0%` out of the
+/// swap lane.
+const SWAP_DISPLAY_THRESHOLD_PERCENT: u8 = 1;
+
 /// A snapshot of physical and swap memory, in bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MemoryStats {
@@ -39,11 +49,11 @@ impl MemoryStats {
 /// Theme hooks for the memory segment.
 pub trait MemoryUsageScheme: DefaultColors {
     fn memory_usage_fg() -> Color {
-        Self::default_fg()
+        Self::alert_fg()
     }
 
     fn memory_usage_bg() -> Color {
-        Self::default_bg()
+        Self::alert_bg()
     }
 }
 
@@ -71,49 +81,49 @@ impl<S: MemoryUsageScheme> Module for MemoryUsage<S> {
             return;
         };
 
-        powerline.add_segment(
-            format_memory(stats),
-            Style::simple(S::memory_usage_fg(), S::memory_usage_bg()),
-        );
+        if let Some(text) = format_memory(stats) {
+            powerline.add_segment(
+                text,
+                Style::simple(S::memory_usage_fg(), S::memory_usage_bg()),
+            );
+        }
     }
 }
 
-fn format_memory(stats: MemoryStats) -> String {
-    let mut text = format!(
-        "{MEMORY_ICON} {}/{}",
-        display_bytes(stats.used()),
-        display_bytes(stats.total),
-    );
-
-    // Match starship's useful default of showing swap only when the machine
-    // has a swap device/file configured. The explicit label keeps the second
-    // pair understandable in a compact prompt.
-    if stats.swap_total > 0 {
-        text.push_str(&format!(
-            " | swap {}/{}",
-            display_bytes(stats.swap_used()),
-            display_bytes(stats.swap_total),
-        ));
+fn format_memory(stats: MemoryStats) -> Option<String> {
+    if !memory_is_alerting(stats) {
+        return None;
     }
 
-    text
+    let ram_percent = usage_percent(stats.used(), stats.total)?;
+    let mut text = format!("{MEMORY_ICON} {ram_percent}%");
+
+    if let Some(swap_percent) = meaningful_swap_percent(stats) {
+        text.push_str(&format!(" | swap {swap_percent}%"));
+    }
+
+    Some(text)
 }
 
-/// Render a byte count with a short binary unit and no decimal places.
-///
-/// Keeping the display to whole units makes the segment stable from one
-/// prompt to the next and mirrors starship's compact memory presentation.
-fn display_bytes(bytes: u64) -> String {
-    const UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+fn memory_is_alerting(stats: MemoryStats) -> bool {
+    usage_percent(stats.used(), stats.total)
+        .is_some_and(|percent| percent >= RAM_DISPLAY_THRESHOLD_PERCENT)
+}
 
-    let mut value = bytes;
-    let mut unit = 0;
-    while value >= 1024 && unit < UNITS.len() - 1 {
-        value /= 1024;
-        unit += 1;
-    }
+fn meaningful_swap_percent(stats: MemoryStats) -> Option<u8> {
+    usage_percent(stats.swap_used(), stats.swap_total)
+        .filter(|percent| *percent >= SWAP_DISPLAY_THRESHOLD_PERCENT)
+}
 
-    format!("{value}{}", UNITS[unit])
+/// Return a whole-number percentage without floating-point rounding at the
+/// visibility boundary. A zero total is not a usable reading.
+fn usage_percent(used: u64, total: u64) -> Option<u8> {
+    (total > 0).then(|| {
+        (u128::from(used.min(total)) * 100 / u128::from(total))
+            .min(100)
+            .try_into()
+            .expect("a clamped percentage always fits in u8")
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -296,40 +306,52 @@ fn parse_meminfo(contents: &str) -> Option<MemoryStats> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn displays_binary_units_without_decimals() {
-        assert_eq!(display_bytes(0), "0B");
-        assert_eq!(display_bytes(1023), "1023B");
-        assert_eq!(display_bytes(1024), "1KiB");
-        assert_eq!(display_bytes(1024 * 1024 * 1024), "1GiB");
+    fn stats(ram_used: u64, ram_total: u64, swap_used: u64, swap_total: u64) -> MemoryStats {
+        MemoryStats {
+            total: ram_total,
+            available: ram_total.saturating_sub(ram_used),
+            swap_total,
+            swap_available: swap_total.saturating_sub(swap_used),
+        }
     }
 
     #[test]
-    fn formats_used_and_swap_memory() {
-        let stats = MemoryStats {
-            total: 16 * 1024 * 1024 * 1024,
-            available: 6 * 1024 * 1024 * 1024,
-            swap_total: 2 * 1024 * 1024 * 1024,
-            swap_available: 1024 * 1024 * 1024,
-        };
-        assert_eq!(display_bytes(stats.used()), "10GiB");
-        assert_eq!(display_bytes(stats.swap_used()), "1GiB");
+    fn hides_memory_below_threshold_and_shows_at_threshold() {
+        assert!(!memory_is_alerting(stats(74, 100, 0, 0)));
+        assert!(memory_is_alerting(stats(75, 100, 0, 0)));
+        assert!(memory_is_alerting(stats(76, 100, 0, 0)));
+        assert_eq!(format_memory(stats(74, 100, 0, 0)), None);
         assert_eq!(
-            format_memory(stats),
-            "\u{f035b} 10GiB/16GiB | swap 1GiB/2GiB"
+            format_memory(stats(75, 100, 0, 0)),
+            Some("\u{f035b} 75%".into())
+        );
+        assert_eq!(
+            format_memory(stats(76, 100, 0, 0)),
+            Some("\u{f035b} 76%".into())
         );
     }
 
     #[test]
-    fn omits_swap_when_the_machine_has_none() {
-        let stats = MemoryStats {
-            total: 8 * 1024 * 1024 * 1024,
-            available: 2 * 1024 * 1024 * 1024,
-            swap_total: 0,
-            swap_available: 0,
-        };
+    fn includes_swap_only_when_at_least_one_percent_is_used() {
+        assert_eq!(meaningful_swap_percent(stats(80, 100, 0, 100)), None);
+        assert_eq!(meaningful_swap_percent(stats(80, 100, 1, 100)), Some(1));
+        assert_eq!(
+            format_memory(stats(80, 100, 0, 100)),
+            Some("\u{f035b} 80%".into())
+        );
+        assert_eq!(
+            format_memory(stats(80, 100, 1, 100)),
+            Some("\u{f035b} 80% | swap 1%".into())
+        );
+        assert_eq!(
+            format_memory(stats(80, 100, 100, 100)),
+            Some("\u{f035b} 80% | swap 100%".into())
+        );
+    }
 
-        assert_eq!(format_memory(stats), "\u{f035b} 6GiB/8GiB");
+    #[test]
+    fn unusable_totals_do_not_render() {
+        assert_eq!(format_memory(stats(0, 0, 0, 0)), None);
     }
 
     #[cfg(target_os = "linux")]
