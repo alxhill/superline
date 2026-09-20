@@ -72,6 +72,10 @@ impl OsKind {
     /// Nerd Font symbols used by the built-in themes. These are deliberately
     /// family-level defaults rather than a distro database: the widget stays
     /// instant and predictable on Linux distributions and BSD variants alike.
+    ///
+    /// The BSD and Illumos values follow Starship's Nerd Font preset. Solaris
+    /// and Haiku do not have a built-in Starship symbol, so they use the
+    /// neutral platform marker instead of borrowing the Linux logo.
     pub fn default_symbol(self) -> &'static str {
         match self {
             Self::Android => "\u{f17b}",
@@ -79,13 +83,18 @@ impl OsKind {
             Self::Macos => "\u{f179}",
             Self::Windows => "\u{f17a}",
             Self::FreeBsd => "\u{f30c}",
-            Self::OpenBsd | Self::NetBsd | Self::DragonFly => "\u{f17c}",
-            Self::Illumos | Self::Solaris => "\u{f17c}",
-            Self::Haiku => "?",
-            Self::Unknown => "?",
+            Self::OpenBsd => "\u{f023a}",
+            Self::NetBsd => "\u{f0244}",
+            Self::DragonFly => "\u{e28e}",
+            Self::Illumos => "\u{f0238}",
+            Self::Solaris | Self::Haiku | Self::Unknown => GENERIC_UNIX_SYMBOL,
         }
     }
 }
+
+/// A neutral, widely supported Nerd Font marker for OS families without a
+/// dedicated Starship symbol.
+const GENERIC_UNIX_SYMBOL: &str = "\u{f0ac}";
 
 /// Shows a compact icon for the current operating system.
 pub struct Os<S: OsScheme> {
@@ -157,7 +166,7 @@ mod tests {
     #[test]
     fn unknown_targets_use_a_safe_fallback() {
         assert_eq!(OsKind::from_target("plan9"), OsKind::Unknown);
-        assert_eq!(OsKind::Unknown.default_symbol(), "?");
+        assert_eq!(OsKind::Unknown.default_symbol(), GENERIC_UNIX_SYMBOL);
     }
 
     #[test]
@@ -174,5 +183,32 @@ mod tests {
             OsKind::Macos.default_symbol(),
             OsKind::Windows.default_symbol()
         );
+    }
+
+    #[test]
+    fn known_bsd_and_illumos_targets_do_not_use_linux_symbol() {
+        let linux = OsKind::Linux.default_symbol();
+        for kind in [
+            OsKind::OpenBsd,
+            OsKind::NetBsd,
+            OsKind::DragonFly,
+            OsKind::Illumos,
+        ] {
+            assert_ne!(kind.default_symbol(), linux);
+        }
+
+        assert_eq!(OsKind::OpenBsd.default_symbol(), "\u{f023a}");
+        assert_eq!(OsKind::NetBsd.default_symbol(), "\u{f0244}");
+        assert_eq!(OsKind::DragonFly.default_symbol(), "\u{e28e}");
+        assert_eq!(OsKind::Illumos.default_symbol(), "\u{f0238}");
+    }
+
+    #[test]
+    fn targets_without_a_starship_symbol_use_the_neutral_marker() {
+        for kind in [OsKind::Solaris, OsKind::Haiku, OsKind::Unknown] {
+            assert_eq!(kind.default_symbol(), GENERIC_UNIX_SYMBOL);
+            assert_ne!(kind.default_symbol(), "?");
+            assert_ne!(kind.default_symbol(), OsKind::Linux.default_symbol());
+        }
     }
 }
