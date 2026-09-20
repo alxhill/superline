@@ -229,6 +229,19 @@ categories such as loopback, multicast, and broadcast are filtered out.
 "local_ip"
 ```
 
+#### memory_usage
+
+Shows used and total physical memory with binary units. If the system reports
+swap, its used and total size is shown after the RAM value. The lookup is a
+small local read, so it does not use the background cache.
+
+```json
+"memory_usage"
+```
+
+The segment is available on Linux, macOS and Windows; it is omitted when the
+operating system cannot provide a memory reading.
+
 #### os
 
 Shows a compact Nerd Font icon for the current operating-system family. It

@@ -63,6 +63,10 @@
       "bg": "dark_grey",
       "fg": "white"
     },
+    "memory_usage": {
+      "bg": "dark_blue",
+      "fg": "white"
+    },
     "ai_usage": {
       "claude_bg": "burnt_orange",
       "claude_fg": "black",
