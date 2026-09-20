@@ -26,6 +26,7 @@ mod os;
 mod python;
 mod shell_name;
 mod spacer;
+mod sudo;
 mod time;
 mod unknown;
 mod usage;
@@ -52,6 +53,7 @@ pub use python::{Python, PythonScheme, PythonVersion};
 pub use readonly::{ReadOnly, ReadOnlyScheme};
 pub use shell_name::{ShellName, ShellScheme};
 pub use spacer::{Spacer, SpacerScheme};
+pub use sudo::{Sudo, SudoLookup, SudoScheme};
 pub use time::{Time, TimeScheme};
 pub use unknown::{Unknown, UnknownScheme};
 pub use usage::{Usage, UsageLookup, UsageScheme, UsageWindow, UsageWindows};
@@ -73,6 +75,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
         KubernetesLookup::KIND => refresh_from_json::<KubernetesLookup>(source),
         NatsLookup::KIND => refresh_from_json::<NatsLookup>(source),
+        SudoLookup::KIND => refresh_from_json::<SudoLookup>(source),
         UpdateLookup::KIND => refresh_from_json::<UpdateLookup>(source),
         _ => false,
     }

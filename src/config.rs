@@ -115,6 +115,7 @@ pub enum LineSegment {
     Os,
     /// Show used and total system memory, plus swap when it is available.
     MemoryUsage,
+    Sudo,
     Shell,
     Time {
         format: Option<String>,
@@ -237,6 +238,7 @@ enum KnownLineSegment {
     Nats,
     Os,
     MemoryUsage,
+    Sudo,
     Shell,
     Time {
         format: Option<String>,
@@ -318,6 +320,7 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Nats => LineSegment::Nats,
             KnownLineSegment::Os => LineSegment::Os,
             KnownLineSegment::MemoryUsage => LineSegment::MemoryUsage,
+            KnownLineSegment::Sudo => LineSegment::Sudo,
             KnownLineSegment::Shell => LineSegment::Shell,
             KnownLineSegment::Time { format } => LineSegment::Time { format },
             KnownLineSegment::AiUsage {
@@ -433,6 +436,7 @@ fn is_known_segment_name(name: &str) -> bool {
             | "nats"
             | "os"
             | "memory_usage"
+            | "sudo"
             | "shell"
             | "time"
             | "ai_usage"
@@ -578,6 +582,7 @@ impl Default for Config {
                         LineSegment::Shell,
                         LineSegment::LastCmdDuration { min_run_time: 50 },
                         LineSegment::Jobs,
+                        LineSegment::Sudo,
                         LineSegment::Cmd,
                         LineSegment::Padding(1),
                     ],
@@ -679,6 +684,14 @@ mod tests {
                 .chain(row.right.iter().flatten())
                 .any(|segment| matches!(segment, LineSegment::Os))
         }));
+    }
+
+    #[test]
+    fn sudo_string_shorthand_parses() {
+        let parsed: LineSegment =
+            serde_json::from_str(r#""sudo""#).expect("sudo shorthand should parse");
+
+        assert_eq!(parsed, LineSegment::Sudo);
     }
 
     #[test]

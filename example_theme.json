@@ -59,6 +59,11 @@
       "bg": "nice_purple",
       "icon": "✉️ "
     },
+    "sudo": {
+      "fg": "white",
+      "bg": "nice_purple",
+      "symbol": "⚿"
+    },
     "python": {
       "env_fg": "dark_grey",
       "env_bg": "light_green",

@@ -4,7 +4,8 @@ use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
     LocalIpScheme, MemoryUsageScheme, NatsScheme, NodeScheme, OsScheme, PrScheme, PythonScheme,
-    ReadOnlyScheme, ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme,
+    UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
 use crate::update::UpdateScheme;
@@ -189,6 +190,16 @@ impl MemoryUsageScheme for RainbowTheme {
 
     fn memory_usage_bg() -> Color {
         warning_red()
+    }
+}
+
+impl SudoScheme for RainbowTheme {
+    fn sudo_fg() -> Color {
+        white()
+    }
+
+    fn sudo_bg() -> Color {
+        nice_purple()
     }
 }
 

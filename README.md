@@ -299,6 +299,21 @@ background cache.
 The segment is available on Linux, macOS and Windows; it is omitted when the
 operating system cannot provide a memory reading.
 
+#### sudo
+
+Shows `⚿` when the current user's sudo credentials are already cached. The
+check is non-interactive (`sudo -Nnv`) and runs through superline's background
+cache, so it never asks for a password, runs a privileged command, or blocks
+prompt rendering. `-N` is important: it prevents the prompt from extending the
+sudo timestamp on every refresh. Systems or sudo policies without `-N` support
+leave the widget hidden rather than falling back to a timestamp-extending
+probe. It is also hidden when sudo is unavailable or credentials are not
+cached.
+
+```json
+"sudo"
+```
+
 #### time
 
 The current time. `format` is a [strftime](https://docs.rs/chrono/latest/chrono/format/strftime/index.html)
@@ -498,7 +513,7 @@ A theme file has two keys, `defaults` and `modules`:
 - **defaults** - the `fg` and `bg` used for anything a module doesn't set.
 - **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colours (`git` has
   `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`,
-  `kubernetes.icon`, and `mise_icon` on the language modules - set a marker to `""` to hide it). Anything omitted falls back to
+  `kubernetes.icon`, `sudo.symbol`, and `mise_icon` on the language modules - set a marker to `""` to hide it). Anything omitted falls back to
   `defaults`.
 
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
@@ -515,7 +530,7 @@ module name and property.
 | `superline install <shell>` | Append the prompt loader to the shell's config file. |
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
 | `superline config` | Open the config file in `$EDITOR`. |
-| `superline clear-caches` | Wipe cached git status, PR lookups, AI usage and NATS context so the next prompt starts cold. |
+| `superline clear-caches` | Wipe cached git status, PR lookups, AI usage, NATS context and sudo checks so the next prompt starts cold. |
 
 ## Debugging a slow prompt
 

@@ -202,9 +202,10 @@ enum PowerlineArgs {
     Install(InstallArgs),
     Config,
     /// Remove all cached data (git status, PR lookups, AI usage, NATS context,
-    /// update checks) so the next prompt starts from a cold cache.
+    /// sudo checks and update checks) so the next prompt starts from a cold cache.
     ClearCaches,
-    /// Internal: refresh one cached lookup (git status, PR, AI usage, NATS, ...).
+    /// Internal: refresh one cached lookup (git status, PR, AI usage, NATS, sudo,
+    /// ...).
     /// Spawned in the background by `superline::cache` - not intended to be
     /// called by hand.
     #[command(hide = true)]
