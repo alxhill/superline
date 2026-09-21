@@ -286,6 +286,7 @@ fn capture(
     command.env("BASH_SILENCE_DEPRECATION_WARNING", "1");
     command.env("fish_features", "no-query-terminal");
     command.env("SUPERLINE_BIN", superline);
+    command.env("SUPERLINE_E2E_HOME", &home);
     command.env("PATH", path_with_binary(superline)?);
 
     let mut writer = pty.master.take_writer()?;
@@ -439,7 +440,7 @@ fn shell_command(shell: Shell, executable: &Path, home: &Path) -> Result<Command
             "-NoProfile",
             "-NoExit",
             "-Command",
-            "$PSStyle.OutputRendering = 'Ansi'; (& $env:SUPERLINE_BIN init pwsh) -join \"`n\" | Invoke-Expression; Clear-Host",
+            "$env:HOME = $env:SUPERLINE_E2E_HOME; $env:USERPROFILE = $env:SUPERLINE_E2E_HOME; $PSStyle.OutputRendering = 'Ansi'; (& $env:SUPERLINE_BIN init pwsh) -join \"`n\" | Invoke-Expression; Clear-Host",
         ]),
         Shell::Nu => command.args([
             "--interactive",
