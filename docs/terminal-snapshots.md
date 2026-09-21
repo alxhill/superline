@@ -91,7 +91,8 @@ cargo run --example terminal-snapshot -- \
 The tape hides the setup, waits for the shell's stock prompt, types one line
 that exports the isolated home (`HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`,
 `XDG_CACHE_HOME`), sources the snippet, enters the fixture directory, and
-clears the screen, then shows the recording. The home is exported inside the
+clears the screen, then shows the recording. Paths are typed with forward
+slashes, which PowerShell, nushell, and Git Bash all accept on Windows. The home is exported inside the
 shell rather than on the VHS process because Chrome on Windows resolves its
 own app-data folders through `%USERPROFILE%` and exits when that points at
 the fixture. Every screenshot is gated on `Wait+Screen`
@@ -102,8 +103,8 @@ fails instead of producing a misleading image.
 
 ## CI artifacts
 
-The `Terminal snapshots` workflow captures every supported shell on macOS and
-PowerShell through ConPTY on Windows. It builds the pinned VHS, installs
+The `Terminal snapshots` workflow captures every supported shell on macOS, and
+PowerShell and Git Bash through ConPTY on Windows. It builds the pinned VHS, installs
 pinned, checksum-verified ttyd, ffmpeg (Windows), and Nerd Font builds, and
 uploads `terminal-snapshots-macos` and `terminal-snapshots-windows` artifacts
 on success or failure. They are retained for 14 days on every pull request,

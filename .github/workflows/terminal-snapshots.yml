@@ -86,7 +86,7 @@ jobs:
           retention-days: 14
 
   windows:
-    name: Windows (PowerShell)
+    name: Windows (PowerShell, Git Bash)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -116,6 +116,11 @@ jobs:
         if: steps.vhs-cache.outputs.cache-hit != 'true'
         shell: bash
         run: examples/terminal-snapshot/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
+
+      - name: Put Git Bash ahead of the WSL bash stub
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:ProgramFiles 'Git\bin')
 
       - name: Install pinned ttyd and ffmpeg
         shell: pwsh
@@ -149,12 +154,14 @@ jobs:
             -Name 'MesloLGS Nerd Font (TrueType)' -Value 'MesloLGSNerdFont-Regular.ttf' `
             -PropertyType String -Force | Out-Null
 
-      - name: Capture PowerShell prompts
+      - name: Capture PowerShell and Git Bash prompts
         shell: pwsh
         run: |
+          Write-Host "bash resolves to $((Get-Command bash).Source)"
           cargo build --locked --bin superline --example terminal-snapshot
           cargo run --locked --example terminal-snapshot -- `
             --shell pwsh `
+            --shell bash `
             --scenario all `
             --output target/terminal-snapshots `
             --vhs (Join-Path $env:RUNNER_TEMP 'vhs-bin\vhs.exe') `

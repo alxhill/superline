@@ -75,12 +75,14 @@ impl Shell {
     /// setup output. The home is exported inside the shell rather than on the
     /// VHS process: on Windows, Chrome resolves its own app-data folders
     /// through `%USERPROFILE%` and exits when that points at the fixture.
+    /// `USERPROFILE` is what superline reads on Windows, including under Git
+    /// Bash, where `HOME` is an MSYS path.
     fn setup_command(self, home: &str, init: &str, fixture: &str) -> String {
         let config = format!("{home}/.config");
         let cache = format!("{home}/.cache");
         match self {
             Self::Bash | Self::Zsh => format!(
-                "export HOME='{home}' XDG_CONFIG_HOME='{config}' XDG_CACHE_HOME='{cache}' && source '{init}' && cd '{fixture}' && clear"
+                "export HOME='{home}' USERPROFILE='{home}' XDG_CONFIG_HOME='{config}' XDG_CACHE_HOME='{cache}' && source '{init}' && cd '{fixture}' && clear"
             ),
             Self::Fish => format!(
                 "set -gx HOME '{home}'; set -gx XDG_CONFIG_HOME '{config}'; set -gx XDG_CACHE_HOME '{cache}'; source '{init}'; and cd '{fixture}'; and clear"
