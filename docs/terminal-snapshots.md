@@ -81,13 +81,17 @@ cargo run --example terminal-snapshot -- \
    (PowerShell's copy also gets an explicit `--config` path);
 3. fills `examples/terminal-snapshot/tape.template` and writes the tape next
    to the screenshots;
-4. runs VHS with `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, the locale, and
-   `PATH` pointed at the fixture and the branch-local binary;
+4. runs VHS with a pinned locale and `PATH` pointed at the branch-local
+   binary;
 5. fails unless every expected PNG was written.
 
 The tape hides the setup, waits for the shell's stock prompt, types one line
-that sources the snippet, enters the fixture directory, and clears the screen,
-then shows the recording. Every screenshot is gated on `Wait+Screen`
+that exports the isolated home (`HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`,
+`XDG_CACHE_HOME`), sources the snippet, enters the fixture directory, and
+clears the screen, then shows the recording. The home is exported inside the
+shell rather than on the VHS process because Chrome on Windows resolves its
+own app-data folders through `%USERPROFILE%` and exits when that points at
+the fixture. Every screenshot is gated on `Wait+Screen`
 assertions: the clean prompt must show the success chevron, and the failure
 prompt must show `7` while the clean prompt and the typed command are still
 visible above it. A capture whose prompt was overwritten or never rendered

@@ -70,14 +70,27 @@ impl Shell {
         }
     }
 
-    /// One hidden command line that loads the init snippet, enters the
-    /// fixture directory, and clears the setup output.
-    fn setup_command(self, init: &str, fixture: &str) -> String {
+    /// One hidden command line that points the shell at the isolated home,
+    /// loads the init snippet, enters the fixture directory, and clears the
+    /// setup output. The home is exported inside the shell rather than on the
+    /// VHS process: on Windows, Chrome resolves its own app-data folders
+    /// through `%USERPROFILE%` and exits when that points at the fixture.
+    fn setup_command(self, home: &str, init: &str, fixture: &str) -> String {
+        let config = format!("{home}/.config");
+        let cache = format!("{home}/.cache");
         match self {
-            Self::Bash | Self::Zsh => format!("source '{init}' && cd '{fixture}' && clear"),
-            Self::Fish => format!("source '{init}'; and cd '{fixture}'; and clear"),
-            Self::Pwsh => format!(". '{init}'; Set-Location '{fixture}'; Clear-Host"),
-            Self::Nu => format!("source '{init}'; cd '{fixture}'; clear"),
+            Self::Bash | Self::Zsh => format!(
+                "export HOME='{home}' XDG_CONFIG_HOME='{config}' XDG_CACHE_HOME='{cache}' && source '{init}' && cd '{fixture}' && clear"
+            ),
+            Self::Fish => format!(
+                "set -gx HOME '{home}'; set -gx XDG_CONFIG_HOME '{config}'; set -gx XDG_CACHE_HOME '{cache}'; source '{init}'; and cd '{fixture}'; and clear"
+            ),
+            Self::Pwsh => format!(
+                "$env:HOME = '{home}'; $env:USERPROFILE = '{home}'; $env:XDG_CONFIG_HOME = '{config}'; $env:XDG_CACHE_HOME = '{cache}'; . '{init}'; Set-Location '{fixture}'; Clear-Host"
+            ),
+            Self::Nu => format!(
+                "$env.HOME = '{home}'; $env.USERPROFILE = '{home}'; $env.XDG_CONFIG_HOME = '{config}'; $env.XDG_CACHE_HOME = '{cache}'; source '{init}'; cd '{fixture}'; clear"
+            ),
         }
     }
 
@@ -174,7 +187,7 @@ fn run() -> Result<()> {
             render_tape(shell, &args.scenarios, &fixture, &output, &platform),
         )?;
 
-        let result = run_vhs(&vhs, &tape_path, &log_path, &fixture, &superline, &output)
+        let result = run_vhs(&vhs, &tape_path, &log_path, &superline, &output)
             .and_then(|()| verify_screenshots(shell, &args.scenarios, &output, &platform));
         let _ = fs::remove_dir_all(&fixture.root);
         if let Err(error) = result {
@@ -380,6 +393,7 @@ fn render_tape(
 ) -> String {
     let name = shell.name();
     let setup = shell.setup_command(
+        &forward_slashes(&fixture.home),
         &forward_slashes(&fixture.init),
         &forward_slashes(&fixture.dir),
     );
@@ -428,7 +442,6 @@ fn run_vhs(
     vhs: &Path,
     tape: &Path,
     log_path: &Path,
-    fixture: &Fixture,
     superline: &Path,
     output: &Path,
 ) -> Result<()> {
@@ -439,14 +452,9 @@ fn run_vhs(
         .stdin(Stdio::null())
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log))
-        .env("HOME", &fixture.home)
-        .env("USERPROFILE", &fixture.home)
-        .env("XDG_CONFIG_HOME", fixture.home.join(".config"))
-        .env("XDG_CACHE_HOME", fixture.home.join(".cache"))
         .env("LANG", "en_US.UTF-8")
         .env("LC_ALL", "en_US.UTF-8")
         .env("PATH", path_with_binary(superline)?)
-        .env_remove("PWD")
         .spawn()?;
 
     let started = Instant::now();
