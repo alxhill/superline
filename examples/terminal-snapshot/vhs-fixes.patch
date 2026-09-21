@@ -26,13 +26,14 @@ index 1189ada..3ee6a1f 100644
  
  		// When changing the FontFamily, FontSize, LineHeight, Padding
 diff --git a/tty.go b/tty.go
-index 491050d..adfe8fe 100644
+index 491050d..cc37ab8 100644
 --- a/tty.go
 +++ b/tty.go
-@@ -37,6 +37,13 @@ func buildTtyCmd(ctx context.Context, port int, shell Shell) *exec.Cmd {
+@@ -37,7 +37,21 @@ func buildTtyCmd(ctx context.Context, port int, shell Shell) *exec.Cmd {
  		"--writable",
  	}
  
+-	args = append(args, shell.Command...)
 +	// ttyd's Windows build cannot spawn the shell unless the working
 +	// directory is passed explicitly (tsl0922/ttyd#1413); the shell would
 +	// start in the current directory anyway, so pass it everywhere.
@@ -40,9 +41,17 @@ index 491050d..adfe8fe 100644
 +		args = append(args, "--cwd", cwd)
 +	}
 +
- 	args = append(args, shell.Command...)
++	// Resolve the shell through PATH here: on Windows, CreateProcess searches
++	// System32 before PATH, so a bare "bash" would start the WSL stub instead
++	// of the Git Bash that PATH points at.
++	command := append([]string(nil), shell.Command...)
++	if path, err := exec.LookPath(command[0]); err == nil {
++		command[0] = path
++	}
++	args = append(args, command...)
  
  	cmd := exec.CommandContext(ctx, "ttyd", args...)
+ 	if shell.Env != nil {
 diff --git a/vhs.go b/vhs.go
 index b5b7783..b4da50f 100644
 --- a/vhs.go

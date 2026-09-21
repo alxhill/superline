@@ -4,8 +4,10 @@
 # VHS v0.12.0 renders its screenshots with an already-cancelled context, so
 # ffmpeg is killed before it writes anything (charmbracelet/vhs#787), and it
 # starts ttyd without a working directory, which ttyd's Windows build needs to
-# spawn the shell (tsl0922/ttyd#1413). Until releases carry both fixes, build
-# the tagged commit plus one small patch.
+# spawn the shell (tsl0922/ttyd#1413). The patch also resolves the shell
+# through PATH, since CreateProcess would otherwise pick the WSL bash stub in
+# System32 over Git Bash. Until releases carry these fixes, build the tagged
+# commit plus one small patch.
 set -euo pipefail
 
 VHS_REPOSITORY=https://github.com/charmbracelet/vhs

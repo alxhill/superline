@@ -45,8 +45,11 @@ These are test-only dependencies; nothing here is needed to use superline.
   and it starts ttyd without a working directory, which ttyd's Windows build
   needs before it can spawn the shell
   ([tsl0922/ttyd#1413](https://github.com/tsl0922/ttyd/issues/1413)). The
-  earlier VHS v0.11.0 hangs on Windows with current Chrome. Once releases
-  carry the fixes, drop the patch and use the release binary directly.
+  patch also resolves the shell through `PATH`, because Windows'
+  `CreateProcess` searches System32 first and would start the WSL `bash` stub
+  instead of Git Bash. The earlier VHS v0.11.0 hangs on Windows with current
+  Chrome. Once releases carry the fixes, drop the patch and use the release
+  binary directly.
 
 ## Run locally
 
