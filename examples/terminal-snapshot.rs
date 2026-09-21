@@ -290,6 +290,7 @@ fn capture(
     })?;
     let mut command = shell_command(shell, executable, &home)?;
     command.cwd(&fixture);
+    command.env("PWD", &fixture);
     command.env("HOME", &home);
     command.env("USERPROFILE", &home);
     command.env("XDG_CONFIG_HOME", home.join(".config"));
@@ -302,10 +303,10 @@ fn capture(
     command.env("SUPERLINE_BIN", superline);
     command.env("PATH", path_with_binary(superline)?);
 
-    let mut writer = pty.master.take_writer()?;
     let mut child = pty.slave.spawn_command(command)?;
     drop(pty.slave);
     let mut reader = pty.master.try_clone_reader()?;
+    let mut writer = pty.master.take_writer()?;
     let (sender, receiver) = mpsc::channel();
     let reader_thread = thread::spawn(move || {
         let mut buffer = [0_u8; 8192];
