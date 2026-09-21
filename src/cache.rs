@@ -42,6 +42,7 @@ use std::fs::{self, File, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -59,6 +60,8 @@ const PRUNE_MARKER: &str = ".last-pruned";
 /// How often [`Cached::load_with_timeout`] checks whether the refresh it is
 /// waiting on has finished. A `stat` per tick keeps the wait cheap.
 const REFRESH_POLL_INTERVAL: Duration = Duration::from_millis(1);
+/// Distinguishes the temp files of writers within one process.
+static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// A slow lookup whose result is served from an on-disk cache.
 ///
@@ -186,8 +189,29 @@ impl<S: Source> Cached<S> {
 
     /// Reads the cache without triggering a refresh.
     pub fn read(&self) -> Option<Entry<S::Value>> {
-        let file = File::open(self.path.as_ref()?).ok()?;
-        serde_json::from_reader(file).ok()
+        let path = self.path.as_ref()?;
+
+        // Windows can briefly deny access while another writer replaces the
+        // cache entry. A short retry keeps that filesystem-level transition
+        // from looking like a missing or corrupt cache value.
+        for attempt in 0..3 {
+            let file = match File::open(path) {
+                Ok(file) => file,
+                Err(_) if attempt < 2 => {
+                    thread::sleep(Duration::from_millis(1));
+                    continue;
+                }
+                Err(_) => return None,
+            };
+
+            match serde_json::from_reader(file) {
+                Ok(entry) => return Some(entry),
+                Err(_) if attempt < 2 => thread::sleep(Duration::from_millis(1)),
+                Err(_) => return None,
+            }
+        }
+
+        None
     }
 
     /// Serves the cached value and refreshes it in the background when it is
@@ -248,7 +272,7 @@ impl<S: Source> Cached<S> {
         }
 
         let marker = marker_path(path);
-        if !claim_refresh(&marker, S::REFRESH_INTERVAL) {
+        if !claim_slot(&marker, S::REFRESH_INTERVAL) {
             // Someone else is already refreshing this entry. They release the
             // slot only once the cache has been written, so the marker
             // vanishing is the completion signal to wait on.
@@ -354,7 +378,7 @@ impl<S: Source> Cached<S> {
         }
 
         let marker = marker_path(path);
-        if !claim_refresh(&marker, S::REFRESH_INTERVAL) {
+        if !claim_slot(&marker, S::REFRESH_INTERVAL) {
             // Someone else holds the slot, so a refresh is already on its way.
             return true;
         }
@@ -401,13 +425,23 @@ impl<S: Source> Cached<S> {
         }
 
         // Write to a temp file and rename so a concurrent reader never sees a
-        // half-written cache.
-        let tmp = path.with_extension("tmp");
+        // half-written cache. The temp file is unique to this writer: a timed
+        // load can leave an in-process worker and a detached child writing
+        // the same entry at once, and a shared temp path lets one truncate the
+        // other's finished write just before it is renamed into place.
+        let tmp = path.with_extension(format!(
+            "{}-{}.tmp",
+            std::process::id(),
+            WRITE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
         let Ok(mut file) = File::create(&tmp) else {
             return;
         };
-        if serde_json::to_writer(&mut file, &Entry::now(value)).is_ok() && file.flush().is_ok() {
-            let _ = fs::rename(&tmp, path);
+        let written =
+            serde_json::to_writer(&mut file, &Entry::now(value)).is_ok() && file.flush().is_ok();
+        drop(file);
+        if !written || fs::rename(&tmp, path).is_err() {
+            let _ = fs::remove_file(&tmp);
         }
     }
 }
@@ -439,11 +473,13 @@ fn now_millis() -> u128 {
         .unwrap_or(0)
 }
 
-/// Atomically claims the refresh slot guarded by `marker`. The marker records
-/// when the slot was last claimed; a claim younger than `interval` is still
-/// held. Locking the marker while reading and rewriting it stops concurrent
-/// prompt processes from both winning as it expires.
-fn claim_refresh(marker: &Path, interval: Duration) -> bool {
+/// Atomically claims the slot guarded by `marker`. The marker records when the
+/// slot was last claimed; a claim younger than `interval` is still held.
+/// Locking the marker while reading and rewriting it stops concurrent prompt
+/// processes from both winning as it expires. Refreshes use it to run once per
+/// [`Source::REFRESH_INTERVAL`]; anything else that must happen at most once
+/// per interval across prompt processes can use it too.
+pub(crate) fn claim_slot(marker: &Path, interval: Duration) -> bool {
     let Ok(mut file) = OpenOptions::new()
         .read(true)
         .write(true)
@@ -555,7 +591,7 @@ fn modified_age(path: &Path, now: SystemTime) -> Option<Duration> {
 mod tests {
     use std::fs::{self, File, FileTimes};
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::AtomicU32;
     use std::sync::{Arc, Barrier, Mutex};
 
     use super::*;
@@ -766,7 +802,7 @@ mod tests {
         assert!(!cached.refresh_now());
         assert_eq!(cached.read().unwrap().value, "old");
         assert!(marker_path(cached.path().unwrap()).exists());
-        assert!(!claim_refresh(
+        assert!(!claim_slot(
             &marker_path(cached.path().unwrap()),
             Probe::REFRESH_INTERVAL
         ));
@@ -886,6 +922,43 @@ mod tests {
         fs::remove_dir_all(dir).ok();
     }
 
+    /// The timed load can leave an in-process worker and a detached child
+    /// fetching the same entry, so two writers may finish at the same moment.
+    /// A reader must never see a half-written or empty entry.
+    #[test]
+    fn concurrent_writers_never_expose_a_partial_entry() {
+        let dir = unique_temp_dir("concurrent-writers");
+        let cached = Arc::new(Cached::in_dir(
+            Probe::instant("concurrent-writers", "unused", &dir),
+            Some(dir.clone()),
+        ));
+        cached.write(&"seed".to_string());
+
+        let writers = (0..4)
+            .map(|writer| {
+                let cached = cached.clone();
+                thread::spawn(move || {
+                    for n in 0..200 {
+                        cached.write(&format!("writer {writer} value {n}"));
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut unreadable = 0;
+        for _ in 0..2000 {
+            if cached.read().is_none() {
+                unreadable += 1;
+            }
+        }
+        for writer in writers {
+            writer.join().expect("writer thread");
+        }
+
+        assert_eq!(unreadable, 0, "a reader saw an unreadable cache entry");
+        assert!(cached.read().is_some());
+        fs::remove_dir_all(dir).ok();
+    }
+
     #[test]
     fn refresh_from_json_rejects_malformed_input() {
         assert!(!refresh_from_json::<Probe>("not json"));
@@ -904,7 +977,7 @@ mod tests {
                 let marker = marker.clone();
                 thread::spawn(move || {
                     barrier.wait();
-                    claim_refresh(&marker, interval)
+                    claim_slot(&marker, interval)
                 })
             })
             .collect::<Vec<_>>();
@@ -915,8 +988,8 @@ mod tests {
             .count();
 
         assert_eq!(winners, 1);
-        assert!(!claim_refresh(&marker, interval));
-        assert!(claim_refresh(&marker, Duration::ZERO));
+        assert!(!claim_slot(&marker, interval));
+        assert!(claim_slot(&marker, Duration::ZERO));
         fs::remove_dir_all(dir).ok();
     }
 

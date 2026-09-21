@@ -1,6 +1,6 @@
 [package]
 name = "superline"
-version = "0.16.0"
+version = "0.19.0"
 authors = ["alxhill <me@alxhill.com>", "cirho <me@cirho.com>"]
 edition = "2021"
 description = "Configurable Powerline implementation in pure Rust."
@@ -15,6 +15,8 @@ bin-dir = "{ bin }{ binary-ext }"
 
 [dependencies]
 hostname = "0.3"
+if-addrs = "0.15"
+battery = { package = "starship-battery", version = "0.11.1" }
 # Pure-Rust git backend, used in-process for small working trees (see
 # `src/modules/git.rs`). `status`/`revision` cover the status walk and the
 # ahead/behind commit counting; `max-performance-safe` keeps the speedups while

@@ -173,9 +173,9 @@ fn zsh_prompt_preserves_the_previous_exit_status() {
     assert!(output.status.success(), "`init zsh` exited with failure");
     let init = String::from_utf8_lossy(&output.stdout);
     assert!(
-        init.contains("_pl_status=$?")
-            && init.contains("show -s $_pl_status")
-            && init.contains("show-right -s $_pl_status"),
+        init.contains("__pl_status=$?")
+            && init.contains("show -s $__pl_status")
+            && init.contains("show-right -s $__pl_status"),
         "zsh init must save the previous status before timing and prompt commands; got:\n{init}",
     );
 }

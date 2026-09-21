@@ -71,6 +71,26 @@ pub fn cache_dir() -> Option<PathBuf> {
     resolve_cache(&real_env, home_dir(), cfg!(windows))
 }
 
+/// The first file named `name` in a `PATH` directory. On Windows the usual
+/// executable extensions are tried as well.
+pub fn resolve_binary(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for directory in std::env::split_paths(&path) {
+        let candidate = directory.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        #[cfg(windows)]
+        for extension in ["exe", "cmd", "bat"] {
+            let candidate = directory.join(format!("{name}.{extension}"));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
 /// Whether the current process is running as root (Unix) / is the closest
 /// equivalent on other platforms.
 ///

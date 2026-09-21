@@ -4,10 +4,12 @@ pub use simple::SimpleTheme;
 
 use crate::colors::Color;
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
+    MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme,
+    SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
+use crate::update::UpdateScheme;
 
 mod custom;
 mod rainbow;
@@ -36,6 +38,7 @@ pub trait DefaultColors {
 
 pub trait CompleteTheme:
     DefaultColors
+    + BatteryScheme
     + CmdScheme
     + CwdScheme
     + LastCmdDurationScheme
@@ -46,6 +49,11 @@ pub trait CompleteTheme:
     + ReadOnlyScheme
     + SpacerScheme
     + HostScheme
+    + JobsScheme
+    + LocalIpScheme
+    + OsScheme
+    + MemoryUsageScheme
+    + SudoScheme
     + ShellScheme
     + UserScheme
     + CargoScheme
@@ -55,5 +63,6 @@ pub trait CompleteTheme:
     + JavaScheme
     + ErrorMessageScheme
     + UnknownScheme
+    + UpdateScheme
 {
 }

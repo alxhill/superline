@@ -10,11 +10,13 @@ use thiserror::Error;
 
 use crate::colors::Color;
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
+    MemoryUsageScheme, NodeScheme, OsKind, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme,
+    ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
+use crate::update::UpdateScheme;
 
 #[derive(Clone)]
 pub struct CustomTheme;
@@ -184,6 +186,11 @@ macro_rules! color_from_json {
     };
 }
 
+impl BatteryScheme for CustomTheme {
+    color_from_json!(battery_fg, battery, fg, alert_fg);
+    color_from_json!(battery_bg, battery, bg, alert_bg);
+}
+
 impl JavaScheme for CustomTheme {
     // `sdkman` is the name this module had before it learned about mise; it is
     // still honoured so existing theme files keep working.
@@ -247,6 +254,17 @@ impl ErrorMessageScheme for CustomTheme {
 impl UnknownScheme for CustomTheme {
     color_from_json!(unknown_fg, unknown, fg, alert_fg);
     color_from_json!(unknown_bg, unknown, bg, alert_bg);
+}
+
+impl UpdateScheme for CustomTheme {
+    color_from_json!(update_fg, update, fg, default_fg);
+    color_from_json!(update_bg, update, bg, default_bg);
+
+    fn update_icon() -> &'static str {
+        Self::get_str("update", "icon")
+            .map(|str| str.leak() as &'static str)
+            .unwrap_or(Self::DEFAULT_ICON)
+    }
 }
 
 impl CmdScheme for CustomTheme {
@@ -377,6 +395,44 @@ impl HostScheme for CustomTheme {
     color_from_json!(hostname_fg, hostname, fg, default_fg);
 }
 
+impl JobsScheme for CustomTheme {
+    color_from_json!(jobs_bg, jobs, bg, default_bg);
+    color_from_json!(jobs_fg, jobs, fg, default_fg);
+}
+
+impl SudoScheme for CustomTheme {
+    color_from_json!(sudo_bg, sudo, bg, default_bg);
+    color_from_json!(sudo_fg, sudo, fg, default_fg);
+
+    fn sudo_symbol() -> &'static str {
+        Self::get_str("sudo", "symbol")
+            .map(|str| str.leak() as &'static str)
+            .unwrap_or("⚿")
+    }
+}
+
+impl LocalIpScheme for CustomTheme {
+    color_from_json!(local_ip_bg, local_ip, bg, default_bg);
+    color_from_json!(local_ip_fg, local_ip, fg, default_fg);
+}
+
+impl OsScheme for CustomTheme {
+    color_from_json!(os_bg, os, bg, default_bg);
+    color_from_json!(os_fg, os, fg, default_fg);
+
+    fn os_symbol(kind: OsKind) -> &'static str {
+        CustomTheme::get_str("os", kind.theme_key())
+            .or_else(|| CustomTheme::get_str("os", "symbol"))
+            .map(|symbol| symbol.leak() as &'static str)
+            .unwrap_or_else(|| kind.default_symbol())
+    }
+}
+
+impl MemoryUsageScheme for CustomTheme {
+    color_from_json!(memory_usage_fg, memory_usage, fg, default_fg);
+    color_from_json!(memory_usage_bg, memory_usage, bg, default_bg);
+}
+
 impl ShellScheme for CustomTheme {
     color_from_json!(shellname_bg, shell, bg, default_bg);
     color_from_json!(shellname_fg, shell, fg, default_fg);
@@ -411,7 +467,11 @@ enum ThemePropertyKind {
 fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
     if property == "bg_colors" || property.ends_with("_colors") {
         Some(ThemePropertyKind::ColorList)
-    } else if property == "icon" || property.ends_with("_icon") || property.ends_with("_symbol") {
+    } else if property == "icon"
+        || property == "symbol"
+        || property.ends_with("_icon")
+        || property.ends_with("_symbol")
+    {
         Some(ThemePropertyKind::String)
     } else if property == "fg"
         || property == "bg"

@@ -1,11 +1,13 @@
 use crate::colors::Color;
 use crate::colors::*;
 use crate::modules::{
-    CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme,
-    JavaScheme, LastCmdDurationScheme, NodeScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
+    MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme,
+    SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{CompleteTheme, DefaultColors};
+use crate::update::UpdateScheme;
 
 #[derive(Copy, Clone)]
 pub struct RainbowTheme;
@@ -21,6 +23,16 @@ impl DefaultColors for RainbowTheme {
 }
 
 impl CompleteTheme for RainbowTheme {}
+
+impl BatteryScheme for RainbowTheme {
+    fn battery_fg() -> Color {
+        white()
+    }
+
+    fn battery_bg() -> Color {
+        warning_red()
+    }
+}
 
 impl JavaScheme for RainbowTheme {
     fn java_fg() -> Color {
@@ -49,6 +61,16 @@ impl UnknownScheme for RainbowTheme {
 
     fn unknown_bg() -> Color {
         warning_red()
+    }
+}
+
+impl UpdateScheme for RainbowTheme {
+    fn update_fg() -> Color {
+        white()
+    }
+
+    fn update_bg() -> Color {
+        nice_purple()
     }
 }
 
@@ -125,6 +147,48 @@ impl HostScheme for RainbowTheme {
     }
     fn hostname_bg() -> Color {
         dark_grey()
+    }
+}
+
+impl JobsScheme for RainbowTheme {}
+
+impl SudoScheme for RainbowTheme {
+    fn sudo_fg() -> Color {
+        white()
+    }
+
+    fn sudo_bg() -> Color {
+        nice_purple()
+    }
+}
+
+impl LocalIpScheme for RainbowTheme {
+    fn local_ip_fg() -> Color {
+        white()
+    }
+
+    fn local_ip_bg() -> Color {
+        dark_grey()
+    }
+}
+
+impl OsScheme for RainbowTheme {
+    fn os_fg() -> Color {
+        white()
+    }
+
+    fn os_bg() -> Color {
+        dark_grey()
+    }
+}
+
+impl MemoryUsageScheme for RainbowTheme {
+    fn memory_usage_fg() -> Color {
+        white()
+    }
+
+    fn memory_usage_bg() -> Color {
+        warning_red()
     }
 }
 

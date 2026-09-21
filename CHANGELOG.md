@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0](https://github.com/alxhill/superline/compare/v0.18.2...v0.19.0) - 2026-09-20
+
+### Added
+
+- add a space after the OS symbol and a zero-character none separator ([#126](https://github.com/alxhill/superline/pull/126))
+
+## [0.18.2](https://github.com/alxhill/superline/compare/v0.18.1...v0.18.2) - 2026-09-20
+
+### Fixed
+
+- *(jobs)* always show the count and skip stopped jobs ([#124](https://github.com/alxhill/superline/pull/124))
+
+## [0.18.1](https://github.com/alxhill/superline/compare/v0.18.0...v0.18.1) - 2026-09-20
+
+### Fixed
+
+- *(jobs)* separate the cog glyph from the job count so they stop overlapping ([#122](https://github.com/alxhill/superline/pull/122))
+
+## [0.18.0](https://github.com/alxhill/superline/compare/v0.17.0...v0.18.0) - 2026-09-20
+
+### Added
+
+- add collection of commonly used widgets ([#117](https://github.com/alxhill/superline/pull/117))
+
+## [0.17.0](https://github.com/alxhill/superline/compare/v0.16.0...v0.17.0) - 2026-09-20
+
+### Added
+
+- *(update)* print a once-a-day notice above the prompt when a newer release is out ([#112](https://github.com/alxhill/superline/pull/112))
+
+### Fixed
+
+- *(cache)* give each cache writer its own temp file so concurrent refreshes never expose an empty entry ([#115](https://github.com/alxhill/superline/pull/115))
+
 ## [0.16.0](https://github.com/alxhill/superline/compare/v0.15.2...v0.16.0) - 2026-09-19
 
 ### Added

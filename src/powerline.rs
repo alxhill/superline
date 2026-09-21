@@ -7,8 +7,9 @@ use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
 use crate::debug;
 use crate::modules::{
-    Cargo, Cmd, Cwd, ErrorMessage, Git, Host, Java, LastCmdDuration, Module, Node, Pr, Python,
-    ReadOnly, ShellName, Spacer, Time, Unknown, Usage, UsageWindows, User,
+    Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, LastCmdDuration, LocalIp,
+    MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time,
+    Unknown, Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
 use crate::themes::CompleteTheme;
@@ -35,6 +36,7 @@ pub enum Separator {
     Chevron,
     Round,
     AngleLine,
+    None,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -44,15 +46,22 @@ enum Direction {
 }
 
 impl Separator {
-    fn for_direction(&self, direction: Direction) -> char {
+    fn for_direction(&self, direction: Direction) -> &'static str {
         match (self, direction) {
-            (Separator::Chevron, Direction::Right) => '\u{e0b0}',
-            (Separator::Chevron, Direction::Left) => '\u{e0b2}',
-            (Separator::Round, Direction::Right) => '\u{e0b4}',
-            (Separator::Round, Direction::Left) => '\u{e0b6}',
-            (Separator::AngleLine, Direction::Right) => '\u{e0b1}',
-            (Separator::AngleLine, Direction::Left) => '\u{e0b3}',
+            (Separator::Chevron, Direction::Right) => "\u{e0b0}",
+            (Separator::Chevron, Direction::Left) => "\u{e0b2}",
+            (Separator::Round, Direction::Right) => "\u{e0b4}",
+            (Separator::Round, Direction::Left) => "\u{e0b6}",
+            (Separator::AngleLine, Direction::Right) => "\u{e0b1}",
+            (Separator::AngleLine, Direction::Left) => "\u{e0b3}",
+            (Separator::None, _) => "",
         }
+    }
+
+    /// Column width of the glyph itself, so a zero-character separator
+    /// doesn't throw off left/right prompt alignment.
+    fn width(&self) -> usize {
+        self.for_direction(Direction::Left).chars().count()
     }
 }
 
@@ -62,6 +71,7 @@ impl From<&SeparatorStyle> for Separator {
             SeparatorStyle::Chevron => Separator::Chevron,
             SeparatorStyle::Round => Separator::Round,
             SeparatorStyle::AngleLine => Separator::AngleLine,
+            SeparatorStyle::None => Separator::None,
         }
     }
 }
@@ -203,7 +213,7 @@ impl Powerline {
         }
 
         if let Some(Style { sep_fg, .. }) = self.last_style {
-            self.left_columns += 1;
+            self.left_columns += self.separator.width();
             write!(
                 self.left_buffer,
                 "{}{}{}",
@@ -252,7 +262,7 @@ impl Powerline {
             self.separator.for_direction(Direction::Left),
             style.bg
         )?;
-        self.right_columns += 1;
+        self.right_columns += self.separator.width();
 
         if self.last_style_right.as_ref().map(|s| s.sep_fg) != Some(style.fg) {
             write!(self.right_buffer, "{}", style.fg)?;
@@ -341,6 +351,7 @@ impl Powerline {
     ) {
         for module in modules {
             match module {
+                LineSegment::Battery => self.add_module(Battery::<T>::new()),
                 LineSegment::SmallSpacer => self.add_module(Spacer::<T>::small()),
                 LineSegment::LargeSpacer => self.add_module(Spacer::<T>::large()),
                 LineSegment::Python { version, venv } => {
@@ -360,11 +371,19 @@ impl Powerline {
                 LineSegment::Pr { status } => self.add_module(Pr::<T>::new(*status)),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
-                LineSegment::Host => self.add_module(Host::<T>::new()),
+                LineSegment::Host | LineSegment::Hostname => self.add_module(Hostname::<T>::new()),
+                LineSegment::Jobs => self.add_module(Jobs::<T>::new(runtime_data.job_count())),
+                LineSegment::LocalIp => self.add_module(LocalIp::<T>::new()),
+                LineSegment::Os => self.add_module(Os::<T>::new()),
+                LineSegment::MemoryUsage { threshold } => {
+                    self.add_module(MemoryUsage::<T>::new(*threshold))
+                }
+                LineSegment::Sudo => self.add_module(Sudo::<T>::new()),
                 LineSegment::Shell => {
                     self.add_module(ShellName::<T>::new(runtime_data.shell_name()))
                 }
-                LineSegment::User => self.add_module(User::<T>::new()),
+                LineSegment::Text(text) => self.add_module(Text::<T>::new(text.clone())),
+                LineSegment::User | LineSegment::Username => self.add_module(Username::<T>::new()),
                 LineSegment::Padding(size) => self.add_padding(*size),
                 LineSegment::Time { format } => match format {
                     Some(format) => self.add_module(Time::<T>::with_time_format(format.clone())),
@@ -439,7 +458,7 @@ impl Powerline {
                 // close out the buffer, write the padding, and leave the next write_segment
                 // to handle adding the alternate separator
                 self.close_left_buffer();
-                self.left_columns += len + 1;
+                self.left_columns += len + self.separator.width();
                 let _ = write!(self.left_buffer, "{}{}", Reset, padding);
             }
             Direction::Right => {
@@ -455,7 +474,7 @@ impl Powerline {
                         padding
                     )
                     .unwrap();
-                    self.right_columns += 1;
+                    self.right_columns += self.separator.width();
                 } else {
                     write!(self.right_buffer, "{}", padding).unwrap();
                 }
@@ -514,8 +533,41 @@ impl Powerline {
                 Reset
             )
             .unwrap();
-            self.left_columns += 1;
+            self.left_columns += self.separator.width();
         }
         self.last_style = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::colors::Color;
+
+    #[test]
+    fn none_separator_has_no_glyph() {
+        assert_eq!(Separator::None.for_direction(Direction::Left), "");
+        assert_eq!(Separator::None.for_direction(Direction::Right), "");
+        assert_eq!(Separator::None.width(), 0);
+    }
+
+    #[test]
+    fn other_separators_are_a_single_column_wide() {
+        for sep in [Separator::Chevron, Separator::Round, Separator::AngleLine] {
+            assert_eq!(sep.width(), 1);
+        }
+    }
+
+    #[test]
+    fn none_separator_does_not_widen_the_left_prompt() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.set_separator(Separator::None);
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        powerline.add_segment("one", style.clone());
+        powerline.add_segment("two", style);
+
+        // " one " (5) + " two " (5), no separator glyph counted between them
+        assert_eq!(powerline.left_columns, 10);
     }
 }

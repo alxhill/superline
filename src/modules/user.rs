@@ -6,7 +6,12 @@ use crate::{platform, utils, Powerline, Style};
 
 use super::Module;
 
-pub struct User<S: UserScheme> {
+/// Displays the current username, using a distinct background for root.
+///
+/// `User` remains as a type alias for source compatibility with the original
+/// superline API. New code should use `Username`, which matches the name used
+/// by the configuration format.
+pub struct Username<S: UserScheme> {
     show_on_local: bool,
     scheme: PhantomData<S>,
 }
@@ -23,29 +28,32 @@ pub trait UserScheme: DefaultColors {
     }
 }
 
-impl<S: UserScheme> Default for User<S> {
+/// The original name of [`Username`].
+pub type User<S> = Username<S>;
+
+impl<S: UserScheme> Default for Username<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<S: UserScheme> User<S> {
-    pub fn new() -> User<S> {
-        User {
+impl<S: UserScheme> Username<S> {
+    pub fn new() -> Username<S> {
+        Username {
             show_on_local: true,
             scheme: PhantomData,
         }
     }
 
-    pub fn show_on_remote_shell() -> User<S> {
-        User {
+    pub fn show_on_remote_shell() -> Username<S> {
+        Username {
             show_on_local: false,
             scheme: PhantomData,
         }
     }
 }
 
-impl<S: UserScheme> Module for User<S> {
+impl<S: UserScheme> Module for Username<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if self.show_on_local || utils::is_remote_shell() {
             let bg = if platform::is_root() {
