@@ -322,6 +322,16 @@ fn main() {
     debug::init();
     let args = PowerlineArgs::parse();
 
+    // Only the subcommands that can end up running a git status need this, and
+    // it has to happen here: it sets an environment variable, so it is only
+    // safe while the process is still single-threaded.
+    if matches!(
+        args,
+        PowerlineArgs::Show(_) | PowerlineArgs::ShowRight(_) | PowerlineArgs::Refresh(_)
+    ) {
+        superline::modules::preresolve_system_gitconfig();
+    }
+
     match args {
         PowerlineArgs::Init(shell) => print_shell_conf(shell),
         PowerlineArgs::Show(args) => show(args, false),

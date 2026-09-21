@@ -11,7 +11,7 @@ use super::{detached_label, preferred_branch, preferred_remote, remote_web_url, 
 /// paths, whether the repository has a remote configured, and the ahead/behind
 /// distance from the upstream tracking branch.
 pub fn run_git(path: &Path) -> GitStats {
-    let repo = gix::discover(path).unwrap();
+    let repo = discover(path).unwrap();
 
     let (mut untracked, mut staged, mut non_staged, mut conflicted) = (0u32, 0, 0, 0);
 
@@ -96,6 +96,61 @@ pub fn run_git(path: &Path) -> GitStats {
         remote,
         remote_url,
         branch_name,
+    }
+}
+
+/// Opens the repository containing `path`, searching upwards for it. The error
+/// is boxed because gitoxide's is large enough to bloat every `Result` it
+/// travels in.
+fn discover(path: &Path) -> Result<gix::Repository, Box<gix::discover::Error>> {
+    gix::ThreadSafeRepository::discover_opts(path, Default::default(), open_options())
+        .map(Into::into)
+        .map_err(Box::new)
+}
+
+/// Whether the repository at `path` has a remote, and the browser URL of the
+/// preferred one - the two [`GitStats`] fields that need no status walk.
+///
+/// `None` when the repository cannot be opened, which is what lets the CLI
+/// backend fall back to asking `git` (see [`super::process::remote_info`]).
+pub(super) fn remote_info(path: &Path) -> Option<(bool, Option<String>)> {
+    let repo = discover(path).ok()?;
+    let names = repo.remote_names();
+    Some((!names.is_empty(), remote_web_url_of(&repo, &names)))
+}
+
+/// Repository open options that drop the `gitattributes` file shipped with the
+/// git installation.
+///
+/// Reading it is what [`gix::discover`] does by default, and on Windows the
+/// only way gitoxide can find it is by running `git --exec-path` - a child it
+/// spawns with `CREATE_NO_WINDOW`, costing around 55ms, four times the whole
+/// status walk. What that buys is nothing the prompt can see: Git for Windows
+/// ships an `etc/gitattributes` which does no more than map binary document
+/// formats to the `astextplain` diff driver, shaping `git diff` output and
+/// never the status walk.
+///
+/// The installation's `etc/gitconfig` does matter, and stays loaded:
+/// [`super::preresolve_system_gitconfig`] hands gitoxide its path up front so
+/// that file needs no probe either.
+///
+/// Only Windows is affected. Elsewhere the prefix is just `/`, costs no child
+/// process, and `/etc/gitattributes` is a file git itself would read.
+fn open_options() -> gix::sec::trust::Mapping<gix::open::Options> {
+    use gix::sec::trust::DefaultForLevel;
+    use gix::sec::Trust;
+
+    let for_level = |level| {
+        let mut options = gix::open::Options::default_for_level(level);
+        if cfg!(windows) {
+            options.permissions.attributes.system = false;
+        }
+        options
+    };
+
+    gix::sec::trust::Mapping {
+        full: for_level(Trust::Full),
+        reduced: for_level(Trust::Reduced),
     }
 }
 
@@ -191,7 +246,7 @@ mod tests {
     use std::process::Command;
     use std::sync::atomic::{AtomicU32, Ordering};
 
-    use super::{dir_contains_file, run_git};
+    use super::{dir_contains_file, remote_info, run_git};
 
     fn unique_temp_dir() -> PathBuf {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -217,6 +272,37 @@ mod tests {
         git(&dir, &["config", "user.name", "test"]);
         git(&dir, &["commit", "-q", "--allow-empty", "-m", "init"]);
         dir
+    }
+
+    /// The CLI backend takes its remote fields from here rather than spending a
+    /// `git remote` spawn on them, so they have to agree with what a status
+    /// walk of the same repository reports.
+    #[test]
+    fn remote_info_matches_the_full_status_walk() {
+        let repo = init_repo();
+        assert_eq!(remote_info(&repo), Some((false, None)));
+
+        git(
+            &repo,
+            &["remote", "add", "upstream", "https://example.com/them.git"],
+        );
+        git(
+            &repo,
+            &["remote", "add", "origin", "git@github.com:me/mine.git"],
+        );
+
+        let stats = run_git(&repo);
+        assert_eq!(
+            remote_info(&repo),
+            Some((stats.remote, stats.remote_url.clone()))
+        );
+        // `origin` wins over `upstream`, and the scp-style URL becomes a page.
+        assert_eq!(
+            stats.remote_url.as_deref(),
+            Some("https://github.com/me/mine")
+        );
+
+        std::fs::remove_dir_all(&repo).ok();
     }
 
     /// Regression test: gitoxide's collapsing walk emits an untracked directory

@@ -3,7 +3,6 @@ use std::fmt::Write;
 use std::io::Read;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 use std::{env, fs};
 
@@ -274,12 +273,12 @@ const AUTO_CLI_ENTRY_THRESHOLD: u32 = 1500;
 /// based on the entry count in `.git/index`. Falls back to the CLI when the
 /// count can't be read (safer default), and unconditionally to gitoxide when
 /// `git` isn't on `PATH`.
+///
+/// The index header is read before `PATH` is consulted so a small working
+/// tree, which takes gitoxide either way, never pays for the lookup.
 fn auto_prefers_cli(worktree: &Path) -> bool {
-    if !git_on_path() {
-        return false;
-    }
     let count = resolve_git_dir(worktree).and_then(|dir| index_entry_count(&dir.join("index")));
-    prefers_cli_for_index_count(count)
+    prefers_cli_for_index_count(count) && git_on_path()
 }
 
 /// The threshold rule in isolation: at least [`AUTO_CLI_ENTRY_THRESHOLD`]
@@ -288,11 +287,85 @@ fn prefers_cli_for_index_count(count: Option<u32>) -> bool {
     count.is_none_or(|count| count >= AUTO_CLI_ENTRY_THRESHOLD)
 }
 
+/// The names `Command::new("git")` can actually launch: Windows tries the bare
+/// name and then appends `.exe`, every other platform only has the bare name.
+#[cfg(windows)]
+const GIT_EXE_NAMES: &[&str] = &["git", "git.exe"];
+#[cfg(not(windows))]
+const GIT_EXE_NAMES: &[&str] = &["git"];
+
+/// Whether a `git` executable is reachable through `PATH`.
 fn git_on_path() -> bool {
-    Command::new("git")
-        .arg("--version")
-        .output()
-        .is_ok_and(|out| out.status.success())
+    git_dir_on_path().is_some()
+}
+
+/// The first directory on `PATH` holding a `git` executable.
+///
+/// This scans `PATH` rather than running `git --version`, because a process
+/// spawn costs around 30ms on Windows - more than the whole gitoxide status
+/// walk - so asking `git` whether it exists would cost more than picking the
+/// backend can save. Finding a name that turns out not to be runnable is
+/// harmless: [`process::run_git`] falls back to gitoxide when `git` cannot be
+/// executed.
+fn git_dir_on_path() -> Option<PathBuf> {
+    env::split_paths(&env::var_os("PATH")?)
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .find(|dir| GIT_EXE_NAMES.iter().any(|name| dir.join(name).is_file()))
+}
+
+/// The git installation prefix that holds `etc/gitconfig`, derived from the
+/// directory a `git` executable sits in.
+///
+/// Git for Windows puts `git.exe` in `<root>\cmd`, `<root>\bin` and
+/// `<root>\mingw64\bin`, and keeps the installation's `etc\gitconfig` at
+/// `<root>`. This reaches the same answer gitoxide derives from
+/// `git --exec-path` (`<root>/mingw64/libexec/git-core`, cut before its
+/// `libexec` component) without running git at all.
+fn install_prefix_of(git_dir: &Path) -> Option<PathBuf> {
+    let parent = git_dir.parent()?;
+    match parent.file_name().and_then(|name| name.to_str()) {
+        // `mingw64\bin` and its siblings sit one level deeper than `cmd`.
+        Some("mingw64" | "mingw32" | "clangarm64" | "usr") => {
+            parent.parent().map(Path::to_path_buf)
+        }
+        _ => Some(parent.to_path_buf()),
+    }
+}
+
+/// Points gitoxide at the git installation's own `gitconfig` instead of
+/// leaving it to go looking for the file itself.
+///
+/// gitoxide does read that file - it is where Git for Windows keeps
+/// `core.autocrlf`, without which the status walk disagrees with `git status`
+/// about every CRLF file - but the only way it can find the directory holding
+/// it is by running `git --exec-path`, a child it spawns with
+/// `CREATE_NO_WINDOW`, which costs around 55ms: several times the status walk
+/// it precedes. `GIT_CONFIG_SYSTEM` names the file outright and is consulted
+/// first, so setting it removes the probe while still loading the same file.
+///
+/// Only Windows is affected, being the platform where the lookup costs a
+/// process spawn; elsewhere the prefix is simply `/`. An existing
+/// `GIT_CONFIG_SYSTEM` is left alone, and nothing is set unless the derived
+/// file really exists, so a `git` child process is never handed a path to a
+/// file that isn't there. When the prefix cannot be derived, gitoxide falls
+/// back to probing, exactly as it did before.
+///
+/// Sets a process-wide environment variable, so this has to be called before
+/// any threads are started: from `main`, ahead of building the prompt.
+pub fn preresolve_system_gitconfig() {
+    if !cfg!(windows) || env::var_os("GIT_CONFIG_SYSTEM").is_some() {
+        return;
+    }
+
+    let config = git_dir_on_path()
+        .as_deref()
+        .and_then(install_prefix_of)
+        .map(|prefix| prefix.join("etc").join("gitconfig"))
+        .filter(|config| config.is_file());
+
+    if let Some(config) = config {
+        env::set_var("GIT_CONFIG_SYSTEM", config);
+    }
 }
 
 /// Reads the entry count straight out of the 12-byte `.git/index` header,
@@ -459,11 +532,12 @@ impl<S: GitScheme> Module for Git<S> {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
+    use std::path::Path;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::{
-        detached_label, index_entry_count, parse_head, preferred_branch, preferred_remote,
-        prefers_cli_for_index_count, remote_web_url, AUTO_CLI_ENTRY_THRESHOLD,
+        detached_label, index_entry_count, install_prefix_of, parse_head, preferred_branch,
+        preferred_remote, prefers_cli_for_index_count, remote_web_url, AUTO_CLI_ENTRY_THRESHOLD,
     };
 
     fn names(list: &[&str]) -> Vec<String> {
@@ -530,6 +604,30 @@ mod tests {
     #[test]
     fn auto_selection_favours_cli_when_the_count_is_unreadable() {
         assert!(prefers_cli_for_index_count(None));
+    }
+
+    #[test]
+    fn install_prefix_is_the_root_of_a_git_for_windows_layout() {
+        let root = Path::new("C:/Program Files/Git");
+        for bin in [
+            "cmd",
+            "bin",
+            "mingw64/bin",
+            "mingw32/bin",
+            "clangarm64/bin",
+            "usr/bin",
+        ] {
+            assert_eq!(
+                install_prefix_of(&root.join(bin)).as_deref(),
+                Some(root),
+                "{bin} should resolve to the installation root"
+            );
+        }
+    }
+
+    #[test]
+    fn install_prefix_of_a_parentless_directory_is_none() {
+        assert_eq!(install_prefix_of(Path::new("")), None);
     }
 
     #[test]
