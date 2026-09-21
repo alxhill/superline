@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::config::{GitBackend, DEFAULT_GIT_STATUS_TIMEOUT_MS};
+use crate::debug;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -25,7 +26,7 @@ mod process;
 // untracked cache and fsmonitor, which wins by a wide margin on large working
 // trees; `gitoxide` walks the repository in-process with pure Rust, which
 // wins on small trees where a process spawn costs more than the walk itself.
-// `auto` decides from the size of `.git/index` (see `auto_prefers_cli`).
+// `auto` decides from the size of `.git/index` (see `choose_backend`).
 // Each backend exposes a `run_git(&Path) -> GitStats`.
 
 pub struct Git<S> {
@@ -269,16 +270,77 @@ fn resolve_git_dir(worktree: &Path) -> Option<PathBuf> {
 /// CLI on superline's own ~200-file repo).
 const AUTO_CLI_ENTRY_THRESHOLD: u32 = 1500;
 
-/// Picks the CLI backend for large working trees and gitoxide for small ones,
-/// based on the entry count in `.git/index`. Falls back to the CLI when the
-/// count can't be read (safer default), and unconditionally to gitoxide when
-/// `git` isn't on `PATH`.
+/// Which backend will walk the status, and what decided it. The reason is only
+/// ever read by the `SUPERLINE_DEBUG` report; [`Source::fetch`] just needs
+/// `cli`.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Choice {
+    cli: bool,
+    reason: Reason,
+}
+
+/// Why a [`Choice`] came out the way it did.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Reason {
+    /// The `backend` setting named this backend outright.
+    Configured,
+    /// `auto`, settled by the entry count in `.git/index` against
+    /// [`AUTO_CLI_ENTRY_THRESHOLD`]. `None` when the count can't be read.
+    IndexEntries(Option<u32>),
+    /// `auto` would have taken the CLI on size, but no `git` is on `PATH`.
+    NoGitOnPath(Option<u32>),
+}
+
+/// Resolves `backend` for the repository at `worktree`.
 ///
-/// The index header is read before `PATH` is consulted so a small working
-/// tree, which takes gitoxide either way, never pays for the lookup.
-fn auto_prefers_cli(worktree: &Path) -> bool {
-    let count = resolve_git_dir(worktree).and_then(|dir| index_entry_count(&dir.join("index")));
-    prefers_cli_for_index_count(count) && git_on_path()
+/// `auto` picks the CLI for large working trees, where git's untracked cache
+/// and fsmonitor outweigh its process spawn, and gitoxide for small ones. The
+/// index header is read before `PATH` is consulted, so a small tree - which
+/// takes gitoxide either way - never pays for the lookup.
+///
+/// This is the one place the choice is made: the debug report describes what
+/// it returns rather than reasoning about the config a second time.
+fn choose_backend(worktree: &Path, backend: GitBackend) -> Choice {
+    let cli = |cli, reason| Choice { cli, reason };
+
+    match backend {
+        GitBackend::Cli => cli(true, Reason::Configured),
+        GitBackend::Gitoxide => cli(false, Reason::Configured),
+        GitBackend::Auto => {
+            let count =
+                resolve_git_dir(worktree).and_then(|dir| index_entry_count(&dir.join("index")));
+            match (prefers_cli_for_index_count(count), git_on_path()) {
+                (true, true) => cli(true, Reason::IndexEntries(count)),
+                (true, false) => cli(false, Reason::NoGitOnPath(count)),
+                (false, _) => cli(false, Reason::IndexEntries(count)),
+            }
+        }
+    }
+}
+
+impl Choice {
+    /// How the choice reads in the `SUPERLINE_DEBUG` report, e.g.
+    /// `gitoxide (auto: 82 index entries, below the 1500 threshold)`.
+    fn describe(self) -> String {
+        let backend = if self.cli { "cli" } else { "gitoxide" };
+        let why = match (self.reason, self.cli) {
+            (Reason::Configured, _) => String::from("configured"),
+            (Reason::IndexEntries(None), _) => String::from("auto: unreadable index entry count"),
+            (Reason::IndexEntries(Some(count)), true) => format!(
+                "auto: {count} index entries, at or above the {AUTO_CLI_ENTRY_THRESHOLD} threshold"
+            ),
+            (Reason::IndexEntries(Some(count)), _) => format!(
+                "auto: {count} index entries, below the {AUTO_CLI_ENTRY_THRESHOLD} threshold"
+            ),
+            (Reason::NoGitOnPath(Some(count)), _) => {
+                format!("auto: {count} index entries, but no git on PATH")
+            }
+            (Reason::NoGitOnPath(None), _) => {
+                String::from("auto: unreadable index entry count, but no git on PATH")
+            }
+        };
+        format!("{backend} ({why})")
+    }
 }
 
 /// The threshold rule in isolation: at least [`AUTO_CLI_ENTRY_THRESHOLD`]
@@ -425,11 +487,10 @@ impl Source for GitStatus {
     }
 
     fn fetch(&self) -> Option<GitStats> {
-        Some(match self.backend {
-            GitBackend::Cli => process::run_git(&self.git_dir),
-            GitBackend::Gitoxide => gitoxide::run_git(&self.git_dir),
-            GitBackend::Auto if auto_prefers_cli(&self.git_dir) => process::run_git(&self.git_dir),
-            GitBackend::Auto => gitoxide::run_git(&self.git_dir),
+        Some(if choose_backend(&self.git_dir, self.backend).cli {
+            process::run_git(&self.git_dir)
+        } else {
+            gitoxide::run_git(&self.git_dir)
         })
     }
 }
@@ -446,6 +507,19 @@ impl<S: GitScheme> Module for Git<S> {
             git_dir,
             backend: self.backend,
         };
+
+        // The walk itself happens off this thread (and sometimes in a detached
+        // child), too late to report from. Resolving the choice here instead
+        // costs an index-header read and a `PATH` scan, which is why it is
+        // only done when a report is actually going to be printed. `fetch`
+        // asks the same function with the same inputs.
+        if debug::enabled() {
+            debug::note(
+                "backend",
+                choose_backend(&source.git_dir, source.backend).describe(),
+            );
+        }
+
         let stats = match Cached::new(source).load_with_timeout(self.status_timeout) {
             Lookup::Ready(stats) => stats,
             Lookup::Loading => {
@@ -536,8 +610,9 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::{
-        detached_label, index_entry_count, install_prefix_of, parse_head, preferred_branch,
-        preferred_remote, prefers_cli_for_index_count, remote_web_url, AUTO_CLI_ENTRY_THRESHOLD,
+        choose_backend, detached_label, index_entry_count, install_prefix_of, parse_head,
+        preferred_branch, preferred_remote, prefers_cli_for_index_count, remote_web_url, Choice,
+        GitBackend, Reason, AUTO_CLI_ENTRY_THRESHOLD,
     };
 
     fn names(list: &[&str]) -> Vec<String> {
@@ -604,6 +679,58 @@ mod tests {
     #[test]
     fn auto_selection_favours_cli_when_the_count_is_unreadable() {
         assert!(prefers_cli_for_index_count(None));
+    }
+
+    /// Every branch of the choice names its backend first, then what settled
+    /// it, so the debug report explains a slow render without a rebuild.
+    #[test]
+    fn each_choice_describes_its_backend_and_its_reason() {
+        let describe = |cli, reason| Choice { cli, reason }.describe();
+
+        assert_eq!(describe(true, Reason::Configured), "cli (configured)");
+        assert_eq!(describe(false, Reason::Configured), "gitoxide (configured)");
+        assert_eq!(
+            describe(false, Reason::IndexEntries(Some(82))),
+            "gitoxide (auto: 82 index entries, below the 1500 threshold)"
+        );
+        assert_eq!(
+            describe(true, Reason::IndexEntries(Some(4000))),
+            "cli (auto: 4000 index entries, at or above the 1500 threshold)"
+        );
+        assert_eq!(
+            describe(true, Reason::IndexEntries(None)),
+            "cli (auto: unreadable index entry count)"
+        );
+        assert_eq!(
+            describe(false, Reason::NoGitOnPath(Some(4000))),
+            "gitoxide (auto: 4000 index entries, but no git on PATH)"
+        );
+        assert_eq!(
+            describe(false, Reason::NoGitOnPath(None)),
+            "gitoxide (auto: unreadable index entry count, but no git on PATH)"
+        );
+    }
+
+    /// An explicit `backend` setting is taken at face value, without the
+    /// index read or the `PATH` scan that `auto` needs.
+    #[test]
+    fn a_configured_backend_needs_no_inspection() {
+        let nowhere = Path::new("/superline-does-not-exist");
+
+        assert_eq!(
+            choose_backend(nowhere, GitBackend::Cli),
+            Choice {
+                cli: true,
+                reason: Reason::Configured
+            }
+        );
+        assert_eq!(
+            choose_backend(nowhere, GitBackend::Gitoxide),
+            Choice {
+                cli: false,
+                reason: Reason::Configured
+            }
+        );
     }
 
     #[test]
