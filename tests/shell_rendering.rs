@@ -164,6 +164,22 @@ fn each_shell_uses_its_own_escape_style() {
     );
 }
 
+#[test]
+fn zsh_prompt_preserves_the_previous_exit_status() {
+    let output = Command::new(BIN)
+        .args(["init", "zsh"])
+        .output()
+        .expect("failed to run `superline init zsh`");
+    assert!(output.status.success(), "`init zsh` exited with failure");
+    let init = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        init.contains("_pl_status=$?")
+            && init.contains("show -s $_pl_status")
+            && init.contains("show-right -s $_pl_status"),
+        "zsh init must save the previous status before timing and prompt commands; got:\n{init}",
+    );
+}
+
 /// The pwsh init must force the console to decode superline's UTF-8 output as
 /// UTF-8. Without this, PowerShell decodes a native command's stdout using the
 /// legacy OEM code page on Windows and mangles Nerd Font glyphs into mojibake

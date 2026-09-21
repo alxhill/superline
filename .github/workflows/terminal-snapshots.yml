@@ -1,0 +1,107 @@
+name: Terminal snapshots
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Screenshots from an older commit are not useful once a newer revision exists.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: ""
+  NERD_FONT_URL: https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.1/patched-fonts/Meslo/S/MesloLGSNerdFont-Regular.ttf
+  NERD_FONT_SHA256: f3148b1e05c1dcf86785020d1d144524b9458deaab17505b88ecfe1694543214
+
+jobs:
+  macos:
+    name: macOS (all shells)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-terminal-snapshots
+
+      - name: Install shells
+        run: |
+          brew install fish nushell
+          command -v pwsh >/dev/null || brew install --cask powershell
+
+      - name: Download pinned Nerd Font
+        run: |
+          curl --fail --location "$NERD_FONT_URL" --output "$RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf"
+          echo "$NERD_FONT_SHA256  $RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf" | shasum --algorithm 256 --check
+
+      - name: Capture prompts
+        run: |
+          cargo build --bin superline --example terminal-snapshot
+          cargo run --example terminal-snapshot -- \
+            --shell all \
+            --scenario all \
+            --font "$RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf" \
+            --output target/terminal-snapshots \
+            --require-all
+
+      - name: Upload screenshots and terminal streams
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-snapshots-macos
+          path: target/terminal-snapshots/
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows:
+    name: Windows (PowerShell)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-terminal-snapshots
+
+      - name: Download pinned Nerd Font
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP 'MesloLGSNerdFont-Regular.ttf'
+          Invoke-WebRequest -Uri $env:NERD_FONT_URL -OutFile $font
+          $actual = (Get-FileHash -Algorithm SHA256 $font).Hash.ToLowerInvariant()
+          if ($actual -ne $env:NERD_FONT_SHA256) {
+            throw "Nerd Font checksum mismatch: $actual"
+          }
+
+      - name: Capture PowerShell prompt
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP 'MesloLGSNerdFont-Regular.ttf'
+          cargo build --bin superline --example terminal-snapshot
+          cargo run --example terminal-snapshot -- `
+            --shell pwsh `
+            --scenario all `
+            --font $font `
+            --output target/terminal-snapshots `
+            --require-all
+
+      - name: Upload screenshots and terminal streams
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-snapshots-windows
+          path: target/terminal-snapshots/
+          if-no-files-found: warn
+          retention-days: 14

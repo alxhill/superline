@@ -47,15 +47,16 @@ function preexec() {
 }
 
 function _update_ps1() {
+    _pl_status=$?
     if [ $__pl_timer ]; then
         _now=$(($(gdate +%s%0N)/1000000))
         if [ $_now -ge $__pl_timer ]; then
             _elapsed=$(($_now-$__pl_timer))
         fi
     fi
-    PS1="$(superline show -s $? -c $COLUMNS zsh $_elapsed)"
-    RPS1="$(superline show-right -s $? -c $COLUMNS zsh $_elapsed)"
-    unset __pl_timer _elapsed _now
+    PS1="$(superline show -s $_pl_status -c $COLUMNS zsh $_elapsed)"
+    RPS1="$(superline show-right -s $_pl_status -c $COLUMNS zsh $_elapsed)"
+    unset __pl_timer _elapsed _now _pl_status
 }
 
 precmd_functions=(_update_ps1)
