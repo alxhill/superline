@@ -10,7 +10,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -26,8 +26,32 @@ const FONT_SIZE: f32 = 18.0;
 const CELL_WIDTH: usize = 11;
 const CELL_HEIGHT: usize = 24;
 const MARGIN: usize = 16;
+const CURSOR_POSITION_REQUEST: &[u8] = b"\x1b[6n";
+const CURSOR_POSITION_REPORT: &[u8] = b"\x1b[1;1R";
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
+type PtyWriter = Arc<Mutex<Box<dyn Write + Send>>>;
+
+#[derive(Default)]
+struct CursorQueryScanner {
+    tail: Vec<u8>,
+}
+
+impl CursorQueryScanner {
+    fn sees_request(&mut self, chunk: &[u8]) -> bool {
+        self.tail.extend_from_slice(chunk);
+        let seen = self
+            .tail
+            .windows(CURSOR_POSITION_REQUEST.len())
+            .any(|window| window == CURSOR_POSITION_REQUEST);
+        let consumed = self
+            .tail
+            .len()
+            .saturating_sub(CURSOR_POSITION_REQUEST.len() - 1);
+        self.tail.drain(..consumed);
+        seen
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Shell {
@@ -306,15 +330,21 @@ fn capture(
     let mut child = pty.slave.spawn_command(command)?;
     drop(pty.slave);
     let mut reader = pty.master.try_clone_reader()?;
-    let mut writer = pty.master.take_writer()?;
+    let writer: PtyWriter = Arc::new(Mutex::new(pty.master.take_writer()?));
+    let cursor_writer = Arc::clone(&writer);
     let (sender, receiver) = mpsc::channel();
     let reader_thread = thread::spawn(move || {
         let mut buffer = [0_u8; 8192];
+        let mut cursor_queries = CursorQueryScanner::default();
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(count) => {
-                    if sender.send(buffer[..count].to_vec()).is_err() {
+                    let chunk = &buffer[..count];
+                    if cursor_queries.sees_request(chunk) {
+                        let _ = pty_write(&cursor_writer, CURSOR_POSITION_REPORT);
+                    }
+                    if sender.send(chunk.to_vec()).is_err() {
                         break;
                     }
                 }
@@ -335,13 +365,13 @@ fn capture(
         match receiver.recv_timeout(Duration::from_millis(100)) {
             Ok(bytes) => {
                 parser.process(&bytes);
-                answer_terminal_queries(&bytes, parser.screen(), &mut writer)?;
+                answer_terminal_queries(&bytes, &writer)?;
                 raw.extend_from_slice(&bytes);
                 last_output = Instant::now();
                 let contents = parser.screen().contents();
                 let prompt_count = contents.matches(shell.name()).count();
                 saw_prompt = contents.contains("superline-e2e")
-                    && prompt_count >= if command_sent { 4 } else { 2 }
+                    && prompt_count >= if command_sent { 3 } else { 2 }
                     && (!command_sent
                         || contents.contains(&format!(
                             "{}{}",
@@ -355,17 +385,15 @@ fn capture(
 
         if saw_prompt && last_output.elapsed() >= QUIET_PERIOD {
             if !cleared {
-                writer.write_all(b"clear\r")?;
-                writer.flush()?;
+                pty_write(&writer, b"clear\r")?;
                 cleared = true;
                 saw_prompt = false;
                 last_output = Instant::now();
                 continue;
             }
             if scenario == Scenario::Failure && !command_sent {
-                writer.write_all(failure_command(shell).as_bytes())?;
-                writer.write_all(b"\r")?;
-                writer.flush()?;
+                let command = format!("{}\r", failure_command(shell));
+                pty_write(&writer, command.as_bytes())?;
                 command_sent = true;
                 saw_prompt = false;
                 last_output = Instant::now();
@@ -410,15 +438,16 @@ fn capture(
     Ok(Capture { raw, screen })
 }
 
-fn answer_terminal_queries(bytes: &[u8], screen: &Screen, writer: &mut dyn Write) -> Result<()> {
-    if bytes.windows(4).any(|window| window == b"\x1b[6n") {
-        let (row, col) = screen.cursor_position();
-        write!(writer, "\x1b[{};{}R", row + 1, col + 1)?;
-        writer.flush()?;
-    }
+fn pty_write(writer: &PtyWriter, bytes: &[u8]) -> Result<()> {
+    let mut writer = writer.lock().map_err(|_| "PTY writer lock poisoned")?;
+    writer.write_all(bytes)?;
+    writer.flush()?;
+    Ok(())
+}
+
+fn answer_terminal_queries(bytes: &[u8], writer: &PtyWriter) -> Result<()> {
     if bytes.windows(4).any(|window| window == b"\x1b[0c") {
-        writer.write_all(b"\x1b[?1;2c")?;
-        writer.flush()?;
+        pty_write(writer, b"\x1b[?1;2c")?;
     }
     Ok(())
 }
