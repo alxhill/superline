@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Build the pinned VHS release with vhs-render-context.patch applied.
+# Build the pinned VHS release with vhs-fixes.patch applied.
 #
 # VHS v0.12.0 renders its screenshots with an already-cancelled context, so
-# ffmpeg is killed before it writes anything (charmbracelet/vhs#787). Until a
-# release carries the fix, build the tagged commit plus that one patch.
+# ffmpeg is killed before it writes anything (charmbracelet/vhs#787), and it
+# starts ttyd without a working directory, which ttyd's Windows build needs to
+# spawn the shell (tsl0922/ttyd#1413). Until releases carry both fixes, build
+# the tagged commit plus one small patch.
 set -euo pipefail
 
 VHS_REPOSITORY=https://github.com/charmbracelet/vhs
@@ -18,7 +20,7 @@ trap 'rm -rf "$work"' EXIT
 git -C "$work" init --quiet
 git -C "$work" fetch --quiet --depth 1 "$VHS_REPOSITORY" "$VHS_COMMIT"
 git -C "$work" checkout --quiet "$VHS_COMMIT"
-git -C "$work" apply "$here/vhs-render-context.patch"
+git -C "$work" apply "$here/vhs-fixes.patch"
 
 executable=vhs
 if [[ "${OS:-}" == Windows_NT ]]; then

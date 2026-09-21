@@ -25,6 +25,24 @@ index 1189ada..3ee6a1f 100644
  		}
  
  		// When changing the FontFamily, FontSize, LineHeight, Padding
+diff --git a/tty.go b/tty.go
+index 491050d..adfe8fe 100644
+--- a/tty.go
++++ b/tty.go
+@@ -37,6 +37,13 @@ func buildTtyCmd(ctx context.Context, port int, shell Shell) *exec.Cmd {
+ 		"--writable",
+ 	}
+ 
++	// ttyd's Windows build cannot spawn the shell unless the working
++	// directory is passed explicitly (tsl0922/ttyd#1413); the shell would
++	// start in the current directory anyway, so pass it everywhere.
++	if cwd, err := os.Getwd(); err == nil {
++		args = append(args, "--cwd", cwd)
++	}
++
+ 	args = append(args, shell.Command...)
+ 
+ 	cmd := exec.CommandContext(ctx, "ttyd", args...)
 diff --git a/vhs.go b/vhs.go
 index b5b7783..b4da50f 100644
 --- a/vhs.go

@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/vhs-bin
-          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('examples/terminal-snapshot/build-vhs.sh', 'examples/terminal-snapshot/vhs-render-context.patch') }}
+          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('examples/terminal-snapshot/build-vhs.sh', 'examples/terminal-snapshot/vhs-fixes.patch') }}
 
       - name: Build pinned VHS
         if: steps.vhs-cache.outputs.cache-hit != 'true'
@@ -110,7 +110,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/vhs-bin
-          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('examples/terminal-snapshot/build-vhs.sh', 'examples/terminal-snapshot/vhs-render-context.patch') }}
+          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('examples/terminal-snapshot/build-vhs.sh', 'examples/terminal-snapshot/vhs-fixes.patch') }}
 
       - name: Build pinned VHS
         if: steps.vhs-cache.outputs.cache-hit != 'true'
@@ -148,31 +148,6 @@ jobs:
           New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' `
             -Name 'MesloLGS Nerd Font (TrueType)' -Value 'MesloLGSNerdFont-Regular.ttf' `
             -PropertyType String -Force | Out-Null
-
-      - name: Diagnose ttyd on Windows
-        shell: pwsh
-        timeout-minutes: 8
-        run: |
-          $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
-          $ttydExe = Join-Path $env:RUNNER_TEMP 'vhs-tools\ttyd.exe'
-          & $ttydExe --version
-          function Probe($name, $shellArgs) {
-            $port = Get-Random -Minimum 20000 -Maximum 40000
-            $out = Join-Path $env:RUNNER_TEMP "$name.out"; $err = Join-Path $env:RUNNER_TEMP "$name.err"
-            $args = @("--port=$port", '--interface', '127.0.0.1', '-t', 'rendererType=canvas', '-t', 'disableResizeOverlay=true', '-t', 'enableSixel=true', '-t', 'customGlyphs=true', '--once', '--writable', '-d', '7') + $shellArgs
-            $ttyd = Start-Process -FilePath $ttydExe -ArgumentList $args -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err
-            Start-Sleep -Seconds 3
-            Write-Host "[$name] ttyd exited early: $($ttyd.HasExited)"
-            $dom = & $chrome --headless --disable-gpu --no-first-run "--user-data-dir=$env:RUNNER_TEMP\chrome-$name" --virtual-time-budget=10000 --dump-dom "http://127.0.0.1:$port/" 2>&1 | Out-String
-            Write-Host "[$name] dom length: $($dom.Length); text-layer canvas: $($dom -match 'xterm-text-layer'); xterm-screen: $($dom -match 'xterm-screen')"
-            Start-Sleep -Seconds 2
-            if (-not $ttyd.HasExited) { $ttyd.Kill(); $ttyd.WaitForExit() }
-            Write-Host "[$name] ttyd stderr:"; Get-Content $err -ErrorAction SilentlyContinue | Select-Object -First 60
-            Write-Host "[$name] ttyd stdout:"; Get-Content $out -ErrorAction SilentlyContinue | Select-Object -First 20
-          }
-          Probe 'ttyd-cmd' @('cmd.exe')
-          Probe 'ttyd-pwsh-simple' @('pwsh', '-NoLogo', '-NoProfile')
-          Probe 'ttyd-pwsh-vhs' @('pwsh', '-Login', '-NoLogo', '-NoExit', '-NoProfile', '-Command', "Set-PSReadLineOption -HistorySaveStyle SaveNothing; Function prompt { Write-Host -ForegroundColor Blue -NoNewLine '>'; return ' ' }")
 
       - name: Capture PowerShell prompts
         shell: pwsh

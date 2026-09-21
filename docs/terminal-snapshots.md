@@ -39,11 +39,14 @@ These are test-only dependencies; nothing here is needed to use superline.
   ```
 
   The script checks out the VHS v0.12.0 commit and applies
-  `examples/terminal-snapshot/vhs-render-context.patch`. The release binary
-  renders its screenshots with an already-cancelled context and writes nothing
-  ([charmbracelet/vhs#787](https://github.com/charmbracelet/vhs/issues/787));
-  the earlier v0.11.0 hangs on Windows with current Chrome. Once a release
-  carries the fix, drop the patch and use that binary directly.
+  `examples/terminal-snapshot/vhs-fixes.patch`. The release binary renders
+  its screenshots with an already-cancelled context and writes nothing
+  ([charmbracelet/vhs#787](https://github.com/charmbracelet/vhs/issues/787)),
+  and it starts ttyd without a working directory, which ttyd's Windows build
+  needs before it can spawn the shell
+  ([tsl0922/ttyd#1413](https://github.com/tsl0922/ttyd/issues/1413)). The
+  earlier VHS v0.11.0 hangs on Windows with current Chrome. Once releases
+  carry the fixes, drop the patch and use the release binary directly.
 
 ## Run locally
 
