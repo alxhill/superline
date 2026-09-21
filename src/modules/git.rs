@@ -297,9 +297,6 @@ enum Reason {
 /// and fsmonitor outweigh its process spawn, and gitoxide for small ones. The
 /// index header is read before `PATH` is consulted, so a small tree - which
 /// takes gitoxide either way - never pays for the lookup.
-///
-/// This is the one place the choice is made: the debug report describes what
-/// it returns rather than reasoning about the config a second time.
 fn choose_backend(worktree: &Path, backend: GitBackend) -> Choice {
     let cli = |cli, reason| Choice { cli, reason };
 
