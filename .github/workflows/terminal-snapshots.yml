@@ -149,6 +149,27 @@ jobs:
             -Name 'MesloLGS Nerd Font (TrueType)' -Value 'MesloLGSNerdFont-Regular.ttf' `
             -PropertyType String -Force | Out-Null
 
+      - name: Smoke test Chrome and VHS
+        shell: pwsh
+        run: |
+          $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+          Write-Host "chrome present: $(Test-Path $chrome)"
+          & $chrome --headless --disable-gpu --no-first-run --user-data-dir="$env:RUNNER_TEMP\chrome-smoke" --dump-dom about:blank 2>&1 | Select-Object -First 5
+          Write-Host "chrome dump-dom exit: $LASTEXITCODE"
+          $tape = Join-Path $env:RUNNER_TEMP 'smoke.tape'
+          @(
+            'Set Shell pwsh'
+            'Type "echo hello"'
+            'Enter'
+            'Sleep 1s'
+            'Screenshot smoke.png'
+            'Sleep 1s'
+          ) | Set-Content $tape
+          Set-Location $env:RUNNER_TEMP
+          & (Join-Path $env:RUNNER_TEMP 'vhs-bin\vhs.exe') $tape 2>&1
+          Write-Host "vhs exit: $LASTEXITCODE"
+          Get-ChildItem smoke.png -ErrorAction SilentlyContinue
+
       - name: Capture PowerShell prompts
         shell: pwsh
         run: |
