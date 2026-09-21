@@ -68,6 +68,26 @@ skipped; add `--require-all` when a missing shell should fail the run.
 `SUPERLINE_E2E_VHS` can be used instead of `--vhs`, and without either the rig
 looks for `vhs` on `PATH`.
 
+To debug a prompt from a real config, capture it instead of the fixture config
+and run the shell inside an existing directory (for example a Cargo project,
+so directory-aware widgets have something to show). Under `--config` the tape
+only asserts on the `cmd` widget's success chevron and failure status, since
+the surrounding layout is whatever that config renders:
+
+```bash
+cargo run --example terminal-snapshot -- \
+  --shell zsh \
+  --config ~/.config/superline/config.json \
+  --workdir "$PWD" \
+  --output target/prompt-debug \
+  --vhs target/vhs-bin/vhs
+```
+
+A theme file the config names relative to itself is copied along with it.
+Widgets with background lookups (for example `ai_usage`) start cold in the
+isolated home; remove them from a copy of the config if their probes are
+unwanted.
+
 Select individual shells or scenarios by repeating the corresponding flag:
 
 ```bash

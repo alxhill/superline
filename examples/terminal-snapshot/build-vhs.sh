@@ -15,6 +15,8 @@ VHS_VERSION=v0.12.0
 VHS_COMMIT=db96d7374f7d7a3774f69a43f4fcc5c5a1fd74e3
 
 destination=${1:?usage: build-vhs.sh <output-dir>}
+mkdir -p "$destination"
+destination=$(cd "$destination" && pwd)
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -28,6 +30,5 @@ executable=vhs
 if [[ "${OS:-}" == Windows_NT ]]; then
   executable=vhs.exe
 fi
-mkdir -p "$destination"
 (cd "$work" && go build -trimpath -ldflags "-s -w -X main.Version=$VHS_VERSION+superline" -o "$destination/$executable" .)
 "$destination/$executable" --version

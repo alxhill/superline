@@ -140,6 +140,8 @@ struct Args {
     scenarios: Vec<Scenario>,
     output: PathBuf,
     vhs: Option<PathBuf>,
+    config: Option<PathBuf>,
+    workdir: Option<PathBuf>,
     require_all: bool,
 }
 
@@ -180,7 +182,12 @@ fn run() -> Result<()> {
             continue;
         }
 
-        let fixture = Fixture::prepare(shell, &superline)?;
+        let fixture = Fixture::prepare(
+            shell,
+            &superline,
+            args.config.as_deref(),
+            args.workdir.as_deref(),
+        )?;
         let stem = format!("{platform}-{}", shell.name());
         let tape_path = output.join(format!("{stem}.tape"));
         let log_path = output.join(format!("{stem}.log"));
@@ -216,6 +223,8 @@ fn parse_args() -> Result<Args> {
     let mut scenarios = Vec::new();
     let mut output = PathBuf::from("target/terminal-snapshots");
     let mut vhs = env::var_os("SUPERLINE_E2E_VHS").map(PathBuf::from);
+    let mut config = None;
+    let mut workdir = None;
     let mut require_all = false;
 
     while let Some(arg) = values.next() {
@@ -238,10 +247,14 @@ fn parse_args() -> Result<Args> {
             }
             Some("--output") => output = PathBuf::from(next_value(&mut values, "--output")?),
             Some("--vhs") => vhs = Some(PathBuf::from(next_value(&mut values, "--vhs")?)),
+            Some("--config") => config = Some(PathBuf::from(next_value(&mut values, "--config")?)),
+            Some("--workdir") => {
+                workdir = Some(PathBuf::from(next_value(&mut values, "--workdir")?))
+            }
             Some("--require-all") => require_all = true,
             Some("-h" | "--help") => {
                 println!(
-                    "Usage: cargo run --example terminal-snapshot -- [--shell <all|bash|zsh|fish|pwsh|nu>]... [--scenario <all|clean|failure>]... [--output <DIR>] [--vhs <VHS_BINARY>] [--require-all]"
+                    "Usage: cargo run --example terminal-snapshot -- [--shell <all|bash|zsh|fish|pwsh|nu>]... [--scenario <all|clean|failure>]... [--output <DIR>] [--vhs <VHS_BINARY>] [--config <CONFIG_JSON>] [--workdir <DIR>] [--require-all]\n\n--config captures with that superline config (plus a sibling theme file it names) instead of the fixture config; --workdir runs the shell in an existing directory instead of the empty fixture directory."
                 );
                 std::process::exit(0);
             }
@@ -265,6 +278,8 @@ fn parse_args() -> Result<Args> {
         scenarios,
         output,
         vhs,
+        config: config.map(std::path::absolute).transpose()?,
+        workdir: workdir.map(std::path::absolute).transpose()?,
         require_all,
     })
 }
@@ -292,7 +307,9 @@ fn superline_binary() -> Result<PathBuf> {
 
 fn locate_vhs(requested: Option<&Path>) -> Result<PathBuf> {
     match requested {
-        Some(path) if path.is_file() => Ok(path.to_path_buf()),
+        // VHS runs with the output directory as its working directory, so a
+        // relative binary path must be resolved first.
+        Some(path) if path.is_file() => Ok(std::path::absolute(path)?),
         Some(path) => Err(format!("vhs binary {} does not exist", path.display()).into()),
         None => find_executable("vhs").ok_or_else(|| {
             "vhs is not on PATH; pass --vhs or set SUPERLINE_E2E_VHS (see docs/terminal-snapshots.md)"
@@ -326,10 +343,18 @@ struct Fixture {
     home: PathBuf,
     dir: PathBuf,
     init: PathBuf,
+    /// Whether the fixture config is in use, so the tape can assert on the
+    /// exact `shell` + `cmd` layout it renders.
+    fixture_config: bool,
 }
 
 impl Fixture {
-    fn prepare(shell: Shell, superline: &Path) -> Result<Self> {
+    fn prepare(
+        shell: Shell,
+        superline: &Path,
+        config_override: Option<&Path>,
+        workdir: Option<&Path>,
+    ) -> Result<Self> {
         let root = env::temp_dir().join(format!(
             "superline-terminal-snapshot-{}-{}",
             std::process::id(),
@@ -339,13 +364,22 @@ impl Fixture {
             fs::remove_dir_all(&root)?;
         }
         let home = root.join("home");
-        let dir = root.join(FIXTURE_DIR);
+        let dir = match workdir {
+            Some(workdir) if workdir.is_dir() => workdir.to_path_buf(),
+            Some(workdir) => {
+                return Err(format!("--workdir {} is not a directory", workdir.display()).into())
+            }
+            None => root.join(FIXTURE_DIR),
+        };
         let config_dir = home.join(".config/superline");
         fs::create_dir_all(&config_dir)?;
         fs::create_dir_all(home.join(".cache"))?;
         fs::create_dir_all(&dir)?;
         let config = config_dir.join("config.json");
-        fs::write(&config, CONFIG)?;
+        match config_override {
+            Some(source) => copy_config(source, &config_dir)?,
+            None => fs::write(&config, CONFIG)?,
+        }
 
         let output = Command::new(superline)
             .args(["init", shell.name()])
@@ -382,8 +416,26 @@ impl Fixture {
             home,
             dir,
             init: init_path,
+            fixture_config: config_override.is_none(),
         })
     }
+}
+
+/// Copy a user config into the fixture, along with a theme file it names
+/// relative to its own directory.
+fn copy_config(source: &Path, config_dir: &Path) -> Result<()> {
+    let contents = fs::read_to_string(source)
+        .map_err(|error| format!("could not read --config {}: {error}", source.display()))?;
+    fs::write(config_dir.join("config.json"), &contents)?;
+    let parsed: serde_json::Value = serde_json::from_str(&contents)
+        .map_err(|error| format!("--config {} is not valid JSON: {error}", source.display()))?;
+    if let Some(theme) = parsed.get("theme").and_then(|theme| theme.as_str()) {
+        let theme_file = source.parent().unwrap_or(Path::new(".")).join(theme);
+        if theme_file.is_file() {
+            fs::copy(&theme_file, config_dir.join(theme))?;
+        }
+    }
+    Ok(())
 }
 
 fn render_tape(
@@ -399,8 +451,21 @@ fn render_tape(
         &forward_slashes(&fixture.init),
         &forward_slashes(&fixture.dir),
     );
-    let clean_prompt = format!("{name}{SEPARATOR}{SUCCESS_MARK}{SEPARATOR}");
-    let failure_prompt = format!("{name}{SEPARATOR}{FAILURE_STATUS}{SEPARATOR}");
+    // The fixture config puts the shell name right before the cmd widget, so
+    // the tape can pin the whole run of glyphs. A user config only guarantees
+    // the cmd widget itself: the success chevron, or the status followed by
+    // a separator glyph.
+    let (clean_prompt, failure_prompt) = if fixture.fixture_config {
+        (
+            format!("{name}{SEPARATOR}{SUCCESS_MARK}{SEPARATOR}"),
+            format!("{name}{SEPARATOR}{FAILURE_STATUS}{SEPARATOR}"),
+        )
+    } else {
+        (
+            SUCCESS_MARK.to_string(),
+            format!(r"(^|[^0-9]){FAILURE_STATUS}[\x{{E0B0}}\x{{E0B4}}]"),
+        )
+    };
     let screenshot = |scenario: Scenario| {
         let path = output.join(format!("{platform}-{name}-{}.png", scenario.name()));
         format!("Screenshot \"{}\"\nSleep 1s\n", forward_slashes(&path))
@@ -416,7 +481,7 @@ fn render_tape(
         format!(
             "Type \"{command}\"\nEnter\n\
              # The clean prompt and the typed command must survive above the new prompt.\n\
-             Wait+Screen /{clean_prompt} {}/\n\
+             Wait+Screen /{clean_prompt}[^ ]* {}/\n\
              Wait+Screen /{failure_prompt}/\n\
              Sleep 1s\n{}",
             tape_regex(command),
