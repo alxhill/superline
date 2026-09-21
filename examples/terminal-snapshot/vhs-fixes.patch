@@ -1,0 +1,66 @@
+diff --git a/evaluator.go b/evaluator.go
+index 1189ada..3ee6a1f 100644
+--- a/evaluator.go
++++ b/evaluator.go
+@@ -113,8 +113,8 @@ func Evaluate(ctx context.Context, tape string, out io.Writer, opts ...Evaluator
+ 	}
+ 
+ 	// Begin recording frames as we are now in a recording state.
+-	ctx, cancel := context.WithCancel(ctx)
+-	ch := v.Record(ctx)
++	recordCtx, cancel := context.WithCancel(ctx)
++	ch := v.Record(recordCtx)
+ 
+ 	// Clean up temporary files at the end.
+ 	defer func() {
+@@ -141,9 +141,9 @@ func Evaluate(ctx context.Context, tape string, out io.Writer, opts ...Evaluator
+ 	}()
+ 
+ 	for _, cmd := range cmds[offset:] {
+-		if ctx.Err() != nil {
++		if recordCtx.Err() != nil {
+ 			teardown()
+-			return []error{ctx.Err()}
++			return []error{recordCtx.Err()}
+ 		}
+ 
+ 		// When changing the FontFamily, FontSize, LineHeight, Padding
+diff --git a/tty.go b/tty.go
+index 491050d..cc37ab8 100644
+--- a/tty.go
++++ b/tty.go
+@@ -37,7 +37,21 @@ func buildTtyCmd(ctx context.Context, port int, shell Shell) *exec.Cmd {
+ 		"--writable",
+ 	}
+ 
+-	args = append(args, shell.Command...)
++	// ttyd's Windows build cannot spawn the shell unless the working
++	// directory is passed explicitly (tsl0922/ttyd#1413); the shell would
++	// start in the current directory anyway, so pass it everywhere.
++	if cwd, err := os.Getwd(); err == nil {
++		args = append(args, "--cwd", cwd)
++	}
++
++	// Resolve the shell through PATH here: on Windows, CreateProcess searches
++	// System32 before PATH, so a bare "bash" would start the WSL stub instead
++	// of the Git Bash that PATH points at.
++	command := append([]string(nil), shell.Command...)
++	if path, err := exec.LookPath(command[0]); err == nil {
++		command[0] = path
++	}
++	args = append(args, command...)
+ 
+ 	cmd := exec.CommandContext(ctx, "ttyd", args...)
+ 	if shell.Env != nil {
+diff --git a/vhs.go b/vhs.go
+index b5b7783..b4da50f 100644
+--- a/vhs.go
++++ b/vhs.go
+@@ -568,6 +568,7 @@ func (vhs *VHS) Render(ctx context.Context) error {
+ 		out, err := cmd.CombinedOutput()
+ 		if err != nil {
+ 			log.Println(string(out))
++			return fmt.Errorf("%s: %w", filepath.Base(cmd.Path), err)
+ 		}
+ 	}
+ 

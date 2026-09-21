@@ -1,0 +1,177 @@
+name: Terminal snapshots
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Screenshots from an older commit are not useful once a newer revision exists.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: ""
+  GO_VERSION: 1.27.1
+  NERD_FONT_URL: https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.1/patched-fonts/Meslo/S/MesloLGSNerdFont-Regular.ttf
+  NERD_FONT_SHA256: f3148b1e05c1dcf86785020d1d144524b9458deaab17505b88ecfe1694543214
+  TTYD_URL: https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe
+  TTYD_SHA256: e33a27501b10b96981335bcba938b1145c7f52551a343e72160f00ab71832b37
+  FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-21-13-55/ffmpeg-n8.1.3-win64-gpl-8.1.zip
+  FFMPEG_SHA256: c32c05e047d0bf2fef6eaee33c8ff3bc21ee5949394996e719c7d3a01630be0c
+
+jobs:
+  macos:
+    name: macOS (all shells)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v2-terminal-snapshots
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Install shells and VHS runtime dependencies
+        run: |
+          brew install fish nushell ttyd ffmpeg
+          command -v pwsh >/dev/null || brew install --cask powershell
+
+      - name: Cache pinned VHS build
+        id: vhs-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vhs-bin
+          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('examples/terminal-snapshot/build-vhs.sh', 'examples/terminal-snapshot/vhs-fixes.patch') }}
+
+      - name: Build pinned VHS
+        if: steps.vhs-cache.outputs.cache-hit != 'true'
+        run: examples/terminal-snapshot/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
+
+      - name: Install pinned Nerd Font
+        run: |
+          curl --fail --location "$NERD_FONT_URL" --output "$RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf"
+          echo "$NERD_FONT_SHA256  $RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf" | shasum --algorithm 256 --check
+          mkdir -p "$HOME/Library/Fonts"
+          cp "$RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf" "$HOME/Library/Fonts/"
+
+      - name: Capture prompts
+        run: |
+          cargo build --locked --bin superline --example terminal-snapshot
+          cargo run --locked --example terminal-snapshot -- \
+            --shell all \
+            --scenario all \
+            --output target/terminal-snapshots \
+            --vhs "$RUNNER_TEMP/vhs-bin/vhs" \
+            --require-all
+
+      - name: Upload screenshots, tapes, and VHS logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-snapshots-macos
+          path: target/terminal-snapshots/
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows:
+    name: Windows (PowerShell, Git Bash)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v2-terminal-snapshots
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Cache pinned VHS build
+        id: vhs-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vhs-bin
+          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('examples/terminal-snapshot/build-vhs.sh', 'examples/terminal-snapshot/vhs-fixes.patch') }}
+
+      - name: Build pinned VHS
+        if: steps.vhs-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: examples/terminal-snapshot/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
+
+      - name: Put Git Bash ahead of the WSL bash stub
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:ProgramFiles 'Git\bin')
+
+      - name: Install pinned ttyd and ffmpeg
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'vhs-tools'
+          New-Item -ItemType Directory -Force $tools | Out-Null
+
+          $ttyd = Join-Path $tools 'ttyd.exe'
+          Invoke-WebRequest -Uri $env:TTYD_URL -OutFile $ttyd
+          $actual = (Get-FileHash -Algorithm SHA256 $ttyd).Hash.ToLowerInvariant()
+          if ($actual -ne $env:TTYD_SHA256) { throw "ttyd checksum mismatch: $actual" }
+
+          $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
+          Invoke-WebRequest -Uri $env:FFMPEG_URL -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $env:FFMPEG_SHA256) { throw "ffmpeg checksum mismatch: $actual" }
+          Expand-Archive -Path $archive -DestinationPath (Join-Path $env:RUNNER_TEMP 'ffmpeg') -Force
+          Copy-Item (Get-ChildItem -Recurse -Filter ffmpeg.exe (Join-Path $env:RUNNER_TEMP 'ffmpeg') | Select-Object -First 1).FullName $tools
+
+          Add-Content -Path $env:GITHUB_PATH -Value $tools
+
+      - name: Install pinned Nerd Font
+        shell: pwsh
+        run: |
+          $font = Join-Path $env:RUNNER_TEMP 'MesloLGSNerdFont-Regular.ttf'
+          Invoke-WebRequest -Uri $env:NERD_FONT_URL -OutFile $font
+          $actual = (Get-FileHash -Algorithm SHA256 $font).Hash.ToLowerInvariant()
+          if ($actual -ne $env:NERD_FONT_SHA256) { throw "Nerd Font checksum mismatch: $actual" }
+          Copy-Item $font (Join-Path $env:windir 'Fonts\MesloLGSNerdFont-Regular.ttf') -Force
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' `
+            -Name 'MesloLGS Nerd Font (TrueType)' -Value 'MesloLGSNerdFont-Regular.ttf' `
+            -PropertyType String -Force | Out-Null
+
+      - name: Capture PowerShell and Git Bash prompts
+        shell: pwsh
+        run: |
+          Write-Host "bash resolves to $((Get-Command bash).Source)"
+          cargo build --locked --bin superline --example terminal-snapshot
+          cargo run --locked --example terminal-snapshot -- `
+            --shell pwsh `
+            --shell bash `
+            --scenario all `
+            --output target/terminal-snapshots `
+            --vhs (Join-Path $env:RUNNER_TEMP 'vhs-bin\vhs.exe') `
+            --require-all
+
+      - name: Upload screenshots, tapes, and VHS logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-snapshots-windows
+          path: target/terminal-snapshots/
+          if-no-files-found: warn
+          retention-days: 14

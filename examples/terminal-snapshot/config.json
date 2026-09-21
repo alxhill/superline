@@ -1,0 +1,26 @@
+{
+  "theme": "rainbow",
+  "rows": [
+    {
+      "left": [
+        { "padding": 2 },
+        { "separator": "round" },
+        { "cwd": { "max_length": 40, "wanted_seg_num": 1 } },
+        { "padding": 2 }
+      ],
+      "right": [
+        { "separator": "round" },
+        "shell",
+        { "padding": 0 }
+      ]
+    },
+    {
+      "left": [
+        "shell",
+        "cmd",
+        { "padding": 1 }
+      ],
+      "right": []
+    }
+  ]
+}

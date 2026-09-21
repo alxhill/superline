@@ -264,9 +264,11 @@ impl Powerline {
         )?;
         self.right_columns += self.separator.width();
 
-        if self.last_style_right.as_ref().map(|s| s.sep_fg) != Some(style.fg) {
-            write!(self.right_buffer, "{}", style.fg)?;
-        }
+        // The separator above painted this segment's background as the
+        // foreground, so the foreground always needs restoring here. Skipping
+        // it when it matched the previous segment's background left text
+        // drawn in its own background color.
+        write!(self.right_buffer, "{}", style.fg)?;
 
         let orig_len = self.right_buffer.len();
         if spaces {
@@ -556,6 +558,28 @@ mod tests {
         for sep in [Separator::Chevron, Separator::Round, Separator::AngleLine] {
             assert_eq!(sep.width(), 1);
         }
+    }
+
+    #[test]
+    fn right_segment_restores_its_foreground_after_the_separator() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.start_right();
+        let dark = Color::from_u8(235);
+        let orange = Color::from_u8(208);
+        powerline.add_segment("user", Style::simple(Color::from_u8(223), dark));
+        // The second segment's text color equals the first segment's
+        // background, which used to be mistaken for an already-active color.
+        powerline.add_segment("cargo", Style::simple(dark, orange));
+
+        let buffer = &powerline.right_buffer;
+        let before_cargo = &buffer[..buffer.rfind(" cargo ").unwrap()];
+        let separator = powerline.separator.for_direction(Direction::Left);
+        let after_separator = &before_cargo[before_cargo.rfind(separator).unwrap()..];
+        assert!(
+            after_separator.contains(&FgColor::from(dark).to_string()),
+            "cargo segment must set its foreground after the separator; got {after_separator:?}"
+        );
     }
 
     #[test]

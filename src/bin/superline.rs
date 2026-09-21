@@ -141,6 +141,11 @@ function global:prompt {
     try { $__pl_cols = $Host.UI.RawUI.WindowSize.Width } catch {}
     if (-not $__pl_cols -or $__pl_cols -le 0) { $__pl_cols = 80 }
 
+    # PowerShell tracks its location per runspace and never updates the PWD
+    # environment variable, so on Unix a value inherited from the launching
+    # login shell would otherwise take precedence over the real location.
+    try { $env:PWD = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.ProviderPath } catch {}
+
     $__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')
     # Count only running jobs, like the Unix shell initializers do. PowerShell
     # keeps completed, failed and stopped jobs in the table until Remove-Job,
