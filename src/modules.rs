@@ -37,7 +37,7 @@ pub use cmd_duration::{LastCmdDuration, LastCmdDurationScheme};
 pub use cwd::{Cwd, CwdScheme};
 pub use error_message::{ErrorMessage, ErrorMessageScheme};
 pub use exit_code::{ExitCode, ExitCodeScheme};
-pub use git::{Git, GitScheme, GitStatus};
+pub use git::{preresolve_system_gitconfig, Git, GitScheme, GitStatus};
 pub use host::{Host, HostScheme, Hostname};
 pub use java::{Java, JavaScheme};
 pub use jobs::{Jobs, JobsScheme};

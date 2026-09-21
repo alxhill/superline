@@ -97,25 +97,74 @@ fn branch_at_head() -> Option<String> {
         })
 }
 
-/// Whether the repository has any remote configured. This is deliberately
-/// repo-level rather than reading the `## local...remote` separator out of
-/// `git status -b --porcelain`: that separator survives as `...origin/x [gone]`
-/// once the upstream branch is deleted, and it is absent on a branch that was
-/// never pushed even though the repo has a remote.
-fn has_remote() -> bool {
-    Command::new("git")
-        .arg("remote")
-        .output()
-        .is_ok_and(|out| out.status.success() && !out.stdout.iter().all(u8::is_ascii_whitespace))
+/// Whether the repository has any remote configured, and the browser URL of
+/// the preferred one.
+///
+/// Read in-process through gitoxide, which answers both from the repository's
+/// config in well under a millisecond. Asking `git` instead costs a second
+/// child process - around 30ms on Windows, comparable to the `git status` call
+/// this backend exists for - so it is kept only as the fallback for a
+/// repository gitoxide cannot open, which is the very case the CLI backend is
+/// here to cover.
+///
+/// Either way the answer is deliberately repo-level rather than read from the
+/// `## local...remote` separator in `git status -b --porcelain`: that
+/// separator survives as `...origin/x [gone]` once the upstream branch is
+/// deleted, and is absent on a branch that was never pushed even though the
+/// repo has a remote.
+pub(super) fn remote_info(path: &Path) -> (bool, Option<String>) {
+    super::gitoxide::remote_info(path).unwrap_or_else(remote_info_from_cli)
+}
+
+/// [`remote_info`] via a single `git remote -v`. Both remote names and their
+/// URLs come out of the one call: `git remote` for the names plus
+/// `git remote get-url` for the chosen one would cost two more spawns.
+fn remote_info_from_cli() -> (bool, Option<String>) {
+    let Ok(output) = Command::new("git").args(["remote", "-v"]).output() else {
+        return (false, None);
+    };
+    if !output.status.success() {
+        return (false, None);
+    }
+    let Ok(listing) = String::from_utf8(output.stdout) else {
+        return (false, None);
+    };
+
+    let (remote, url) = parse_remote_listing(&listing);
+    (remote, url.and_then(super::remote_web_url))
+}
+
+/// Pulls the remote names and the preferred remote's fetch URL out of
+/// `git remote -v` output.
+///
+/// Each remote contributes a `name<TAB>url (fetch)` and a
+/// `name<TAB>url (push)` line, except one with no URL configured, which is
+/// listed as a bare `name<TAB>` - so the names seen here are exactly the ones
+/// plain `git remote` prints, and such a remote correctly yields no URL.
+fn parse_remote_listing(listing: &str) -> (bool, Option<&str>) {
+    let entries: Vec<(&str, &str)> = listing
+        .lines()
+        .filter_map(|line| line.split_once('\t'))
+        .map(|(name, rest)| (name.trim(), rest.trim_end()))
+        .filter(|(name, _)| !name.is_empty())
+        .collect();
+
+    let url = super::preferred_remote(entries.iter().map(|(name, _)| *name)).and_then(|wanted| {
+        entries
+            .iter()
+            .find_map(|(name, rest)| (*name == wanted).then(|| rest.strip_suffix(" (fetch)"))?)
+    });
+
+    (!entries.is_empty(), url)
 }
 
 /// Falls back to the gitoxide backend when `git` cannot be run at all, so a
 /// refresh never panics just because `git` is missing from `PATH`.
 pub fn run_git(path: &Path) -> GitStats {
-    try_run_git().unwrap_or_else(|| super::gitoxide::run_git(path))
+    try_run_git(path).unwrap_or_else(|| super::gitoxide::run_git(path))
 }
 
-fn try_run_git() -> Option<GitStats> {
+fn try_run_git(path: &Path) -> Option<GitStats> {
     let output = Command::new("git")
         .args(["status", "--porcelain", "-b"])
         .output()
@@ -125,8 +174,7 @@ fn try_run_git() -> Option<GitStats> {
     let mut lines = output.split(|x| *x == (b'\n'));
     let branch_line = std::str::from_utf8(lines.next()?).ok()?;
 
-    let remote = has_remote();
-    let remote_url = remote_web_url_of();
+    let (remote, remote_url) = remote_info(path);
 
     let mut ahead = 0;
     let mut behind = 0;
@@ -184,20 +232,39 @@ fn try_run_git() -> Option<GitStats> {
     })
 }
 
-/// The browser URL of the preferred remote's fetch URL, if it has one.
-fn remote_web_url_of() -> Option<String> {
-    let names = Command::new("git").arg("remote").output().ok()?;
-    if !names.status.success() {
-        return None;
+#[cfg(test)]
+mod tests {
+    use super::parse_remote_listing;
+
+    #[test]
+    fn a_repo_without_remotes_has_neither_flag_nor_url() {
+        assert_eq!(parse_remote_listing(""), (false, None));
     }
-    let names = String::from_utf8(names.stdout).ok()?;
-    let name = super::preferred_remote(names.lines().map(str::trim).filter(|n| !n.is_empty()))?;
-    let url = Command::new("git")
-        .args(["remote", "get-url", name])
-        .output()
-        .ok()?;
-    if !url.status.success() {
-        return None;
+
+    #[test]
+    fn the_fetch_url_of_the_preferred_remote_is_picked() {
+        let listing = "\
+upstream\thttps://github.com/them/repo.git (fetch)
+upstream\thttps://github.com/them/repo.git (push)
+origin\tgit@github.com:me/repo.git (fetch)
+origin\tgit@github.com:me/repo.git (push)
+";
+        assert_eq!(
+            parse_remote_listing(listing),
+            (true, Some("git@github.com:me/repo.git"))
+        );
     }
-    super::remote_web_url(std::str::from_utf8(&url.stdout).ok()?)
+
+    #[test]
+    fn a_remote_without_a_url_still_counts_as_a_remote() {
+        assert_eq!(parse_remote_listing("origin\t\n"), (true, None));
+    }
+
+    #[test]
+    fn a_push_only_remote_yields_no_fetch_url() {
+        assert_eq!(
+            parse_remote_listing("origin\thttps://example.com/r.git (push)\n"),
+            (true, None)
+        );
+    }
 }

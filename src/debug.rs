@@ -38,7 +38,9 @@ struct Event {
     /// Offset from [`start`] at which this was recorded.
     at: Duration,
     label: Cow<'static, str>,
-    elapsed: Duration,
+    /// `None` for a [`note`], which explains a decision rather than timing
+    /// one and so leaves the report's time column blank.
+    elapsed: Option<Duration>,
     detail: Option<String>,
 }
 
@@ -103,7 +105,7 @@ impl Span {
                 depth: open.depth,
                 at: open.at,
                 label: open.label,
-                elapsed,
+                elapsed: Some(elapsed),
                 detail: None,
             };
             let mark = open.mark.min(state.events.len());
@@ -164,8 +166,30 @@ pub fn cache(kind: &'static str, status: CacheStatus, elapsed: Duration) {
             depth: state.depth,
             at,
             label: Cow::Borrowed(kind),
-            elapsed,
+            elapsed: Some(elapsed),
             detail: Some(status.to_string()),
+        };
+        state.events.push(event);
+    });
+}
+
+/// Records a decision the prompt made, under whichever span is currently open.
+///
+/// Unlike a [`span`] or a [`cache`] lookup a note has no duration: it says why
+/// the work that surrounds it took the shape it did, so it prints with an
+/// empty time column.
+pub fn note(label: impl Into<Cow<'static, str>>, detail: impl Into<String>) {
+    if !enabled() {
+        return;
+    }
+    let at = start().elapsed();
+    with_state(|state| {
+        let event = Event {
+            depth: state.depth,
+            at,
+            label: label.into(),
+            elapsed: None,
+            detail: Some(detail.into()),
         };
         state.events.push(event);
     });
@@ -186,7 +210,8 @@ pub fn report() {
 
 fn render(events: &[Event], total: Duration) -> String {
     let startup = events.first().map(|event| event.at).unwrap_or(total);
-    let mut rows: Vec<(usize, &str, Duration, Option<&str>)> = vec![(0, "startup", startup, None)];
+    let mut rows: Vec<(usize, &str, Option<Duration>, Option<&str>)> =
+        vec![(0, "startup", Some(startup), None)];
     rows.extend(events.iter().map(|event| {
         (
             event.depth,
@@ -195,7 +220,7 @@ fn render(events: &[Event], total: Duration) -> String {
             event.detail.as_deref(),
         )
     }));
-    rows.push((0, "total", total, None));
+    rows.push((0, "total", Some(total), None));
 
     let width = rows
         .iter()
@@ -206,12 +231,15 @@ fn render(events: &[Event], total: Duration) -> String {
     let mut out = String::from("superline debug\n");
     for (depth, label, elapsed, detail) in rows {
         let pad = width - depth * 2 - label.chars().count();
+        let timing = match elapsed {
+            Some(elapsed) => Millis(elapsed).to_string(),
+            None => String::new(),
+        };
         let _ = write!(
             out,
-            "  {:indent$}{label}{:pad$}  {:>8}",
+            "  {:indent$}{label}{:pad$}  {timing:>8}",
             "",
             "",
-            Millis(elapsed).to_string(),
             indent = depth * 2,
             pad = pad,
         );
@@ -292,21 +320,28 @@ mod tests {
                 depth: 0,
                 at: Duration::from_millis(2),
                 label: "render".into(),
-                elapsed: Duration::from_millis(50),
+                elapsed: Some(Duration::from_millis(50)),
                 detail: None,
             },
             Event {
                 depth: 1,
                 at: Duration::from_millis(2),
                 label: "Git".into(),
-                elapsed: Duration::from_millis(49),
+                elapsed: Some(Duration::from_millis(49)),
                 detail: None,
             },
             Event {
                 depth: 2,
                 at: Duration::from_millis(3),
+                label: "backend".into(),
+                elapsed: None,
+                detail: Some(String::from("gitoxide (configured)")),
+            },
+            Event {
+                depth: 2,
+                at: Duration::from_millis(3),
                 label: "git".into(),
-                elapsed: Duration::from_millis(48),
+                elapsed: Some(Duration::from_millis(48)),
                 detail: Some(
                     CacheStatus::TimedOut {
                         age: Some(Duration::from_secs(120)),
@@ -323,13 +358,36 @@ mod tests {
         assert!(lines[1].starts_with("  startup"), "{}", lines[1]);
         assert!(lines[1].ends_with("2.0ms"), "{}", lines[1]);
         assert!(lines[3].starts_with("    Git"), "{}", lines[3]);
-        assert!(lines[4].starts_with("      git"), "{}", lines[4]);
+        assert!(lines[5].starts_with("      git"), "{}", lines[5]);
         assert!(
-            lines[4].ends_with("wait timed out, serving cache (age 2m)"),
+            lines[5].ends_with("wait timed out, serving cache (age 2m)"),
             "{}",
-            lines[4]
+            lines[5]
         );
-        assert!(lines[5].starts_with("  total"), "{}", lines[5]);
-        assert!(lines[5].ends_with("55.0ms"), "{}", lines[5]);
+        assert!(lines[6].starts_with("  total"), "{}", lines[6]);
+        assert!(lines[6].ends_with("55.0ms"), "{}", lines[6]);
+    }
+
+    /// A note has no duration, so its time column is blank while staying
+    /// aligned with the timed rows around it.
+    #[test]
+    fn a_note_leaves_the_time_column_empty() {
+        let events = vec![Event {
+            depth: 0,
+            at: Duration::from_millis(1),
+            label: "backend".into(),
+            elapsed: None,
+            detail: Some(String::from("cli (configured)")),
+        }];
+
+        // The note's blank time column keeps the same width as a timed row's,
+        // so the labels and the values below stay in their columns.
+        assert_eq!(
+            render(&events, Duration::from_millis(9)),
+            "superline debug\n\
+             \x20 startup     1.0ms\n\
+             \x20 backend            cli (configured)\n\
+             \x20 total       9.0ms\n",
+        );
     }
 }

@@ -3,7 +3,6 @@ use std::fmt::Write;
 use std::io::Read;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 use std::{env, fs};
 
@@ -12,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::config::{GitBackend, DEFAULT_GIT_STATUS_TIMEOUT_MS};
+use crate::debug;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -26,7 +26,7 @@ mod process;
 // untracked cache and fsmonitor, which wins by a wide margin on large working
 // trees; `gitoxide` walks the repository in-process with pure Rust, which
 // wins on small trees where a process spawn costs more than the walk itself.
-// `auto` decides from the size of `.git/index` (see `auto_prefers_cli`).
+// `auto` decides from the size of `.git/index` (see `choose_backend`).
 // Each backend exposes a `run_git(&Path) -> GitStats`.
 
 pub struct Git<S> {
@@ -270,16 +270,74 @@ fn resolve_git_dir(worktree: &Path) -> Option<PathBuf> {
 /// CLI on superline's own ~200-file repo).
 const AUTO_CLI_ENTRY_THRESHOLD: u32 = 1500;
 
-/// Picks the CLI backend for large working trees and gitoxide for small ones,
-/// based on the entry count in `.git/index`. Falls back to the CLI when the
-/// count can't be read (safer default), and unconditionally to gitoxide when
-/// `git` isn't on `PATH`.
-fn auto_prefers_cli(worktree: &Path) -> bool {
-    if !git_on_path() {
-        return false;
+/// Which backend will walk the status, and what decided it. The reason is only
+/// ever read by the `SUPERLINE_DEBUG` report; [`Source::fetch`] just needs
+/// `cli`.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Choice {
+    cli: bool,
+    reason: Reason,
+}
+
+/// Why a [`Choice`] came out the way it did.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Reason {
+    /// The `backend` setting named this backend outright.
+    Configured,
+    /// `auto`, settled by the entry count in `.git/index` against
+    /// [`AUTO_CLI_ENTRY_THRESHOLD`]. `None` when the count can't be read.
+    IndexEntries(Option<u32>),
+    /// `auto` would have taken the CLI on size, but no `git` is on `PATH`.
+    NoGitOnPath(Option<u32>),
+}
+
+/// Resolves `backend` for the repository at `worktree`.
+///
+/// `auto` picks the CLI for large working trees, where git's untracked cache
+/// and fsmonitor outweigh its process spawn, and gitoxide for small ones. The
+/// index header is read before `PATH` is consulted, so a small tree - which
+/// takes gitoxide either way - never pays for the lookup.
+fn choose_backend(worktree: &Path, backend: GitBackend) -> Choice {
+    let cli = |cli, reason| Choice { cli, reason };
+
+    match backend {
+        GitBackend::Cli => cli(true, Reason::Configured),
+        GitBackend::Gitoxide => cli(false, Reason::Configured),
+        GitBackend::Auto => {
+            let count =
+                resolve_git_dir(worktree).and_then(|dir| index_entry_count(&dir.join("index")));
+            match (prefers_cli_for_index_count(count), git_on_path()) {
+                (true, true) => cli(true, Reason::IndexEntries(count)),
+                (true, false) => cli(false, Reason::NoGitOnPath(count)),
+                (false, _) => cli(false, Reason::IndexEntries(count)),
+            }
+        }
     }
-    let count = resolve_git_dir(worktree).and_then(|dir| index_entry_count(&dir.join("index")));
-    prefers_cli_for_index_count(count)
+}
+
+impl Choice {
+    /// How the choice reads in the `SUPERLINE_DEBUG` report, e.g.
+    /// `gitoxide (auto: 82 index entries, below the 1500 threshold)`.
+    fn describe(self) -> String {
+        let backend = if self.cli { "cli" } else { "gitoxide" };
+        let why = match (self.reason, self.cli) {
+            (Reason::Configured, _) => String::from("configured"),
+            (Reason::IndexEntries(None), _) => String::from("auto: unreadable index entry count"),
+            (Reason::IndexEntries(Some(count)), true) => format!(
+                "auto: {count} index entries, at or above the {AUTO_CLI_ENTRY_THRESHOLD} threshold"
+            ),
+            (Reason::IndexEntries(Some(count)), _) => format!(
+                "auto: {count} index entries, below the {AUTO_CLI_ENTRY_THRESHOLD} threshold"
+            ),
+            (Reason::NoGitOnPath(Some(count)), _) => {
+                format!("auto: {count} index entries, but no git on PATH")
+            }
+            (Reason::NoGitOnPath(None), _) => {
+                String::from("auto: unreadable index entry count, but no git on PATH")
+            }
+        };
+        format!("{backend} ({why})")
+    }
 }
 
 /// The threshold rule in isolation: at least [`AUTO_CLI_ENTRY_THRESHOLD`]
@@ -288,11 +346,85 @@ fn prefers_cli_for_index_count(count: Option<u32>) -> bool {
     count.is_none_or(|count| count >= AUTO_CLI_ENTRY_THRESHOLD)
 }
 
+/// The names `Command::new("git")` can actually launch: Windows tries the bare
+/// name and then appends `.exe`, every other platform only has the bare name.
+#[cfg(windows)]
+const GIT_EXE_NAMES: &[&str] = &["git", "git.exe"];
+#[cfg(not(windows))]
+const GIT_EXE_NAMES: &[&str] = &["git"];
+
+/// Whether a `git` executable is reachable through `PATH`.
 fn git_on_path() -> bool {
-    Command::new("git")
-        .arg("--version")
-        .output()
-        .is_ok_and(|out| out.status.success())
+    git_dir_on_path().is_some()
+}
+
+/// The first directory on `PATH` holding a `git` executable.
+///
+/// This scans `PATH` rather than running `git --version`, because a process
+/// spawn costs around 30ms on Windows - more than the whole gitoxide status
+/// walk - so asking `git` whether it exists would cost more than picking the
+/// backend can save. Finding a name that turns out not to be runnable is
+/// harmless: [`process::run_git`] falls back to gitoxide when `git` cannot be
+/// executed.
+fn git_dir_on_path() -> Option<PathBuf> {
+    env::split_paths(&env::var_os("PATH")?)
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .find(|dir| GIT_EXE_NAMES.iter().any(|name| dir.join(name).is_file()))
+}
+
+/// The git installation prefix that holds `etc/gitconfig`, derived from the
+/// directory a `git` executable sits in.
+///
+/// Git for Windows puts `git.exe` in `<root>\cmd`, `<root>\bin` and
+/// `<root>\mingw64\bin`, and keeps the installation's `etc\gitconfig` at
+/// `<root>`. This reaches the same answer gitoxide derives from
+/// `git --exec-path` (`<root>/mingw64/libexec/git-core`, cut before its
+/// `libexec` component) without running git at all.
+fn install_prefix_of(git_dir: &Path) -> Option<PathBuf> {
+    let parent = git_dir.parent()?;
+    match parent.file_name().and_then(|name| name.to_str()) {
+        // `mingw64\bin` and its siblings sit one level deeper than `cmd`.
+        Some("mingw64" | "mingw32" | "clangarm64" | "usr") => {
+            parent.parent().map(Path::to_path_buf)
+        }
+        _ => Some(parent.to_path_buf()),
+    }
+}
+
+/// Points gitoxide at the git installation's own `gitconfig` instead of
+/// leaving it to go looking for the file itself.
+///
+/// gitoxide does read that file - it is where Git for Windows keeps
+/// `core.autocrlf`, without which the status walk disagrees with `git status`
+/// about every CRLF file - but the only way it can find the directory holding
+/// it is by running `git --exec-path`, a child it spawns with
+/// `CREATE_NO_WINDOW`, which costs around 55ms: several times the status walk
+/// it precedes. `GIT_CONFIG_SYSTEM` names the file outright and is consulted
+/// first, so setting it removes the probe while still loading the same file.
+///
+/// Only Windows is affected, being the platform where the lookup costs a
+/// process spawn; elsewhere the prefix is simply `/`. An existing
+/// `GIT_CONFIG_SYSTEM` is left alone, and nothing is set unless the derived
+/// file really exists, so a `git` child process is never handed a path to a
+/// file that isn't there. When the prefix cannot be derived, gitoxide falls
+/// back to probing, exactly as it did before.
+///
+/// Sets a process-wide environment variable, so this has to be called before
+/// any threads are started: from `main`, ahead of building the prompt.
+pub fn preresolve_system_gitconfig() {
+    if !cfg!(windows) || env::var_os("GIT_CONFIG_SYSTEM").is_some() {
+        return;
+    }
+
+    let config = git_dir_on_path()
+        .as_deref()
+        .and_then(install_prefix_of)
+        .map(|prefix| prefix.join("etc").join("gitconfig"))
+        .filter(|config| config.is_file());
+
+    if let Some(config) = config {
+        env::set_var("GIT_CONFIG_SYSTEM", config);
+    }
 }
 
 /// Reads the entry count straight out of the 12-byte `.git/index` header,
@@ -352,11 +484,10 @@ impl Source for GitStatus {
     }
 
     fn fetch(&self) -> Option<GitStats> {
-        Some(match self.backend {
-            GitBackend::Cli => process::run_git(&self.git_dir),
-            GitBackend::Gitoxide => gitoxide::run_git(&self.git_dir),
-            GitBackend::Auto if auto_prefers_cli(&self.git_dir) => process::run_git(&self.git_dir),
-            GitBackend::Auto => gitoxide::run_git(&self.git_dir),
+        Some(if choose_backend(&self.git_dir, self.backend).cli {
+            process::run_git(&self.git_dir)
+        } else {
+            gitoxide::run_git(&self.git_dir)
         })
     }
 }
@@ -373,6 +504,19 @@ impl<S: GitScheme> Module for Git<S> {
             git_dir,
             backend: self.backend,
         };
+
+        // The walk itself happens off this thread (and sometimes in a detached
+        // child), too late to report from. Resolving the choice here instead
+        // costs an index-header read and a `PATH` scan, which is why it is
+        // only done when a report is actually going to be printed. `fetch`
+        // asks the same function with the same inputs.
+        if debug::enabled() {
+            debug::note(
+                "backend",
+                choose_backend(&source.git_dir, source.backend).describe(),
+            );
+        }
+
         let stats = match Cached::new(source).load_with_timeout(self.status_timeout) {
             Lookup::Ready(stats) => stats,
             Lookup::Loading => {
@@ -459,11 +603,13 @@ impl<S: GitScheme> Module for Git<S> {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
+    use std::path::Path;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::{
-        detached_label, index_entry_count, parse_head, preferred_branch, preferred_remote,
-        prefers_cli_for_index_count, remote_web_url, AUTO_CLI_ENTRY_THRESHOLD,
+        choose_backend, detached_label, index_entry_count, install_prefix_of, parse_head,
+        preferred_branch, preferred_remote, prefers_cli_for_index_count, remote_web_url, Choice,
+        GitBackend, Reason, AUTO_CLI_ENTRY_THRESHOLD,
     };
 
     fn names(list: &[&str]) -> Vec<String> {
@@ -530,6 +676,82 @@ mod tests {
     #[test]
     fn auto_selection_favours_cli_when_the_count_is_unreadable() {
         assert!(prefers_cli_for_index_count(None));
+    }
+
+    /// Every branch of the choice names its backend first, then what settled
+    /// it, so the debug report explains a slow render without a rebuild.
+    #[test]
+    fn each_choice_describes_its_backend_and_its_reason() {
+        let describe = |cli, reason| Choice { cli, reason }.describe();
+
+        assert_eq!(describe(true, Reason::Configured), "cli (configured)");
+        assert_eq!(describe(false, Reason::Configured), "gitoxide (configured)");
+        assert_eq!(
+            describe(false, Reason::IndexEntries(Some(82))),
+            "gitoxide (auto: 82 index entries, below the 1500 threshold)"
+        );
+        assert_eq!(
+            describe(true, Reason::IndexEntries(Some(4000))),
+            "cli (auto: 4000 index entries, at or above the 1500 threshold)"
+        );
+        assert_eq!(
+            describe(true, Reason::IndexEntries(None)),
+            "cli (auto: unreadable index entry count)"
+        );
+        assert_eq!(
+            describe(false, Reason::NoGitOnPath(Some(4000))),
+            "gitoxide (auto: 4000 index entries, but no git on PATH)"
+        );
+        assert_eq!(
+            describe(false, Reason::NoGitOnPath(None)),
+            "gitoxide (auto: unreadable index entry count, but no git on PATH)"
+        );
+    }
+
+    /// An explicit `backend` setting is taken at face value, without the
+    /// index read or the `PATH` scan that `auto` needs.
+    #[test]
+    fn a_configured_backend_needs_no_inspection() {
+        let nowhere = Path::new("/superline-does-not-exist");
+
+        assert_eq!(
+            choose_backend(nowhere, GitBackend::Cli),
+            Choice {
+                cli: true,
+                reason: Reason::Configured
+            }
+        );
+        assert_eq!(
+            choose_backend(nowhere, GitBackend::Gitoxide),
+            Choice {
+                cli: false,
+                reason: Reason::Configured
+            }
+        );
+    }
+
+    #[test]
+    fn install_prefix_is_the_root_of_a_git_for_windows_layout() {
+        let root = Path::new("C:/Program Files/Git");
+        for bin in [
+            "cmd",
+            "bin",
+            "mingw64/bin",
+            "mingw32/bin",
+            "clangarm64/bin",
+            "usr/bin",
+        ] {
+            assert_eq!(
+                install_prefix_of(&root.join(bin)).as_deref(),
+                Some(root),
+                "{bin} should resolve to the installation root"
+            );
+        }
+    }
+
+    #[test]
+    fn install_prefix_of_a_parentless_directory_is_none() {
+        assert_eq!(install_prefix_of(Path::new("")), None);
     }
 
     #[test]
