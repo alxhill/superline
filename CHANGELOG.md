@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1](https://github.com/alxhill/superline/compare/v0.19.0...v0.19.1) - 2026-09-21
+
+### Other
+
+- *(git)* spawn fewer git processes and make auto mode smarter ([#129](https://github.com/alxhill/superline/pull/129))
+
 ## [0.19.0](https://github.com/alxhill/superline/compare/v0.18.2...v0.19.0) - 2026-09-20
 
 ### Added
