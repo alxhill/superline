@@ -265,7 +265,15 @@ fn capture(
         )
         .into());
     }
-    let init = String::from_utf8(init.stdout)?;
+    let mut init = String::from_utf8(init.stdout)?;
+    if shell == Shell::Pwsh {
+        let original = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')";
+        let replacement = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh', '--config', $env:SUPERLINE_E2E_CONFIG)";
+        if !init.contains(original) {
+            return Err("PowerShell init no longer contains the expected argument list".into());
+        }
+        init = init.replace(original, replacement);
+    }
     prepare_shell(shell, &home, &init)?;
 
     let pty = native_pty_system().openpty(PtySize {
@@ -287,6 +295,10 @@ fn capture(
     command.env("fish_features", "no-query-terminal");
     command.env("SUPERLINE_BIN", superline);
     command.env("SUPERLINE_E2E_HOME", &home);
+    command.env(
+        "SUPERLINE_E2E_CONFIG",
+        home.join(".config/superline/config.json"),
+    );
     command.env("PATH", path_with_binary(superline)?);
 
     let mut writer = pty.master.take_writer()?;
