@@ -18,7 +18,9 @@ Each shell produces:
 
 The fixture uses a fixed 100x12 terminal, a pinned font, theme, and locale, an
 isolated home directory, and a deterministic config, so captures from
-different platforms are directly comparable.
+different platforms are directly comparable. The grid is rendered at a 36px
+font, so the resulting PNGs are 2x density and display crisply on high-DPI
+screens.
 
 ## Dependencies
 
