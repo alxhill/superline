@@ -180,6 +180,31 @@ fn zsh_prompt_preserves_the_previous_exit_status() {
     );
 }
 
+/// PowerShell keeps its location per runspace and never updates the `PWD`
+/// environment variable, which the cwd widget prefers on Unix. The prompt must
+/// publish the real location before rendering or `cd` never shows up.
+#[test]
+fn pwsh_prompt_exports_the_current_location_as_pwd() {
+    let output = Command::new(BIN)
+        .args(["init", "pwsh"])
+        .output()
+        .expect("failed to run `superline init pwsh`");
+    assert!(output.status.success(), "`init pwsh` exited with failure");
+    let init = String::from_utf8_lossy(&output.stdout);
+    let export = init
+        .find(
+            "$env:PWD = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.ProviderPath",
+        )
+        .expect("pwsh init must set $env:PWD from the session's file system location");
+    let render = init
+        .find("& superline @__pl_args")
+        .expect("pwsh init must invoke superline");
+    assert!(
+        export < render,
+        "pwsh init must export PWD before rendering the prompt; got:\n{init}"
+    );
+}
+
 /// The pwsh init must force the console to decode superline's UTF-8 output as
 /// UTF-8. Without this, PowerShell decodes a native command's stdout using the
 /// legacy OEM code page on Windows and mangles Nerd Font glyphs into mojibake

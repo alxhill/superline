@@ -1,0 +1,25 @@
+# VHS tape for one superline terminal snapshot. `terminal-snapshot.rs` fills
+# the {{placeholders}} and writes the result next to the captured PNGs.
+Set Shell {{shell}}
+Set Columns 100
+Set Rows 12
+Set FontSize 18
+Set FontFamily "MesloLGS Nerd Font"
+Set Padding 16
+Set CursorBlink false
+Set WaitTimeout 30s
+Set Theme { "name": "superline-e2e", "black": "#000000", "red": "#cd3131", "green": "#0dbc79", "yellow": "#e5e510", "blue": "#2472c8", "magenta": "#bc3fbc", "cyan": "#11a8cd", "white": "#e5e5e5", "brightBlack": "#666666", "brightRed": "#f14c4c", "brightGreen": "#23d18b", "brightYellow": "#f5f543", "brightBlue": "#3b8eea", "brightMagenta": "#d670d6", "brightCyan": "#29b8db", "brightWhite": "#ffffff", "background": "#1e1e1e", "foreground": "#e8e8e8", "selection": "#3a3d41", "cursor": "#e8e8e8" }
+
+# Setup runs before recording starts. Wait for VHS's stock prompt so the
+# shell's line editor is ready, then load superline's init snippet, enter the
+# fixture directory, and clear the screen so the first capture starts clean.
+Hide
+Wait+Line />/
+Type@5ms "{{setup}}"
+Enter
+Show
+
+Wait+Screen /{{clean_prompt}}/
+Sleep 1s
+{{clean_screenshot}}
+{{failure_scenario}}

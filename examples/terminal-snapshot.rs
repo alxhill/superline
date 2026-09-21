@@ -1,57 +1,31 @@
-//! Render Superline through real interactive shells and save the terminal as PNG.
+//! Capture superline prompts from real interactive shells through VHS.
 //!
-//! This is deliberately an example rather than production code: it adds no
-//! weight to the installed `superline` binary, while remaining portable enough
-//! to run against Unix PTYs and Windows ConPTY in CI.
+//! The example prepares an isolated home directory with a deterministic
+//! config, loads `superline init <shell>` into the shell, and drives the
+//! session with a VHS tape generated from `terminal-snapshot/tape.template`.
+//! VHS owns the PTY (ConPTY on Windows), the terminal emulation, and the
+//! rendering; this file only wires up fixtures and checks that every expected
+//! PNG exists afterwards.
 
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Arc, Mutex};
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use fontdue::{Font, FontSettings};
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use vt100::{Color, Screen};
-
-const COLS: u16 = 100;
-const ROWS: u16 = 12;
-const TIMEOUT: Duration = Duration::from_secs(15);
-const QUIET_PERIOD: Duration = Duration::from_millis(750);
-const FONT_SIZE: f32 = 18.0;
-const CELL_WIDTH: usize = 11;
-const CELL_HEIGHT: usize = 24;
-const MARGIN: usize = 16;
-const CURSOR_POSITION_REQUEST: &[u8] = b"\x1b[6n";
-const CURSOR_POSITION_REPORT: &[u8] = b"\x1b[1;1R";
+const CONFIG: &str = include_str!("terminal-snapshot/config.json");
+const TAPE_TEMPLATE: &str = include_str!("terminal-snapshot/tape.template");
+const FIXTURE_DIR: &str = "superline-e2e";
+const FAILURE_STATUS: &str = "7";
+const VHS_TIMEOUT: Duration = Duration::from_secs(240);
+/// Powerline separator and success chevron, as RE2 escapes for the tape.
+const SEPARATOR: &str = r"\x{E0B0}";
+const SUCCESS_MARK: &str = r"\x{F105}";
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
-type PtyWriter = Arc<Mutex<Box<dyn Write + Send>>>;
-
-#[derive(Default)]
-struct CursorQueryScanner {
-    tail: Vec<u8>,
-}
-
-impl CursorQueryScanner {
-    fn sees_request(&mut self, chunk: &[u8]) -> bool {
-        self.tail.extend_from_slice(chunk);
-        let seen = self
-            .tail
-            .windows(CURSOR_POSITION_REQUEST.len())
-            .any(|window| window == CURSOR_POSITION_REQUEST);
-        let consumed = self
-            .tail
-            .len()
-            .saturating_sub(CURSOR_POSITION_REQUEST.len() - 1);
-        self.tail.drain(..consumed);
-        seen
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Shell {
@@ -75,13 +49,6 @@ impl Shell {
         }
     }
 
-    fn executable(self) -> &'static str {
-        match self {
-            Self::Nu => "nu",
-            _ => self.name(),
-        }
-    }
-
     fn parse(value: &str) -> Result<Self> {
         match value {
             "bash" => Ok(Self::Bash),
@@ -90,6 +57,39 @@ impl Shell {
             "pwsh" | "powershell" => Ok(Self::Pwsh),
             "nu" | "nushell" => Ok(Self::Nu),
             _ => Err(format!("unsupported shell {value:?}").into()),
+        }
+    }
+
+    fn init_file_name(self) -> &'static str {
+        match self {
+            Self::Bash => "superline-init.sh",
+            Self::Zsh => "superline-init.zsh",
+            Self::Fish => "superline-init.fish",
+            Self::Pwsh => "superline-init.ps1",
+            Self::Nu => "superline-init.nu",
+        }
+    }
+
+    /// One hidden command line that loads the init snippet, enters the
+    /// fixture directory, and clears the setup output.
+    fn setup_command(self, init: &str, fixture: &str) -> String {
+        match self {
+            Self::Bash | Self::Zsh => format!("source '{init}' && cd '{fixture}' && clear"),
+            Self::Fish => format!("source '{init}'; and cd '{fixture}'; and clear"),
+            Self::Pwsh => format!(". '{init}'; Set-Location '{fixture}'; Clear-Host"),
+            Self::Nu => format!("source '{init}'; cd '{fixture}'; clear"),
+        }
+    }
+
+    /// A visible command that makes the shell report exit status 7.
+    fn failure_command(self) -> &'static str {
+        match (self, cfg!(windows)) {
+            (Self::Bash | Self::Zsh, _) => "(exit 7)",
+            (Self::Fish, _) => "sh -c 'exit 7'",
+            (Self::Pwsh, true) => "cmd /c exit 7",
+            (Self::Pwsh, false) => "& sh -c 'exit 7'",
+            (Self::Nu, true) => "^cmd /c exit 7",
+            (Self::Nu, false) => "^sh -c 'exit 7'",
         }
     }
 }
@@ -124,7 +124,7 @@ struct Args {
     shells: Vec<Shell>,
     scenarios: Vec<Scenario>,
     output: PathBuf,
-    font: PathBuf,
+    vhs: Option<PathBuf>,
     require_all: bool,
 }
 
@@ -145,27 +145,46 @@ fn run() -> Result<()> {
         )
         .into());
     }
+    let vhs = locate_vhs(args.vhs.as_deref())?;
+    println!("using {}", vhs_version(&vhs)?);
 
     fs::create_dir_all(&args.output)?;
-    let font = Font::from_bytes(fs::read(&args.font)?, FontSettings::default())
-        .map_err(|error| format!("could not load font {}: {error}", args.font.display()))?;
+    let output = fs::canonicalize(&args.output)?;
+    let platform = platform_name();
 
     let mut captured = 0;
     for shell in args.shells {
-        let Some(executable) = find_executable(shell.executable()) else {
-            let message = format!("{} is not on PATH", shell.executable());
+        if find_executable(shell.name()).is_none() {
+            let message = format!("{} is not on PATH", shell.name());
             if args.require_all {
                 return Err(message.into());
             }
             eprintln!("skipping {}: {message}", shell.name());
             continue;
-        };
-
-        for scenario in &args.scenarios {
-            let capture = capture(shell, *scenario, &executable, &superline)?;
-            save_capture(shell, *scenario, &capture, &font, &args.output)?;
-            captured += 1;
         }
+
+        let fixture = Fixture::prepare(shell, &superline)?;
+        let stem = format!("{platform}-{}", shell.name());
+        let tape_path = output.join(format!("{stem}.tape"));
+        let log_path = output.join(format!("{stem}.log"));
+        fs::write(
+            &tape_path,
+            render_tape(shell, &args.scenarios, &fixture, &output, &platform),
+        )?;
+
+        let result = run_vhs(&vhs, &tape_path, &log_path, &fixture, &superline, &output)
+            .and_then(|()| verify_screenshots(shell, &args.scenarios, &output, &platform));
+        let _ = fs::remove_dir_all(&fixture.root);
+        if let Err(error) = result {
+            return Err(format!(
+                "{} capture failed: {error}\nvhs log ({}):\n{}",
+                shell.name(),
+                log_path.display(),
+                log_tail(&log_path)
+            )
+            .into());
+        }
+        captured += args.scenarios.len();
     }
 
     if captured == 0 {
@@ -179,7 +198,7 @@ fn parse_args() -> Result<Args> {
     let mut shells = Vec::new();
     let mut scenarios = Vec::new();
     let mut output = PathBuf::from("target/terminal-snapshots");
-    let mut font = env::var_os("SUPERLINE_E2E_FONT").map(PathBuf::from);
+    let mut vhs = env::var_os("SUPERLINE_E2E_VHS").map(PathBuf::from);
     let mut require_all = false;
 
     while let Some(arg) = values.next() {
@@ -192,8 +211,6 @@ fn parse_args() -> Result<Args> {
                     shells.push(Shell::parse(&value)?);
                 }
             }
-            Some("--output") => output = PathBuf::from(next_value(&mut values, "--output")?),
-            Some("--font") => font = Some(PathBuf::from(next_value(&mut values, "--font")?)),
             Some("--scenario") => {
                 let value = next_utf8(&mut values, "--scenario")?;
                 if value == "all" {
@@ -202,10 +219,12 @@ fn parse_args() -> Result<Args> {
                     scenarios.push(Scenario::parse(&value)?);
                 }
             }
+            Some("--output") => output = PathBuf::from(next_value(&mut values, "--output")?),
+            Some("--vhs") => vhs = Some(PathBuf::from(next_value(&mut values, "--vhs")?)),
             Some("--require-all") => require_all = true,
             Some("-h" | "--help") => {
                 println!(
-                    "Usage: cargo run --example terminal-snapshot -- --shell <all|bash|zsh|fish|pwsh|nu> [--shell ...] --scenario <all|clean|failure> --font <NERD_FONT.ttf> [--output <DIR>] [--require-all]"
+                    "Usage: cargo run --example terminal-snapshot -- [--shell <all|bash|zsh|fish|pwsh|nu>]... [--scenario <all|clean|failure>]... [--output <DIR>] [--vhs <VHS_BINARY>] [--require-all]"
                 );
                 std::process::exit(0);
             }
@@ -223,15 +242,12 @@ fn parse_args() -> Result<Args> {
     }
     scenarios.sort_by_key(|scenario| scenario.name());
     scenarios.dedup();
-    let font = font.ok_or(
-        "pass --font <NERD_FONT.ttf> or set SUPERLINE_E2E_FONT so prompt glyphs render correctly",
-    )?;
 
     Ok(Args {
         shells,
         scenarios,
         output,
-        font,
+        vhs,
         require_all,
     })
 }
@@ -250,290 +266,233 @@ fn next_utf8(values: &mut impl Iterator<Item = OsString>, flag: &str) -> Result<
 
 fn superline_binary() -> Result<PathBuf> {
     let executable = env::current_exe()?;
-    let debug_dir = executable
+    let profile_dir = executable
         .parent()
         .and_then(Path::parent)
         .ok_or("snapshot executable has no target profile directory")?;
-    Ok(debug_dir.join(format!("superline{}", env::consts::EXE_SUFFIX)))
+    Ok(profile_dir.join(format!("superline{}", env::consts::EXE_SUFFIX)))
 }
 
-struct Capture {
-    raw: Vec<u8>,
-    screen: Screen,
+fn locate_vhs(requested: Option<&Path>) -> Result<PathBuf> {
+    match requested {
+        Some(path) if path.is_file() => Ok(path.to_path_buf()),
+        Some(path) => Err(format!("vhs binary {} does not exist", path.display()).into()),
+        None => find_executable("vhs").ok_or_else(|| {
+            "vhs is not on PATH; pass --vhs or set SUPERLINE_E2E_VHS (see docs/terminal-snapshots.md)"
+                .into()
+        }),
+    }
 }
 
-fn capture(
-    shell: Shell,
-    scenario: Scenario,
-    executable: &Path,
-    superline: &Path,
-) -> Result<Capture> {
-    let root = scratch_dir(shell, scenario)?;
-    let home = root.join("home");
-    let fixture = root.join("superline-e2e");
-    fs::create_dir_all(home.join(".config/superline"))?;
-    fs::create_dir_all(&fixture)?;
-    fs::write(
-        home.join(".config/superline/config.json"),
-        include_str!("terminal-snapshot/config.json"),
-    )?;
-
-    let init = std::process::Command::new(superline)
-        .args(["init", shell.name()])
-        .output()?;
-    if !init.status.success() {
+fn vhs_version(vhs: &Path) -> Result<String> {
+    let output = Command::new(vhs).arg("--version").output()?;
+    if !output.status.success() {
         return Err(format!(
-            "`superline init {}` failed: {}",
-            shell.name(),
-            String::from_utf8_lossy(&init.stderr)
+            "`{} --version` failed: {}",
+            vhs.display(),
+            String::from_utf8_lossy(&output.stderr)
         )
         .into());
     }
-    let mut init = String::from_utf8(init.stdout)?;
-    if shell == Shell::Pwsh {
-        let original = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')";
-        let config_path = home
-            .join(".config/superline/config.json")
-            .to_string_lossy()
-            .replace('\'', "''");
-        let replacement = format!(
-            "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh', '--config', '{config_path}')"
-        );
-        if !init.contains(original) {
-            return Err("PowerShell init no longer contains the expected argument list".into());
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn platform_name() -> String {
+    env::var("RUNNER_OS")
+        .unwrap_or_else(|_| env::consts::OS.to_string())
+        .to_ascii_lowercase()
+}
+
+/// Isolated home and working directory for one shell session.
+struct Fixture {
+    root: PathBuf,
+    home: PathBuf,
+    dir: PathBuf,
+    init: PathBuf,
+}
+
+impl Fixture {
+    fn prepare(shell: Shell, superline: &Path) -> Result<Self> {
+        let root = env::temp_dir().join(format!(
+            "superline-terminal-snapshot-{}-{}",
+            std::process::id(),
+            shell.name()
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root)?;
         }
-        init = init.replace(original, &replacement);
-    }
-    prepare_shell(shell, &home, &init)?;
+        let home = root.join("home");
+        let dir = root.join(FIXTURE_DIR);
+        let config_dir = home.join(".config/superline");
+        fs::create_dir_all(&config_dir)?;
+        fs::create_dir_all(home.join(".cache"))?;
+        fs::create_dir_all(&dir)?;
+        let config = config_dir.join("config.json");
+        fs::write(&config, CONFIG)?;
 
-    let pty = native_pty_system().openpty(PtySize {
-        rows: ROWS,
-        cols: COLS,
-        pixel_width: 0,
-        pixel_height: 0,
-    })?;
-    let mut command = shell_command(shell, executable, &home)?;
-    command.cwd(&fixture);
-    command.env("PWD", &fixture);
-    command.env("HOME", &home);
-    command.env("USERPROFILE", &home);
-    command.env("XDG_CONFIG_HOME", home.join(".config"));
-    command.env("TERM", "xterm-256color");
-    command.env("COLORTERM", "truecolor");
-    command.env("COLUMNS", COLS.to_string());
-    command.env("LINES", ROWS.to_string());
-    command.env("BASH_SILENCE_DEPRECATION_WARNING", "1");
-    command.env("fish_features", "no-query-terminal");
-    command.env("SUPERLINE_BIN", superline);
-    command.env("PATH", path_with_binary(superline)?);
-
-    let mut child = pty.slave.spawn_command(command)?;
-    drop(pty.slave);
-    let mut reader = pty.master.try_clone_reader()?;
-    let writer: PtyWriter = Arc::new(Mutex::new(pty.master.take_writer()?));
-    let cursor_writer = Arc::clone(&writer);
-    let (sender, receiver) = mpsc::channel();
-    let reader_thread = thread::spawn(move || {
-        let mut buffer = [0_u8; 8192];
-        let mut cursor_queries = CursorQueryScanner::default();
-        loop {
-            match reader.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(count) => {
-                    let chunk = &buffer[..count];
-                    if cursor_queries.sees_request(chunk) {
-                        let _ = pty_write(&cursor_writer, CURSOR_POSITION_REPORT);
-                    }
-                    if sender.send(chunk.to_vec()).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    });
-
-    let mut parser = vt100::Parser::new(ROWS, COLS, 0);
-    let mut raw = Vec::new();
-    let started = Instant::now();
-    let mut last_output = Instant::now();
-    let mut saw_prompt = false;
-    let mut cleared = false;
-    let mut command_sent = false;
-
-    loop {
-        match receiver.recv_timeout(Duration::from_millis(100)) {
-            Ok(bytes) => {
-                parser.process(&bytes);
-                answer_terminal_queries(&bytes, &writer)?;
-                raw.extend_from_slice(&bytes);
-                last_output = Instant::now();
-                let contents = parser.screen().contents();
-                let prompt_count = contents.matches(shell.name()).count();
-                saw_prompt = contents.contains("superline-e2e")
-                    && prompt_count >= 2
-                    && (!command_sent
-                        || contents.contains(&format!(
-                            "{}{}",
-                            shell.name(),
-                            failure_status(shell)
-                        )));
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-
-        if saw_prompt && last_output.elapsed() >= QUIET_PERIOD {
-            if !cleared {
-                pty_write(&writer, b"clear\r")?;
-                cleared = true;
-                saw_prompt = false;
-                last_output = Instant::now();
-                continue;
-            }
-            if scenario == Scenario::Failure && !command_sent {
-                let command = format!("{}\r", failure_command(shell));
-                pty_write(&writer, command.as_bytes())?;
-                command_sent = true;
-                saw_prompt = false;
-                last_output = Instant::now();
-                continue;
-            }
-            break;
-        }
-        if started.elapsed() >= TIMEOUT {
-            let contents = parser.screen().contents();
-            let _ = child.kill();
-            let _ = child.wait();
-            drop(writer);
-            drop(pty.master);
-            let _ = reader_thread.join();
-            let _ = fs::remove_dir_all(&root);
+        let output = Command::new(superline)
+            .args(["init", shell.name()])
+            .output()?;
+        if !output.status.success() {
             return Err(format!(
-                "timed out waiting for the {} prompt; terminal contained:\n{contents}\nraw stream:\n{:?}",
+                "`superline init {}` failed: {}",
                 shell.name(),
-                String::from_utf8_lossy(&raw)
+                String::from_utf8_lossy(&output.stderr)
             )
             .into());
         }
-    }
-
-    let screen = parser.screen().clone();
-    let _ = child.kill();
-    let _ = child.wait();
-    drop(writer);
-    drop(pty.master);
-    drop(receiver);
-    let _ = reader_thread.join();
-    let _ = fs::remove_dir_all(&root);
-
-    if !saw_prompt {
-        return Err(format!(
-            "{} exited before rendering a prompt; terminal contained:\n{}",
-            shell.name(),
-            screen.contents()
-        )
-        .into());
-    }
-    Ok(Capture { raw, screen })
-}
-
-fn pty_write(writer: &PtyWriter, bytes: &[u8]) -> Result<()> {
-    let mut writer = writer.lock().map_err(|_| "PTY writer lock poisoned")?;
-    writer.write_all(bytes)?;
-    writer.flush()?;
-    Ok(())
-}
-
-fn answer_terminal_queries(bytes: &[u8], writer: &PtyWriter) -> Result<()> {
-    if bytes.windows(4).any(|window| window == b"\x1b[0c") {
-        pty_write(writer, b"\x1b[?1;2c")?;
-    }
-    Ok(())
-}
-
-fn prepare_shell(shell: Shell, home: &Path, init: &str) -> Result<()> {
-    let contents = match shell {
-        Shell::Fish => format!("set --global fish_greeting\n{init}\nclear\n"),
-        Shell::Nu => format!("$env.config.show_banner = false\n{init}\nclear\n"),
-        _ => format!("{init}\nclear\n"),
-    };
-    match shell {
-        Shell::Bash => fs::write(home.join(".bashrc"), contents)?,
-        Shell::Zsh => fs::write(home.join(".zshrc"), contents)?,
-        Shell::Fish => {
-            let dir = home.join(".config/fish");
-            fs::create_dir_all(&dir)?;
-            fs::write(dir.join("config.fish"), contents)?;
+        let mut init = String::from_utf8(output.stdout)?;
+        if shell == Shell::Pwsh {
+            // PowerShell resolves the home directory itself, so point it at
+            // the fixture config explicitly rather than trusting inheritance.
+            let original = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')";
+            if !init.contains(original) {
+                return Err("PowerShell init no longer contains the expected argument list".into());
+            }
+            let config = forward_slashes(&config).replace('\'', "''");
+            init = init.replace(
+                original,
+                &format!(
+                    "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh', '--config', '{config}')"
+                ),
+            );
         }
-        Shell::Nu => fs::write(home.join("config.nu"), contents)?,
-        Shell::Pwsh => fs::write(
-            home.join("profile.ps1"),
-            format!("$PSStyle.OutputRendering = 'Ansi'\n{init}\nClear-Host\n"),
-        )?,
+        let init_path = home.join(shell.init_file_name());
+        fs::write(&init_path, init)?;
+
+        Ok(Self {
+            root,
+            home,
+            dir,
+            init: init_path,
+        })
+    }
+}
+
+fn render_tape(
+    shell: Shell,
+    scenarios: &[Scenario],
+    fixture: &Fixture,
+    output: &Path,
+    platform: &str,
+) -> String {
+    let name = shell.name();
+    let setup = shell.setup_command(
+        &forward_slashes(&fixture.init),
+        &forward_slashes(&fixture.dir),
+    );
+    let clean_prompt = format!("{name}{SEPARATOR}{SUCCESS_MARK}{SEPARATOR}");
+    let failure_prompt = format!("{name}{SEPARATOR}{FAILURE_STATUS}{SEPARATOR}");
+    let screenshot = |scenario: Scenario| {
+        let path = output.join(format!("{platform}-{name}-{}.png", scenario.name()));
+        format!("Screenshot \"{}\"\nSleep 1s\n", forward_slashes(&path))
+    };
+
+    let clean_screenshot = if scenarios.contains(&Scenario::Clean) {
+        screenshot(Scenario::Clean)
+    } else {
+        String::new()
+    };
+    let failure_scenario = if scenarios.contains(&Scenario::Failure) {
+        let command = shell.failure_command();
+        format!(
+            "Type \"{command}\"\nEnter\n\
+             # The clean prompt and the typed command must survive above the new prompt.\n\
+             Wait+Screen /{clean_prompt} {}/\n\
+             Wait+Screen /{failure_prompt}/\n\
+             Sleep 1s\n{}",
+            regex::escape(command),
+            screenshot(Scenario::Failure)
+        )
+    } else {
+        String::new()
+    };
+
+    TAPE_TEMPLATE
+        .replace("{{shell}}", name)
+        .replace("{{setup}}", &setup)
+        .replace("{{clean_prompt}}", &clean_prompt)
+        .replace("{{clean_screenshot}}", &clean_screenshot)
+        .replace("{{failure_scenario}}", &failure_scenario)
+}
+
+fn run_vhs(
+    vhs: &Path,
+    tape: &Path,
+    log_path: &Path,
+    fixture: &Fixture,
+    superline: &Path,
+    output: &Path,
+) -> Result<()> {
+    let log = fs::File::create(log_path)?;
+    let mut child = Command::new(vhs)
+        .arg(tape)
+        .current_dir(output)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log.try_clone()?))
+        .stderr(Stdio::from(log))
+        .env("HOME", &fixture.home)
+        .env("USERPROFILE", &fixture.home)
+        .env("XDG_CONFIG_HOME", fixture.home.join(".config"))
+        .env("XDG_CACHE_HOME", fixture.home.join(".cache"))
+        .env("LANG", "en_US.UTF-8")
+        .env("LC_ALL", "en_US.UTF-8")
+        .env("PATH", path_with_binary(superline)?)
+        .env_remove("PWD")
+        .spawn()?;
+
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if started.elapsed() >= VHS_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("vhs did not finish within {VHS_TIMEOUT:?}").into());
+        }
+        thread::sleep(Duration::from_millis(200));
+    };
+    if !status.success() {
+        return Err(format!("vhs exited with {status}").into());
     }
     Ok(())
 }
 
-fn shell_command(shell: Shell, executable: &Path, home: &Path) -> Result<CommandBuilder> {
-    let mut command = CommandBuilder::new(executable);
-    match shell {
-        Shell::Bash => command.args([
-            "--noprofile",
-            "--rcfile",
-            &home.join(".bashrc").to_string_lossy(),
-            "-i",
-        ]),
-        Shell::Zsh => command.args(["-d"]),
-        Shell::Fish => command.args(["--interactive", "--features=no-query-terminal"]),
-        Shell::Pwsh => command.args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NoExit",
-            "-File",
-            &home.join("profile.ps1").to_string_lossy(),
-        ]),
-        Shell::Nu => command.args([
-            "--interactive",
-            "--config",
-            &home.join("config.nu").to_string_lossy(),
-        ]),
+fn verify_screenshots(
+    shell: Shell,
+    scenarios: &[Scenario],
+    output: &Path,
+    platform: &str,
+) -> Result<()> {
+    for scenario in scenarios {
+        let path = output.join(format!(
+            "{platform}-{}-{}.png",
+            shell.name(),
+            scenario.name()
+        ));
+        let size = fs::metadata(&path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        if size == 0 {
+            return Err(format!("vhs did not write {}", path.display()).into());
+        }
+        println!("captured {}", path.display());
     }
-    if shell == Shell::Zsh {
-        command.env("ZDOTDIR", home);
-    }
-    Ok(command)
+    Ok(())
 }
 
-fn failure_command(shell: Shell) -> &'static str {
-    match (shell, cfg!(windows)) {
-        (Shell::Pwsh, true) => "cmd /c exit 7",
-        (Shell::Pwsh, false) => "& /bin/sh -c 'exit 7'",
-        (Shell::Nu, true) => "^cmd /c exit 7",
-        (Shell::Nu, false) => "^/bin/sh -c 'exit 7'",
-        _ => "false",
-    }
+fn log_tail(path: &Path) -> String {
+    let log = fs::read_to_string(path).unwrap_or_default();
+    let lines: Vec<&str> = log.lines().collect();
+    let start = lines.len().saturating_sub(40);
+    lines[start..].join("\n")
 }
 
-fn failure_status(shell: Shell) -> u8 {
-    match shell {
-        Shell::Pwsh | Shell::Nu => 7,
-        _ => 1,
-    }
-}
-
-fn scratch_dir(shell: Shell, scenario: Scenario) -> Result<PathBuf> {
-    let root = env::temp_dir().join(format!(
-        "superline-terminal-snapshot-{}-{}-{}",
-        std::process::id(),
-        shell.name(),
-        scenario.name()
-    ));
-    if root.exists() {
-        fs::remove_dir_all(&root)?;
-    }
-    fs::create_dir_all(&root)?;
-    Ok(root)
+/// Paths typed into the shell or written into the tape use forward slashes,
+/// which PowerShell, nushell, and VHS accept on Windows as well.
+fn forward_slashes(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn path_with_binary(superline: &Path) -> Result<OsString> {
@@ -569,212 +528,4 @@ fn find_executable(name: &str) -> Option<PathBuf> {
         }
     }
     None
-}
-
-fn save_capture(
-    shell: Shell,
-    scenario: Scenario,
-    capture: &Capture,
-    font: &Font,
-    output: &Path,
-) -> Result<()> {
-    let platform = env::var("RUNNER_OS")
-        .unwrap_or_else(|_| env::consts::OS.to_string())
-        .to_ascii_lowercase();
-    let stem = format!("{platform}-{}-{}", shell.name(), scenario.name());
-    fs::write(output.join(format!("{stem}.ansi")), &capture.raw)?;
-    fs::write(
-        output.join(format!("{stem}.txt")),
-        capture.screen.contents(),
-    )?;
-    render_png(&capture.screen, font, &output.join(format!("{stem}.png")))?;
-    println!("captured {}", output.join(format!("{stem}.png")).display());
-    Ok(())
-}
-
-fn render_png(screen: &Screen, font: &Font, path: &Path) -> Result<()> {
-    let (first_row, last_row) = used_rows(screen).unwrap_or((0, 2));
-    let rows = usize::from(last_row - first_row + 1);
-    let width = usize::from(COLS) * CELL_WIDTH + MARGIN * 2;
-    let height = rows * CELL_HEIGHT + MARGIN * 2;
-    let terminal_bg = [30, 30, 30, 255];
-    let terminal_fg = [232, 232, 232, 255];
-    let mut pixels = vec![0_u8; width * height * 4];
-    for pixel in pixels.as_chunks_mut::<4>().0 {
-        pixel.copy_from_slice(&terminal_bg);
-    }
-
-    for row in first_row..=last_row {
-        for col in 0..COLS {
-            let Some(cell) = screen.cell(row, col) else {
-                continue;
-            };
-            let mut foreground = color(cell.fgcolor(), terminal_fg);
-            let mut background = color(cell.bgcolor(), terminal_bg);
-            if cell.inverse() {
-                std::mem::swap(&mut foreground, &mut background);
-            }
-            let x = MARGIN + usize::from(col) * CELL_WIDTH;
-            let y = MARGIN + usize::from(row - first_row) * CELL_HEIGHT;
-            fill_rect(
-                &mut pixels,
-                width,
-                x,
-                y,
-                CELL_WIDTH,
-                CELL_HEIGHT,
-                background,
-            );
-            if cell.is_wide_continuation() {
-                continue;
-            }
-            for character in cell.contents().chars() {
-                draw_glyph(
-                    &mut pixels,
-                    (width, height),
-                    (x, y),
-                    character,
-                    foreground,
-                    font,
-                );
-            }
-            if cell.underline() {
-                fill_rect(
-                    &mut pixels,
-                    width,
-                    x,
-                    y + CELL_HEIGHT - 3,
-                    CELL_WIDTH,
-                    1,
-                    foreground,
-                );
-            }
-        }
-    }
-
-    let file = fs::File::create(path)?;
-    let mut encoder = png::Encoder::new(file, width as u32, height as u32);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder.write_header()?.write_image_data(&pixels)?;
-    Ok(())
-}
-
-fn used_rows(screen: &Screen) -> Option<(u16, u16)> {
-    let used = |row| {
-        (0..COLS).any(|col| {
-            screen
-                .cell(row, col)
-                .is_some_and(|cell| cell.has_contents() || cell.bgcolor() != Color::Default)
-        })
-    };
-    let first = (0..ROWS).find(|row| used(*row))?;
-    let last = (first..ROWS).rfind(|row| used(*row)).unwrap_or(first);
-    Some((first, last))
-}
-
-fn draw_glyph(
-    pixels: &mut [u8],
-    image_size: (usize, usize),
-    cell: (usize, usize),
-    character: char,
-    color: [u8; 4],
-    font: &Font,
-) {
-    let (image_width, image_height) = image_size;
-    let (cell_x, cell_y) = cell;
-    let (metrics, bitmap) = font.rasterize(character, FONT_SIZE);
-    let baseline = cell_y as i32 + 18;
-    let glyph_x = cell_x as i32 + metrics.xmin;
-    let glyph_y = baseline - metrics.ymin - metrics.height as i32;
-
-    for bitmap_y in 0..metrics.height {
-        for bitmap_x in 0..metrics.width {
-            let x = glyph_x + bitmap_x as i32;
-            let y = glyph_y + bitmap_y as i32;
-            if x < 0 || y < 0 || x >= image_width as i32 || y >= image_height as i32 {
-                continue;
-            }
-            let alpha = bitmap[bitmap_y * metrics.width + bitmap_x];
-            blend_pixel(
-                &mut pixels[(y as usize * image_width + x as usize) * 4..][..4],
-                color,
-                alpha,
-            );
-        }
-    }
-}
-
-fn fill_rect(
-    pixels: &mut [u8],
-    image_width: usize,
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    color: [u8; 4],
-) {
-    for row in y..y + height {
-        for col in x..x + width {
-            pixels[(row * image_width + col) * 4..][..4].copy_from_slice(&color);
-        }
-    }
-}
-
-fn blend_pixel(destination: &mut [u8], source: [u8; 4], coverage: u8) {
-    let alpha = u16::from(coverage);
-    for channel in 0..3 {
-        destination[channel] = ((u16::from(source[channel]) * alpha
-            + u16::from(destination[channel]) * (255 - alpha))
-            / 255) as u8;
-    }
-    destination[3] = 255;
-}
-
-fn color(color: Color, default: [u8; 4]) -> [u8; 4] {
-    match color {
-        Color::Default => default,
-        Color::Idx(index) => {
-            let [red, green, blue] = xterm_color(index);
-            [red, green, blue, 255]
-        }
-        Color::Rgb(red, green, blue) => [red, green, blue, 255],
-    }
-}
-
-fn xterm_color(index: u8) -> [u8; 3] {
-    const ANSI: [[u8; 3]; 16] = [
-        [0, 0, 0],
-        [205, 49, 49],
-        [13, 188, 121],
-        [229, 229, 16],
-        [36, 114, 200],
-        [188, 63, 188],
-        [17, 168, 205],
-        [229, 229, 229],
-        [102, 102, 102],
-        [241, 76, 76],
-        [35, 209, 139],
-        [245, 245, 67],
-        [59, 142, 234],
-        [214, 112, 214],
-        [41, 184, 219],
-        [255, 255, 255],
-    ];
-    match index {
-        0..=15 => ANSI[index as usize],
-        16..=231 => {
-            let value = index - 16;
-            let scale = [0, 95, 135, 175, 215, 255];
-            [
-                scale[(value / 36) as usize],
-                scale[((value % 36) / 6) as usize],
-                scale[(value % 6) as usize],
-            ]
-        }
-        _ => {
-            let shade = 8 + (index - 232) * 10;
-            [shade, shade, shade]
-        }
-    }
 }

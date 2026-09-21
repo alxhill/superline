@@ -82,7 +82,7 @@ The command appends a loader to the shell's default config file and is safe to r
 If you'd rather manage the loader yourself, `superline init <shell>` prints the snippet without touching any files.
 
 Contributors can exercise those integrations in real interactive shells and
-generate reviewable PNGs with the headless
+generate reviewable PNGs with the VHS-based
 [`terminal-snapshot` rig](docs/terminal-snapshots.md). CI publishes macOS and
 Windows captures for every pull request.
 

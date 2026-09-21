@@ -50,13 +50,6 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 ctrlc = "3.5.2"
 
-[dev-dependencies]
-# The screenshot example drives real interactive shells through a PTY, parses
-# the resulting terminal stream, and rasterizes the final cell grid to PNG.
-fontdue = "0.9"
-png = "0.17"
-vt100 = "0.15"
-
 [profile.release]
 opt-level = 3
 lto = "fat"

@@ -1,39 +1,66 @@
 # Terminal screenshot tests
 
-The terminal snapshot rig launches the real `superline` binary inside real
-interactive shells, through a native pseudoterminal (PTY on Unix, ConPTY on
-Windows). It parses the resulting VT stream into a terminal cell grid and
-rasterizes that grid to PNG with a Nerd Font. No desktop session or visible
-terminal window is required.
+The terminal snapshot rig launches the branch-local `superline` binary inside
+real interactive shells and photographs the prompt with
+[VHS](https://github.com/charmbracelet/vhs). VHS runs each shell through
+[ttyd](https://github.com/tsl0922/ttyd) on the native pseudoterminal (PTY on
+Unix, ConPTY on Windows), renders it with xterm.js in headless Chromium, and
+writes PNG screenshots. No desktop session or visible terminal window is
+required, and no terminal emulation lives in this repository.
 
-This gives each capture three useful layers:
+Each shell produces:
 
-- `.png` is the review and documentation artifact.
-- `.txt` makes missing prompt content easy to diagnose in CI logs.
-- `.ansi` preserves the original terminal stream for low-level debugging or
-  replay.
+- `<platform>-<shell>-clean.png`: the first prompt in the fixture directory.
+- `<platform>-<shell>-failure.png`: the prompt after a command exits with
+  status 7, with the previous prompt still intact above it.
+- `<platform>-<shell>.tape` and `<platform>-<shell>.log`: the generated VHS
+  tape and VHS's output, for diagnosing a failed capture.
 
-The built-in `clean` and `failure` scenarios verify both normal rendering and
-the red exit-status prompt after a real failing command. The fixture uses a
-fixed 100-column terminal, an isolated home directory, and a deterministic
-config so screenshots from different platforms are directly comparable.
+The fixture uses a fixed 100x12 terminal, a pinned font, theme, and locale, an
+isolated home directory, and a deterministic config, so captures from
+different platforms are directly comparable.
+
+## Dependencies
+
+These are test-only dependencies; nothing here is needed to use superline.
+
+- The shells to exercise: `bash`, `zsh`, `fish`, `pwsh`, `nu`.
+- `ttyd` and `ffmpeg` on `PATH` (`brew install ttyd ffmpeg` on macOS; on
+  Windows the CI workflow downloads pinned builds).
+- Chrome or Chromium. VHS downloads a Chromium into its cache if none is found.
+- The `MesloLGS Nerd Font` family installed for the OS, so Chromium can
+  resolve it by name. Download `MesloLGSNerdFont-Regular.ttf` from the
+  [Nerd Fonts release](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1)
+  and install it like any other font.
+- Go, to build the pinned VHS:
+
+  ```bash
+  examples/terminal-snapshot/build-vhs.sh target/vhs-bin
+  ```
+
+  The script checks out the VHS v0.12.0 commit and applies
+  `examples/terminal-snapshot/vhs-render-context.patch`. The release binary
+  renders its screenshots with an already-cancelled context and writes nothing
+  ([charmbracelet/vhs#787](https://github.com/charmbracelet/vhs/issues/787));
+  the earlier v0.11.0 hangs on Windows with current Chrome. Once a release
+  carries the fix, drop the patch and use that binary directly.
 
 ## Run locally
-
-Install the shells you want to exercise and locate a `.ttf` Nerd Font. Then:
 
 ```bash
 cargo build --bin superline --example terminal-snapshot
 cargo run --example terminal-snapshot -- \
   --shell all \
   --scenario all \
-  --font "$HOME/Library/Fonts/MesloLGSNerdFont-Regular.ttf" \
+  --vhs target/vhs-bin/vhs \
   --output target/terminal-snapshots
 ```
 
-Missing shells are reported and skipped. Add `--require-all` when a missing
-requested shell should fail the run. `SUPERLINE_E2E_FONT` can be used instead
-of `--font`.
+The rig always uses the `superline` binary from the same target directory, so
+there is no need to `cargo install` it. Missing shells are reported and
+skipped; add `--require-all` when a missing shell should fail the run.
+`SUPERLINE_E2E_VHS` can be used instead of `--vhs`, and without either the rig
+looks for `vhs` on `PATH`.
 
 Select individual shells or scenarios by repeating the corresponding flag:
 
@@ -41,34 +68,51 @@ Select individual shells or scenarios by repeating the corresponding flag:
 cargo run --example terminal-snapshot -- \
   --shell zsh --shell pwsh \
   --scenario failure \
-  --font /path/to/NerdFont.ttf
+  --vhs target/vhs-bin/vhs
 ```
 
-The harness supports `bash`, `zsh`, `fish`, `pwsh`, and `nu`.
+## How a capture works
+
+`examples/terminal-snapshot.rs` is a thin orchestrator. For each shell it:
+
+1. creates a scratch home with `examples/terminal-snapshot/config.json` and a
+   `superline-e2e` working directory;
+2. runs `superline init <shell>` and saves the snippet as a startup file
+   (PowerShell's copy also gets an explicit `--config` path);
+3. fills `examples/terminal-snapshot/tape.template` and writes the tape next
+   to the screenshots;
+4. runs VHS with `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, the locale, and
+   `PATH` pointed at the fixture and the branch-local binary;
+5. fails unless every expected PNG was written.
+
+The tape hides the setup, waits for the shell's stock prompt, types one line
+that sources the snippet, enters the fixture directory, and clears the screen,
+then shows the recording. Every screenshot is gated on `Wait+Screen`
+assertions: the clean prompt must show the success chevron, and the failure
+prompt must show `7` while the clean prompt and the typed command are still
+visible above it. A capture whose prompt was overwritten or never rendered
+fails instead of producing a misleading image.
 
 ## CI artifacts
 
 The `Terminal snapshots` workflow captures every supported shell on macOS and
-PowerShell through native ConPTY on Windows. Its `terminal-snapshots-macos` and
-`terminal-snapshots-windows` artifacts are retained for 14 days on every pull
-request, `main` push, and manual run. The workflow downloads a version-pinned,
-checksum-verified Meslo Nerd Font so glyph rasterization is reproducible.
+PowerShell through ConPTY on Windows. It builds the pinned VHS, installs
+pinned, checksum-verified ttyd, ffmpeg (Windows), and Nerd Font builds, and
+uploads `terminal-snapshots-macos` and `terminal-snapshots-windows` artifacts
+on success or failure. They are retained for 14 days on every pull request,
+`main` push, and manual run.
 
 The screenshots deliberately remain build artifacts instead of committed
-goldens. Font rasterization and shell versions vary between runner images; the
-PNG is intended for human visual review while prompt content and escape-style
+goldens. Shell versions and font rendering vary between runner images; the PNG
+is intended for human visual review while prompt content and escape-style
 contracts remain covered by the normal Rust tests.
 
 ## What this does and does not prove
 
-The rig exercises shell startup files, each shell's prompt hook, terminal width
-calculation, ANSI color, Nerd Font glyphs, multi-row layout, right prompts, and
-exit-status propagation. The Windows job is a real interactive PowerShell
-session backed by ConPTY, so it covers substantially more than invoking the
-`prompt` function non-interactively.
-
-It does not create a Windows Terminal or iTerm2 GUI window. Host-specific
-settings and timing-sensitive input such as rapid Ctrl-C still need a focused
-manual run in that terminal. The PTY driver is intentionally kept in one
-example so additional input scenarios can be added without changing the
-shipping binary.
+The rig exercises shell startup snippets, each shell's prompt hook, terminal
+width calculation, ANSI color, Nerd Font glyphs, multi-row layout, right
+prompts, exit-status propagation, and that a new prompt does not clobber the
+previous one. Everything is rendered and answered by a pinned xterm.js-based
+terminal, so it does not guarantee identical behavior in every native terminal
+application. Host-specific settings and timing-sensitive input such as rapid
+Ctrl-C still need a focused manual run in that terminal.
