@@ -371,7 +371,7 @@ fn capture(
                 let contents = parser.screen().contents();
                 let prompt_count = contents.matches(shell.name()).count();
                 saw_prompt = contents.contains("superline-e2e")
-                    && prompt_count >= if command_sent { 3 } else { 2 }
+                    && prompt_count >= 2
                     && (!command_sent
                         || contents.contains(&format!(
                             "{}{}",
