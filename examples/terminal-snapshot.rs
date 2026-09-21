@@ -268,11 +268,17 @@ fn capture(
     let mut init = String::from_utf8(init.stdout)?;
     if shell == Shell::Pwsh {
         let original = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')";
-        let replacement = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh', '--config', $env:SUPERLINE_E2E_CONFIG)";
+        let config_path = home
+            .join(".config/superline/config.json")
+            .to_string_lossy()
+            .replace('\'', "''");
+        let replacement = format!(
+            "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh', '--config', '{config_path}')"
+        );
         if !init.contains(original) {
             return Err("PowerShell init no longer contains the expected argument list".into());
         }
-        init = init.replace(original, replacement);
+        init = init.replace(original, &replacement);
     }
     prepare_shell(shell, &home, &init)?;
 
@@ -294,11 +300,6 @@ fn capture(
     command.env("BASH_SILENCE_DEPRECATION_WARNING", "1");
     command.env("fish_features", "no-query-terminal");
     command.env("SUPERLINE_BIN", superline);
-    command.env("SUPERLINE_E2E_HOME", &home);
-    command.env(
-        "SUPERLINE_E2E_CONFIG",
-        home.join(".config/superline/config.json"),
-    );
     command.env("PATH", path_with_binary(superline)?);
 
     let mut writer = pty.master.take_writer()?;
@@ -436,7 +437,10 @@ fn prepare_shell(shell: Shell, home: &Path, init: &str) -> Result<()> {
             fs::write(dir.join("config.fish"), contents)?;
         }
         Shell::Nu => fs::write(home.join("config.nu"), contents)?,
-        Shell::Pwsh => {}
+        Shell::Pwsh => fs::write(
+            home.join("profile.ps1"),
+            format!("$PSStyle.OutputRendering = 'Ansi'\n{init}\nClear-Host\n"),
+        )?,
     }
     Ok(())
 }
@@ -444,15 +448,20 @@ fn prepare_shell(shell: Shell, home: &Path, init: &str) -> Result<()> {
 fn shell_command(shell: Shell, executable: &Path, home: &Path) -> Result<CommandBuilder> {
     let mut command = CommandBuilder::new(executable);
     match shell {
-        Shell::Bash => command.args(["--noprofile", "--rcfile", &home.join(".bashrc").to_string_lossy(), "-i"]),
+        Shell::Bash => command.args([
+            "--noprofile",
+            "--rcfile",
+            &home.join(".bashrc").to_string_lossy(),
+            "-i",
+        ]),
         Shell::Zsh => command.args(["-d"]),
         Shell::Fish => command.args(["--interactive", "--features=no-query-terminal"]),
         Shell::Pwsh => command.args([
             "-NoLogo",
             "-NoProfile",
             "-NoExit",
-            "-Command",
-            "$env:HOME = $env:SUPERLINE_E2E_HOME; $env:USERPROFILE = $env:SUPERLINE_E2E_HOME; $PSStyle.OutputRendering = 'Ansi'; (& $env:SUPERLINE_BIN init pwsh) -join \"`n\" | Invoke-Expression; Clear-Host",
+            "-File",
+            &home.join("profile.ps1").to_string_lossy(),
         ]),
         Shell::Nu => command.args([
             "--interactive",
