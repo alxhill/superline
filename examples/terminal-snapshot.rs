@@ -149,7 +149,9 @@ fn run() -> Result<()> {
     println!("using {}", vhs_version(&vhs)?);
 
     fs::create_dir_all(&args.output)?;
-    let output = fs::canonicalize(&args.output)?;
+    // Not `canonicalize`: on Windows that yields a `\\?\` verbatim path,
+    // which ffmpeg does not accept as a screenshot destination.
+    let output = std::path::absolute(&args.output)?;
     let platform = platform_name();
 
     let mut captured = 0;
@@ -401,7 +403,7 @@ fn render_tape(
              Wait+Screen /{clean_prompt} {}/\n\
              Wait+Screen /{failure_prompt}/\n\
              Sleep 1s\n{}",
-            regex::escape(command),
+            tape_regex(command),
             screenshot(Scenario::Failure)
         )
     } else {
@@ -414,6 +416,12 @@ fn render_tape(
         .replace("{{clean_prompt}}", &clean_prompt)
         .replace("{{clean_screenshot}}", &clean_screenshot)
         .replace("{{failure_scenario}}", &failure_scenario)
+}
+
+/// Escape a literal for a `/.../` regex in the tape: RE2 metacharacters and
+/// the slash delimiter itself.
+fn tape_regex(literal: &str) -> String {
+    regex::escape(literal).replace('/', "\\/")
 }
 
 fn run_vhs(
