@@ -1,5 +1,6 @@
-# VHS tape for one superline terminal snapshot run. `terminal-snapshot.rs`
-# fills the {{placeholders}} and writes the result next to the captures.
+# VHS tape for one superline terminal snapshot run. `rig.rs` fills the
+# {{placeholders}}, appends the case's own tape, and writes the result next to
+# the captures.
 Output "{{frames}}"
 Set Shell {{shell}}
 Set Columns {{columns}}
@@ -23,4 +24,4 @@ Enter
 Wait+Screen /\A\s*(?:[^>\s]|>\S)/
 Show
 
-{{steps}}
+{{tape}}

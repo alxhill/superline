@@ -8,19 +8,15 @@ Unix, ConPTY on Windows), renders it with xterm.js in headless Chromium, and
 writes PNG screenshots. No desktop session or visible terminal window is
 required, and no terminal emulation lives in this repository.
 
-Every capture is a *case*: a superline config, a terminal size (or a list
-of widths), a working directory, and a list of steps that type commands, wait
-for the screen to match, and take snapshots. The built-in cases live in
-[`examples/terminal-snapshot/cases.json`](../examples/terminal-snapshot/cases.json);
-you can also pass your own manifest, or build a one-off case on the command
-line. Each case runs once per shell and width.
-
-Each snapshot produces a PNG and the matching screen text, which the case can
-check with regexes and column-width assertions. Every capture uses a pinned
-font, theme, and locale, an isolated home directory, and a deterministic
-config, so captures from different platforms are directly comparable. The
-grid is rendered at a 36px font, so the resulting PNGs are 2x density and
-display crisply on high-DPI screens.
+Every capture is a *case*: a plain superline `config.json` and a plain VHS
+tape in a directory under [`tests/terminal/cases/`](../tests/terminal/cases),
+run in each shell at one or more terminal widths. Each `Screenshot` in the tape
+produces a PNG and the visible screen text at the same moment, and
+[`tests/terminal_snapshots.rs`](../tests/terminal_snapshots.rs) checks that
+text in Rust. Every capture uses a pinned font, theme, and locale and an
+isolated home directory, so captures from different platforms are directly
+comparable. The grid is rendered at a 36px font, so the resulting PNGs are 2x
+density and display crisply on high-DPI screens.
 
 ## Dependencies
 
@@ -37,11 +33,11 @@ These are test-only dependencies; nothing here is needed to use superline.
 - Go, to build the pinned VHS:
 
   ```bash
-  examples/terminal-snapshot/build-vhs.sh target/vhs-bin
+  tests/terminal/build-vhs.sh target/vhs-bin
   ```
 
   The script checks out the VHS v0.12.0 commit and applies
-  `examples/terminal-snapshot/vhs-fixes.patch`. The release binary renders
+  `tests/terminal/vhs-fixes.patch`. The release binary renders
   its screenshots with an already-cancelled context and writes nothing
   ([charmbracelet/vhs#787](https://github.com/charmbracelet/vhs/issues/787)),
   and it starts ttyd without a working directory, which ttyd's Windows build
@@ -55,177 +51,116 @@ These are test-only dependencies; nothing here is needed to use superline.
   Chrome. Once releases carry the fixes, drop the patch and use the release
   binary directly.
 
-## Run locally
+## Run the tests
+
+```bash
+SUPERLINE_E2E_VHS=target/vhs-bin/vhs cargo test --test terminal_snapshots
+```
+
+Without `SUPERLINE_E2E_VHS` the test reports itself skipped, so a plain
+`cargo test` does not need any of the dependencies above. It uses the
+`superline` binary Cargo builds for the test, so there is no need to
+`cargo install` it. Pass test names after `--` to run only those
+(`cargo test --test terminal_snapshots -- multiline widths`). These variables
+tune a run:
+
+| Variable | Effect |
+| --- | --- |
+| `SUPERLINE_E2E_SHELLS` | Shells to run, comma-separated (default `all`). Missing shells are skipped. |
+| `SUPERLINE_E2E_REQUIRE_ALL=1` | Fail instead of skipping a missing shell. |
+| `SUPERLINE_E2E_OUTPUT` | Output directory (default `target/terminal-snapshots`). |
+| `SUPERLINE_E2E_JOBS` | Captures to run at once (default 2). |
+
+Each case gets a directory in the output, with, per shell and size:
+
+- `<platform>-<shell>-<cols>x<rows>-<name>.png` and `.txt`: each screenshot
+  and the visible screen text at the same moment.
+- `<platform>-<shell>-<cols>x<rows>.tape`, `.log`, and `.frames.txt`: the
+  full generated tape, VHS's output, and every screen dump VHS recorded, for
+  diagnosing a failed capture.
+
+A failing check prints its message and the screen text it was looking at.
+
+## One-off captures
+
+The `terminal-snapshot` example runs a config (and optionally a tape) without
+any checks and prints each snapshot's screen text, which is handy for
+debugging a prompt from a real config:
 
 ```bash
 cargo build --bin superline --example terminal-snapshot
-cargo run --example terminal-snapshot -- --vhs target/vhs-bin/vhs
-```
-
-That runs every built-in case in every shell on `PATH`. The rig always uses
-the `superline` binary from the same target directory, so there is no need to
-`cargo install` it. Missing shells are reported and skipped; add
-`--require-all` when a missing shell should fail the run.
-`SUPERLINE_E2E_VHS` can be used instead of `--vhs`, and without either the rig
-looks for `vhs` on `PATH`. Captures run two at a time; change that with
-`--jobs`.
-
-Narrow the run with repeatable flags, and list the cases with `--list`:
-
-```bash
-cargo run --example terminal-snapshot -- \
-  --shell zsh --shell pwsh \
-  --case multiline --case widths \
-  --columns 50 --columns 200 \
-  --vhs target/vhs-bin/vhs
-```
-
-`--columns` and `--rows` override the size of every selected case, `--workdir`
-runs them in an existing directory, and `--env KEY=VALUE` exports a variable
-before the first prompt. `--print` writes each snapshot's screen text to the
-terminal as well.
-
-### Output
-
-Everything lands under `--output` (default `target/terminal-snapshots`), one
-directory per case:
-
-- `<case>/<platform>-<shell>-<cols>x<rows>-<snapshot>.png` and `.txt`: the
-  screenshot and the visible screen text at the same moment.
-- `<case>/<platform>-<shell>-<cols>x<rows>.tape`, `.log`, and `.frames.txt`:
-  the generated VHS tape, VHS's output, and every screen dump VHS recorded,
-  for diagnosing a failed capture.
-- `<platform>-summary.json`: every run with its status (`pass`, `fail`,
-  `xfail`, or `xpass`), snapshot paths, screen text, and failed checks.
-
-The run exits non-zero if any run fails or unexpectedly passes.
-
-### One-off captures
-
-Passing `--config` or any step flag builds a single case from the command line
-instead of reading the manifest. Steps run in the order given:
-
-```bash
 cargo run --example terminal-snapshot -- \
   --shell zsh \
   --config ~/.config/superline/config.json \
+  --tape my-steps.tape \
   --workdir "$PWD" \
-  --columns 80 --columns 140 --rows 10 \
-  --run 'git status --short' \
-  --exit 3 \
-  --output target/prompt-debug \
+  --columns 80 --columns 140 \
   --vhs target/vhs-bin/vhs
 ```
 
-The step flags are `--run <CMD>` (type and press Enter), `--exit <N>` (a
-command that exits with status N in the current shell), `--type <TEXT>`,
-`--key <KEY>` (a VHS key such as `Ctrl+C` or `'Tab 2'`), `--wait <REGEX>`,
-`--sleep <DURATION>`, and `--snapshot <NAME>`. Without any `--snapshot`, one is
-taken after the first prompt (`0`) and after each `--run` or `--exit` (`1`,
-`2`, ...), once the typed command is on screen. Screen text is printed for
-one-off runs. `--name` sets the case name used for the output directory
-(default `adhoc`).
-
-A theme file the config names relative to itself is copied along with it.
+Without `--tape` it takes one snapshot of the first prompt; `--case <name>`
+uses a test case's config and tape instead. `--rows`, `--env KEY=VALUE`,
+`--output`, and `--jobs` work as their test equivalents do; see `--help`. A
+theme file the config names relative to itself is copied along with it.
 Widgets with background lookups (for example `ai_usage`) start cold in the
 isolated home; remove them from a copy of the config if their probes are
 unwanted.
 
-## Writing cases
+## Writing a case
 
-A manifest is a JSON array of cases. Only `name` and `steps` are required:
+A case is a directory under `tests/terminal/cases/`:
 
-```json
-{
-  "name": "widths",
-  "description": "Right sides stay flush with the edge",
-  "config": { "rows": [{ "left": ["shell", "cmd"], "right": [{ "text": "edge" }, { "padding": 0 }] }] },
-  "columns": [40, 80, 160],
-  "rows": 6,
-  "steps": [
-    { "wait": "{{shell}}{{sep}}{{ok}}" },
-    {
-      "snapshot": {
-        "name": "prompt",
-        "widths": [{ "line": "edge", "min": "{{columns}} - 1", "max": "{{columns}}", "shells": ["fish", "zsh", "nu"] }]
-      }
-    }
-  ]
-}
+- `config.json`: the superline config. Without one, the shared
+  `tests/terminal/config.json` is used. Any other file in the directory (a
+  theme, say) is copied next to it.
+- `case.tape`: VHS commands to run once the first prompt has started drawing.
+  Without one, the case takes a single `prompt.png` snapshot.
+
+The tape is ordinary [VHS](https://github.com/charmbracelet/vhs#vhs-command-reference)
+(`Type`, `Enter`, `Wait+Screen /regex/`, `Sleep`, `Ctrl+C`, ...) with a few
+rules. The rig owns the settings and the setup, so `Set`, `Output`, `Hide`,
+`Show`, `Require`, and `Source` are rejected; terminal sizes and the fixture
+are set in code. `Screenshot <name>.png` takes a named snapshot, and the rig
+adds a short pause around each one. A tape is shared by every shell, so for
+things shells spell differently it can call `sl-test`, a helper the rig puts on
+`PATH`: `sl-test exit <N>` exits with status N, and `sl-test print <TEXT>`
+prints without a trailing newline. Wait for the screen to settle before each
+screenshot: `Wait+Screen /\x{F105}/` waits for the `cmd` widget's success mark.
+
+```text
+Wait+Screen /\x{F105}/
+Screenshot first.png
+Type "echo hello"
+Enter
+Wait+Screen /\nhello\n(?s:.*)\x{F105}/
+Screenshot second.png
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `name` | Output directory and `--case` name (letters, digits, `-`, `_`). |
-| `description` | Shown by `--list`. |
-| `config` | An inline superline config, or a path relative to the manifest. Defaults to `examples/terminal-snapshot/config.json`. |
-| `columns` | A width or a list of widths; one run each. Default 100. |
-| `rows` | Terminal height. Default 12. |
-| `dir` | Working directory, relative to the scratch root, created if missing. Default `superline-e2e`. |
-| `env` | Variables exported before the first prompt. |
-| `shells`, `platforms` | Only run on these shells, or on these platforms (`macos`, `linux`, `windows`). |
-| `xfail` | A known bug: a reason string, or `{ "reason", "shells", "platforms" }` to scope it. A failing run is reported as `XFAIL` and does not fail the suite; a passing run is reported as `XPASS` and does, so the marker is removed once the bug is fixed. |
-| `steps` | What to do, in order. |
-
-Each step is an object with one key:
-
-| Step | Meaning |
-| --- | --- |
-| `{ "run": CMD }` | Type a command and press Enter. |
-| `{ "type": CMD }` | Type without pressing Enter. |
-| `{ "key": "Ctrl+C" }` | A VHS key command, optionally with a repeat count (`"Tab 2"`). |
-| `{ "wait": REGEX }` | Wait (up to 30s) until the visible screen matches. |
-| `{ "wait_line": REGEX }` | Wait until the cursor line matches. |
-| `{ "sleep": "500ms" }` | Pause. |
-| `{ "snapshot": NAME }` | Take a PNG and the screen text. |
-| `{ "snapshot": { "name", "expect", "reject", "widths" } }` | Take a snapshot and check its text. |
-
-`CMD` is a string, `{ "exit": N }` for a command that exits with status N in
-the current shell, or an object mapping shell names to commands with a
-`default` for the rest.
-
-Snapshot checks run on the screen text, with lines joined by `\n`:
-
-- `expect` and `reject` list regexes the text must or must not match. An entry
-  can be `{ "regex": ..., "shells": [...] }` to apply to some shells only.
-- `widths` checks the terminal width of every line matching `line`: `width`
-  for an exact value, or `min` and `max`. Bounds are numbers or simple sums
-  such as `"{{columns}} - 1"`, and `shells` limits the check. Double-width
-  characters count as two columns.
-
-Regexes use RE2 syntax in `wait` steps and Rust `regex` syntax in snapshot
-checks; the common subset (`\n`, `\A`, `\z`, `(?s:...)`, `\x{E0B0}`) works in
-both. Step text and regexes can use these placeholders:
-
-| Placeholder | Value |
-| --- | --- |
-| `{{shell}}`, `{{columns}}`, `{{rows}}` | The current run's shell name and size. |
-| `{{last}}` | The last typed text, escaped as a regex. |
-| `{{sep}}`, `{{round}}` | The chevron (`\x{E0B0}`) and round (`\x{E0B4}`) separators, as regex escapes. |
-| `{{ok}}` | The `cmd` widget's success mark (`\x{F105}`), as a regex escape. |
-
-Every case should start by waiting for its first prompt, and wait for the
-result of each command before a snapshot: the rig only pauses for a second
-before capturing. Right sides on the last row are drawn by fish, zsh, and
-nushell but not bash or PowerShell, and zsh leaves one column free to the
-right of its right prompt, so width checks on the last row need a `shells`
-list and a one-column range.
+Then add an entry to `TESTS` in `tests/terminal_snapshots.rs` with the terminal
+sizes, an optional working directory (relative to the scratch root, created if
+missing), and a check function. The check receives a `Capture` with the shell
+and size, and `capture.snapshot("first")` returns the screen text and PNG path.
+`Snapshot::check` fails with the screen text attached, and `rig::width` gives a
+line's width in terminal columns. The `SEP`, `ROUND`, and `OK` constants are
+the separator glyphs and the success mark. Right sides on the last row are
+drawn by fish, zsh, and nushell but not bash or PowerShell
+(`Shell::draws_last_row_right`), and zsh leaves one column free to the right of
+its right prompt.
 
 ## How a capture works
 
-`examples/terminal-snapshot.rs` is a thin orchestrator. For each case, shell,
-and width it:
+`tests/terminal/rig.rs` does the work for both the test and the example. For
+each case, shell, and width it:
 
-1. creates a scratch home with the case's config and working directory;
+1. creates a scratch home with the case's config files and working directory;
 2. runs `superline init <shell>` and saves the snippet as a startup file
    (PowerShell's copy also gets an explicit `--config` path);
-3. turns the steps into VHS commands, fills
-   `examples/terminal-snapshot/tape.template`, and writes the tape next to the
-   screenshots;
+3. fills `tests/terminal/tape.template` with the shell, size, and setup,
+   appends the case's tape, and writes the result next to the screenshots;
 4. runs VHS with a pinned locale and `PATH` pointed at the branch-local
-   binary;
-5. matches each `Screenshot` to the screen dump VHS recorded after it, saves
-   that as the snapshot's text, and runs the snapshot's checks.
+   binary and the `sl-test` helper (a link to the running executable);
+5. pairs each `Screenshot` with the screen dump VHS recorded after it and
+   saves that as the snapshot's text.
 
 The tape hides the setup, waits for the shell's stock prompt, types one line
 that exports the isolated home (`HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`,
@@ -235,8 +170,8 @@ superline has drawn something. Paths are typed with forward slashes, which
 PowerShell, nushell, and Git Bash all accept on Windows. The home is exported
 inside the shell rather than on the VHS process because Chrome on Windows
 resolves its own app-data folders through `%USERPROFILE%` and exits when that
-points at the fixture. A `wait` that never matches fails the capture after
-30 seconds instead of producing a misleading image.
+points at the fixture. A `Wait` that never matches fails the capture after 30
+seconds instead of producing a misleading image.
 
 ## CI artifacts
 
@@ -258,13 +193,13 @@ tests cover prompt content and escape-style contracts.
 The rig exercises shell startup snippets, each shell's prompt hook, terminal
 width calculation, ANSI color, Nerd Font glyphs, multi-row layout, right
 prompts, line continuation, exit-status propagation, and that a new prompt
-does not clobber the previous one. The built-in `no-newline` case is marked
-`xfail` for bash, which has no way to start the prompt on a fresh line after
-output without a trailing newline. Everything is rendered and
-answered by a pinned xterm.js-based terminal, so it does not guarantee
-identical behavior in every native terminal application. Host-specific
-settings and timing-sensitive input such as rapid Ctrl-C still need a focused
-manual run in that terminal.
+does not clobber the previous one. The `no-newline` test pins down a known
+bash limitation: bash has no way to start the prompt on a fresh line after
+output without a trailing newline, so the first row shares that line.
+Everything is rendered and answered by a pinned xterm.js-based terminal, so it
+does not guarantee identical behavior in every native terminal application.
+Host-specific settings and timing-sensitive input such as rapid Ctrl-C still
+need a focused manual run in that terminal.
 
 ## Website screenshots
 
