@@ -398,6 +398,7 @@ fn init_exits_quietly_when_stdout_is_closed() {
     assert!(!stderr.contains("panicked"), "init panicked:\n{stderr}");
 }
 
+#[cfg(unix)]
 fn have_bash() -> bool {
     Command::new("bash")
         .args(["-c", "true"])
