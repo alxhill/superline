@@ -271,8 +271,9 @@ impl CmdScheme for CustomTheme {
     color_from_json!(cmd_passed_fg, cmd, passed_fg, default_fg);
     color_from_json!(cmd_passed_bg, cmd, passed_bg, default_bg);
 
-    color_from_json!(cmd_failed_bg, cmd, failed_fg, default_fg);
-    color_from_json!(cmd_failed_fg, cmd, failed_bg, default_bg);
+    // An unset failure style inverts the default colours.
+    color_from_json!(cmd_failed_bg, cmd, failed_bg, default_fg);
+    color_from_json!(cmd_failed_fg, cmd, failed_fg, default_bg);
 
     fn cmd_user_symbol() -> &'static str {
         Self::get_str("cmd", "user_symbol")
