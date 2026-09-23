@@ -1,0 +1,22 @@
+{
+  "theme": "rainbow",
+  "update": { "disable": true },
+  "rows": [
+    {
+      "left": [
+        "os",
+        { "text": "hello 🌈" },
+        { "cwd": { "max_length": 40, "wanted_seg_num": 1 } }
+      ],
+      "right": [
+        { "separator": "round" },
+        "memory_usage",
+        { "time": { "format": "%H:%M" } },
+        { "padding": 0 }
+      ]
+    },
+    {
+      "left": ["shell", "jobs", "cmd"]
+    }
+  ]
+}

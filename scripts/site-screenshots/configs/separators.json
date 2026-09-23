@@ -1,0 +1,105 @@
+{
+  "theme": "rainbow",
+  "update": {
+    "disable": true
+  },
+  "rows": [
+    {
+      "left": [
+        {
+          "separator": "chevron"
+        },
+        {
+          "text": "chevron   "
+        },
+        {
+          "cwd": {
+            "max_length": 40,
+            "wanted_seg_num": 3
+          }
+        },
+        {
+          "padding": 1
+        },
+        "os",
+        {
+          "padding": 0
+        }
+      ]
+    },
+    {
+      "left": [
+        {
+          "separator": "round"
+        },
+        {
+          "text": "round     "
+        },
+        {
+          "cwd": {
+            "max_length": 40,
+            "wanted_seg_num": 3
+          }
+        },
+        {
+          "padding": 1
+        },
+        "os",
+        {
+          "padding": 0
+        }
+      ]
+    },
+    {
+      "left": [
+        {
+          "separator": "angle_line"
+        },
+        {
+          "text": "angle_line"
+        },
+        {
+          "cwd": {
+            "max_length": 40,
+            "wanted_seg_num": 3
+          }
+        },
+        {
+          "padding": 1
+        },
+        "os",
+        {
+          "padding": 0
+        }
+      ]
+    },
+    {
+      "left": [
+        {
+          "separator": "none"
+        },
+        {
+          "text": "none      "
+        },
+        {
+          "cwd": {
+            "max_length": 40,
+            "wanted_seg_num": 3
+          }
+        },
+        {
+          "padding": 1
+        },
+        "os",
+        {
+          "padding": 0
+        }
+      ]
+    },
+    {
+      "left": [
+        "cmd"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "defaults": { "fg": 153, "bg": 235 },
+  "modules": {
+    "cwd": { "path_fg": 255, "bg_colors": [23, 24, 25, 31, 37, 38] },
+    "git": {
+      "clean_bg": 30, "clean_fg": 255,
+      "dirty_bg": 61, "dirty_fg": 255,
+      "notstaged_bg": 97, "notstaged_fg": 255,
+      "untracked_bg": 133, "untracked_fg": 255,
+      "staged_bg": 29, "staged_fg": 255,
+      "remote_bg": 238, "remote_fg": 250
+    },
+    "cargo": { "fg": 255, "bg": 67 },
+    "cmd": { "passed_fg": 81, "failed_bg": 161, "failed_fg": 255, "user_symbol": "λ" }
+  }
+}

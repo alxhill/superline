@@ -1,0 +1,14 @@
+{
+  "theme": "rainbow",
+  "update": { "disable": true },
+  "rows": [
+    {
+      "left": [
+        { "cwd": { "max_length": 40, "wanted_seg_num": 1 } },
+        { "last_cmd_duration": { "min_run_time": 500 } },
+        "jobs",
+        "cmd"
+      ]
+    }
+  ]
+}

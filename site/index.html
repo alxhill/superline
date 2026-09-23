@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>superline</title>
+  <meta name="description" content="A fast, opinionated powerline-style shell prompt written in Rust, with git, GitHub PR, language and AI usage widgets.">
+  <meta property="og:title" content="superline">
+  <meta property="og:description" content="A fast, opinionated powerline-style shell prompt written in Rust.">
+  <meta property="og:image" content="https://alxhill.github.io/superline/img/hero.png">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="superline home">
+        <span class="seg seg-a">super</span><span class="seg seg-b">line</span>
+      </a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="#configure">Configure</a>
+        <a class="gh" href="https://github.com/alxhill/superline">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap">
+      <p class="eyebrow">Shell prompt &middot; Rust &middot; MIT</p>
+      <h1>A fast, opinionated<br>powerline prompt.</h1>
+      <p class="lede">
+        superline understands git and GitHub, spots your Rust, Python, Node and Java projects, and can show your
+        Claude and Codex usage&mdash;without ever making you wait for the next prompt.
+      </p>
+      <div class="install-box" data-tabs>
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true" data-cmd="brew install alxhill/superline/superline">Homebrew</button>
+          <button role="tab" aria-selected="false" data-cmd="cargo binstall superline">cargo binstall</button>
+          <button role="tab" aria-selected="false" data-cmd="cargo install superline">cargo install</button>
+        </div>
+        <div class="cmd-line">
+          <code><span class="prompt">$</span> <span data-cmd-text>brew install alxhill/superline/superline</span></code>
+          <button class="copy" type="button" aria-label="Copy command">Copy</button>
+        </div>
+      </div>
+      <figure class="term term-hero">
+        <div class="term-bar"><span></span><span></span><span></span><em>fish &mdash; ~/code/superline</em></div>
+        <img src="img/hero.png" width="1368" height="170" alt="superline's default two-row prompt: path, git branch with modified, untracked and staged counts, an open pull request with passing checks, Claude and Codex usage sparklines, and the pinned Rust toolchain on the right.">
+      </figure>
+      <p class="caption">The default config, straight after <code>superline install fish</code>.</p>
+    </section>
+
+    <section class="highlights wrap" aria-label="Highlights">
+      <div class="card"><h3>Fast</h3><p>A few tens of milliseconds per prompt, git status included.</p></div>
+      <div class="card"><h3>Lazy</h3><p>Backends only run when needed: no git cost outside a repo, no Python cost outside a project.</p></div>
+      <div class="card"><h3>Never blocks</h3><p>Slow lookups&mdash;big repos, PR status, AI usage&mdash;refresh in the background and are served from a cache.</p></div>
+      <div class="card"><h3>Flexible layout</h3><p>Multiple rows, each with an optional right-aligned side that stays put as you type.</p></div>
+      <div class="card"><h3>Themeable</h3><p>Two built-in themes, or point at a JSON file with your own colours and symbols.</p></div>
+      <div class="card"><h3>Any shell</h3><p>fish, zsh, bash, PowerShell and nushell, all wired up by <code>superline install</code>.</p></div>
+    </section>
+
+    <section id="features" class="features wrap">
+      <article class="feature">
+        <div class="copy-col">
+          <h2>Git, at a glance</h2>
+          <p>
+            The branch, then modified, untracked and staged counts, then how far you are ahead of or behind the
+            upstream. A detached HEAD shows its short hash and the branch it sits on.
+          </p>
+          <p class="note">
+            Big working tree? The <code>auto</code> backend picks between git's own CLI (with its untracked cache and
+            fsmonitor) and in-process gitoxide based on the size of the index.
+          </p>
+        </div>
+        <figure class="term"><img src="img/git.png" width="784" height="89" loading="lazy" alt="Three prompts in a repo: a dirty main branch with one modified, two untracked and one staged file, two commits ahead and one behind; the same branch clean after git stash; then a detached HEAD shown as 13aa74d -> main."></figure>
+      </article>
+
+      <article class="feature">
+        <div class="copy-col">
+          <h2>Your pull request, one click away</h2>
+          <p>
+            With the <a href="https://cli.github.com"><code>gh</code></a> CLI installed, the current branch's PR
+            appears as a clickable link, coloured by state&mdash;draft, open or merged&mdash;with a dot for CI:
+            green for passing, yellow for pending, red for failing.
+          </p>
+          <p class="note">The lookup runs in the background, so switching branches is never slowed down by the network.</p>
+        </div>
+        <figure class="term"><img src="img/pr.png" width="866" height="110" loading="lazy" alt="Four branches in turn: a grey draft PR #151, an open PR #148 with a yellow pending dot, an open PR #147 with a red failing dot, and a purple merged PR #139."></figure>
+      </article>
+
+      <article class="feature split">
+        <div class="copy-col">
+          <h2>Knows what you're working on</h2>
+          <p>
+            Python virtualenvs and <code>.python-version</code>, <code>.nvmrc</code>, <code>.sdkmanrc</code>,
+            <code>rust-toolchain.toml</code>&mdash;and <a href="https://mise.jdx.dev">mise</a> configs, marked with
+            their own icon. Each module shows its logo when you're in a project and the version when one is pinned.
+          </p>
+        </div>
+        <figure class="term"><img src="img/languages.png" width="692" height="130" loading="lazy" alt="Moving between projects: a Python project, the same project with its .venv active on Python 3.13.7, a Node project pinned to 22.19.0, and a Rust project whose 1.90.0 toolchain comes from mise."></figure>
+      </article>
+
+      <article class="feature split">
+        <div class="copy-col">
+          <h2>What just happened</h2>
+          <p>
+            Long-running commands report how long they took, background jobs are counted, and a failure turns the
+            prompt red with its exit code&mdash;without clobbering the output above it.
+          </p>
+        </div>
+        <figure class="term"><img src="img/status.png" width="467" height="131" loading="lazy" alt="A 2.41 second duration after sleep 2.4, a gear icon with 1 after starting a background job, and a red exit code 1 after a failed cat."></figure>
+      </article>
+
+      <article class="feature">
+        <div class="copy-col">
+          <h2>Keep an eye on your AI budget</h2>
+          <p>
+            The <code>ai_usage</code> widget reads your Claude or Codex subscription through the provider's CLI and
+            shows the five-hour, weekly and Fable windows as numbers, bars, blocks or a compact sparkline. Set a
+            threshold and the whole widget changes colour before you hit a limit.
+          </p>
+        </div>
+        <figure class="term"><img src="img/usage.png" width="835" height="151" loading="lazy" alt="Claude and Codex usage in each display style: percentage, bar, capped bar, block and sparkline."></figure>
+      </article>
+
+      <article class="feature">
+        <div class="copy-col">
+          <h2>Make it yours</h2>
+          <p>
+            Pick <code>rainbow</code> or <code>simple</code>, or write a theme file that overrides only the colours
+            and symbols you care about&mdash;256-colour codes or named colours both work.
+          </p>
+        </div>
+        <div class="theme-stack">
+          <figure class="term"><figcaption>rainbow</figcaption><img src="img/theme-rainbow.png" width="673" height="49" loading="lazy" alt="The rainbow theme."></figure>
+          <figure class="term"><figcaption>simple</figcaption><img src="img/theme-simple.png" width="673" height="49" loading="lazy" alt="The simple theme."></figure>
+          <figure class="term"><figcaption>custom theme.json</figcaption><img src="img/theme-custom.png" width="673" height="48" loading="lazy" alt="A custom ocean-coloured theme with a lambda prompt symbol."></figure>
+        </div>
+      </article>
+
+      <article class="feature split">
+        <div class="copy-col">
+          <h2>Shape the line</h2>
+          <p>
+            Chevrons, rounded caps, thin angles or nothing at all. Separators, spacers and padding can go anywhere
+            in a row to split it into blocks.
+          </p>
+        </div>
+        <figure class="term"><img src="img/separators.png" width="408" height="130" loading="lazy" alt="The same path drawn with chevron, round, angle_line and none separators."></figure>
+      </article>
+
+      <article class="feature">
+        <div class="copy-col">
+          <h2>And the rest</h2>
+          <p>
+            OS icon, username, hostname, local IP, memory and swap, battery warnings, cached sudo credentials, the
+            time, and your own text&mdash;each one cheap enough to leave on.
+          </p>
+        </div>
+        <figure class="term"><img src="img/widgets.png" width="926" height="110" loading="lazy" alt="A two-row prompt with the OS icon, custom text, the path, memory and swap usage and the time on the right, and a count of two background jobs."></figure>
+      </article>
+    </section>
+
+    <section id="install" class="install wrap">
+      <h2>Get started</h2>
+      <ol class="steps">
+        <li>
+          <h3>Install a Nerd Font</h3>
+          <p>superline draws with <a href="https://www.nerdfonts.com/">Nerd Font</a> glyphs. MesloLGS is a good default; point your terminal at it.</p>
+        </li>
+        <li>
+          <h3>Install the binary</h3>
+          <pre><code>brew install alxhill/superline/superline</code></pre>
+          <p>Or <code>cargo binstall superline</code> for a prebuilt binary (macOS, Linux, Windows), or <code>cargo install superline</code> to build from source.</p>
+        </li>
+        <li>
+          <h3>Hook it into your shell</h3>
+          <pre><code><span class="dim"># or zsh, bash, pwsh, nu</span>
+superline install fish</code></pre>
+          <p>Reload your shell. The command is safe to run more than once; <code>superline init &lt;shell&gt;</code> prints the snippet instead.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="configure" class="configure wrap">
+      <div class="copy-col">
+        <h2>One JSON file</h2>
+        <p>
+          The first run writes a config to <code>~/.config/superline/config.json</code>. Edits apply on the next
+          prompt&mdash;no reload. A config is a theme and a list of rows; each row has a <code>left</code> side and
+          an optional <code>right</code>.
+        </p>
+        <p>
+          Run <code>superline config</code> to open it in <code>$EDITOR</code>, and see the
+          <a href="https://github.com/alxhill/superline#configuration">README</a> for every module and option.
+        </p>
+      </div>
+<pre class="json"><code>{
+  <span class="k">"theme"</span>: <span class="s">"rainbow"</span>,
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">60</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">5</span> } },
+        <span class="s">"git"</span>,
+        <span class="s">"pr"</span>
+      ],
+      <span class="k">"right"</span>: [<span class="s">"python"</span>, <span class="s">"cargo"</span>]
+    },
+    { <span class="k">"left"</span>: [<span class="s">"shell"</span>, <span class="s">"cmd"</span>] }
+  ]
+}</code></pre>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p>
+        superline is MIT licensed and grew out of
+        <a href="https://github.com/cirho/powerline-rust">powerline-rust</a> and
+        <a href="https://github.com/b-ryan/powerline-shell">powerline-shell</a>.
+      </p>
+      <p>
+        <a href="https://github.com/alxhill/superline">Source</a> &middot;
+        <a href="https://crates.io/crates/superline">crates.io</a> &middot;
+        <a href="https://github.com/alxhill/superline/releases">Releases</a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll('[data-tabs]').forEach((box) => {
+      const text = box.querySelector('[data-cmd-text]');
+      const tabs = box.querySelectorAll('[role=tab]');
+      tabs.forEach((tab) => tab.addEventListener('click', () => {
+        tabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+        text.textContent = tab.dataset.cmd;
+      }));
+      const copy = box.querySelector('.copy');
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(text.textContent);
+          copy.textContent = 'Copied';
+        } catch {
+          copy.textContent = 'Press ⌘C';
+        }
+        setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+      });
+    });
+  </script>
+</body>
+</html>

@@ -149,3 +149,27 @@ previous one. Everything is rendered and answered by a pinned xterm.js-based
 terminal, so it does not guarantee identical behavior in every native terminal
 application. Host-specific settings and timing-sensitive input such as rapid
 Ctrl-C still need a focused manual run in that terminal.
+
+## Website screenshots
+
+The screenshots on the [website](https://alxhill.github.io/superline/) come
+from the same VHS build, driven by `scripts/site-screenshots/generate.sh`
+rather than the test rig. Each scene in `scripts/site-screenshots/scenes.sh`
+builds a fixture (git repos with an upstream, language projects, a seeded AI
+usage cache) in an isolated home, runs a short fish session with its config
+from `scripts/site-screenshots/configs/`, and writes a trimmed PNG to
+`site/img/`. A `gh` stub in `scripts/site-screenshots/bin/` answers PR lookups,
+so no network access or GitHub login is needed.
+
+```bash
+scripts/site-screenshots/generate.sh          # every scene
+scripts/site-screenshots/generate.sh pr usage # just these
+```
+
+Besides the dependencies above it needs `fish`, `jq`, `uv`, and
+[Symbols Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1)
+(`NerdFontsSymbolsOnly.zip`) 3.4 or newer, which supplies the Claude and Codex
+glyphs when the installed Meslo predates them. The script also updates the
+image sizes in `site/index.html`. Commit the regenerated PNGs; the `Website`
+workflow publishes `site/` to GitHub Pages on every push to `main` that
+touches it.

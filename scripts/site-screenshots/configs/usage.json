@@ -1,0 +1,57 @@
+{
+  "theme": "rainbow",
+  "update": { "disable": true },
+  "rows": [
+    {
+      "left": [
+        { "separator": "round" },
+        { "text": "percentage" },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "claude", "fable": true, "display": "percentage" } },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "codex", "display": "percentage" } }
+      ]
+    },
+    {
+      "left": [
+        { "separator": "round" },
+        { "text": "bar       " },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "claude", "fable": true, "display": "bar" } },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "codex", "display": "bar" } }
+      ]
+    },
+    {
+      "left": [
+        { "separator": "round" },
+        { "text": "capped_bar" },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "claude", "fable": true, "display": "capped_bar" } },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "codex", "display": "capped_bar" } }
+      ]
+    },
+    {
+      "left": [
+        { "separator": "round" },
+        { "text": "block     " },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "claude", "fable": true, "display": "block" } },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "codex", "display": "block" } }
+      ]
+    },
+    {
+      "left": [
+        { "separator": "round" },
+        { "text": "sparkline " },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "claude", "fable": true, "display": "sparkline" } },
+        { "padding": 1 },
+        { "ai_usage": { "provider": "codex", "display": "sparkline" } }
+      ]
+    },
+    { "left": ["cmd"] }
+  ]
+}
