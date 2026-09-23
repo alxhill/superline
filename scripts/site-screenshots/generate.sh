@@ -7,6 +7,7 @@
 # from a pre-seeded cache so no provider CLI is contacted.
 #
 #   scripts/site-screenshots/generate.sh [scene...]
+#   COMPONENTS="git pr" scripts/site-screenshots/generate.sh components
 #
 # Needs the patched VHS from examples/terminal-snapshot/build-vhs.sh (pass it
 # with SUPERLINE_E2E_VHS, or it is built into target/vhs-bin on first run),
@@ -25,9 +26,11 @@ fi
 cargo build --quiet --release --bin superline --manifest-path "$repo/Cargo.toml"
 mkdir -p "$out"
 
-# Shorter than the macOS $TMPDIR so tape lines stay readable in logs.
-work=$(mktemp -d /tmp/superline-site.XXXXXX)
-trap 'rm -rf "$work"' EXIT
+# Shorter than the macOS $TMPDIR so tape lines stay readable in logs. Resolved
+# (/tmp is a symlink on macOS) so resolve_symlinks still sees the fake home.
+work=$(cd "$(mktemp -d /tmp/superline-site.XXXXXX)" && pwd -P)
+# The read_only fixture leaves a directory without write permission.
+trap 'chmod -R u+w "$work"; rm -rf "$work"' EXIT
 
 # Fixed git identity and dates so commit hashes are stable between runs.
 export GIT_AUTHOR_NAME=superline GIT_AUTHOR_EMAIL=demo@example.com
@@ -76,7 +79,7 @@ seed_usage() {
   now_ms=$((now_s * 1000))
   mkdir -p "$home/.cache/superline"
   cat >"$home/.cache/superline/usage-claude.json" <<EOF
-{"fetched_at":$now_s,"value":{"session":38.0,"weekly":61.0,"fable":22.0}}
+{"fetched_at":$now_s,"value":{"session":38.0,"weekly":61.0,"fable":22.0,"credits":{"used":12.5,"limit":50.0,"unit":"dollars"},"session_resets_at":$((now_s + 8000))}}
 EOF
   cat >"$home/.cache/superline/usage-codex.json" <<EOF
 {"fetched_at":$now_s,"value":{"session":84.0,"weekly":47.0}}
@@ -85,8 +88,9 @@ EOF
   echo "$now_ms" >"$home/.cache/superline/usage-codex.refresh"
 }
 
-# Renders one scene. Arguments: name, columns, rows, config path, workdir
-# (relative to the fake home), then the tape body on stdin.
+# Renders one scene to site/img/<name>.png. Arguments: name, columns, rows,
+# config path, workdir (relative to the fake home), then the tape body on
+# stdin. PRE is an optional hidden fish command run in the workdir first.
 capture() {
   local name=$1 cols=$2 rows=$3 config=$4 dir=$5
   local home="$work/$name/home"
@@ -94,7 +98,7 @@ capture() {
   local body
   body=$(cat)
 
-  mkdir -p "$home/.config/superline" "$home/$dir"
+  mkdir -p "$home/.config/superline" "$home/$dir" "$(dirname "$out/$name.png")"
   cp "$config" "$home/.config/superline/config.json"
   "$repo/target/release/superline" init fish >"$home/superline-init.fish"
 
@@ -144,15 +148,5 @@ for scene in "${scenes[@]}"; do
   "scene_$scene"
 done
 
-# Screenshots are 2x density, so the page lays each one out at half its size.
-uv run --quiet --with pillow python - "$repo/site/index.html" <<'PY'
-import re, sys
-from pathlib import Path
-from PIL import Image
 
-page = Path(sys.argv[1])
-def size(match):
-    width, height = Image.open(page.parent / match[1]).size
-    return f'src="{match[1]}" width="{width // 2}" height="{height // 2}"'
-page.write_text(re.sub(r'src="(img/[^"]+\.png)" width="\d+" height="\d+"', size, page.read_text()))
-PY
+uv run --quiet --with pillow python "$here/render_examples.py"

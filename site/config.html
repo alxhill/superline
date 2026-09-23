@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuration reference · superline</title>
+  <meta name="description" content="Reference for superline's config file: every module and layout segment, their options and defaults, with examples.">
+  <meta property="og:title" content="superline configuration reference">
+  <meta property="og:description" content="Reference for superline's config file: every module and layout segment, their options and defaults, with examples.">
+  <meta property="og:image" content="https://alxhill.github.io/superline/img/hero.png">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="./" aria-label="superline home">
+        <span class="seg seg-a">super</span><span class="seg seg-b">line</span>
+      </a>
+      <nav>
+        <a href="./#features">Features</a>
+        <a href="./#install">Install</a>
+        <a href="config.html" aria-current="page">Configuration</a>
+        <a class="gh" href="https://github.com/alxhill/superline">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="wrap docs">
+    <aside class="toc" aria-label="On this page">
+      <p class="toc-title">Basics</p>
+      <a href="#file">The config file</a>
+      <a href="#rows">Rows</a>
+      <p class="toc-title">Layout</p>
+      <a href="#separator"><code>separator</code></a>
+      <a href="#spacers"><code>small_spacer</code> / <code>large_spacer</code></a>
+      <a href="#padding"><code>padding</code></a>
+      <p class="toc-title">Path &amp; prompt</p>
+      <a href="#cwd"><code>cwd</code></a>
+      <a href="#read_only"><code>read_only</code></a>
+      <a href="#cmd"><code>cmd</code></a>
+      <a href="#last_cmd_duration"><code>last_cmd_duration</code></a>
+      <a href="#shell"><code>shell</code></a>
+      <a href="#jobs"><code>jobs</code></a>
+      <p class="toc-title">Git &amp; GitHub</p>
+      <a href="#git"><code>git</code></a>
+      <a href="#pr"><code>pr</code></a>
+      <p class="toc-title">Languages</p>
+      <a href="#languages">Shared behaviour</a>
+      <a href="#python"><code>python</code></a>
+      <a href="#node"><code>node</code></a>
+      <a href="#java"><code>java</code></a>
+      <a href="#cargo"><code>cargo</code></a>
+      <p class="toc-title">AI usage</p>
+      <a href="#ai_usage"><code>ai_usage</code></a>
+      <p class="toc-title">System</p>
+      <a href="#os"><code>os</code></a>
+      <a href="#memory_usage"><code>memory_usage</code></a>
+      <a href="#time"><code>time</code></a>
+      <a href="#text"><code>text</code></a>
+      <a href="#identity"><code>username</code>, <code>hostname</code>, <code>local_ip</code></a>
+      <a href="#battery"><code>battery</code></a>
+      <a href="#sudo"><code>sudo</code></a>
+      <p class="toc-title">Reference</p>
+      <a href="#themes">Themes</a>
+      <a href="#commands">Commands</a>
+    </aside>
+
+    <main class="doc">
+      <header class="doc-head">
+        <h1>Configuration reference</h1>
+        <p class="lede">
+          This page documents the config file and every segment it can contain. Each entry lists the segment's
+          options with their types and defaults, followed by examples. Each example pairs a screenshot with the
+          JSON that produced it. Segments with several options have a minimal example and one that sets every
+          option.
+        </p>
+      </header>
+
+      <section id="file" class="component">
+        <h2>The config file</h2>
+        <p>
+          On first run superline writes a default config to <code>~/.config/superline/config.json</code>. Changes
+          take effect on the next prompt. <code>superline config</code> opens the file in
+          <code>$EDITOR</code>, and <code>superline show --config &lt;path&gt;</code> renders any other file.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>theme</code></td><td>string</td><td><code>"rainbow"</code></td><td><code>"rainbow"</code>, <code>"simple"</code>, or a path to a <a href="#themes">theme file</a>.</td></tr>
+            <tr><td><code>rows</code></td><td>array</td><td>required</td><td>The prompt's <a href="#rows">rows</a>, top to bottom.</td></tr>
+            <tr><td><code>update.disable</code></td><td>boolean</td><td><code>false</code></td><td>Stop the once-a-day check for a newer release and the notice it prints above the prompt.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Every module can be written as a bare string or as an object with options, so <code>"git"</code> and
+          <code>{ "git": {} }</code> mean the same thing. Modules with required options must use the object form.
+        </p>
+      </section>
+
+      <section id="rows" class="component">
+        <h2>Rows</h2>
+        <p>
+          Each row has a required <code>left</code> array and an optional <code>right</code> array of segments.
+          Every row but the last is printed in full. The last row's <code>right</code> side is drawn by the
+          shell's own right prompt (<code>fish_right_prompt</code>, zsh's <code>RPS1</code>, nushell's
+          <code>PROMPT_COMMAND_RIGHT</code>), so it stays in place while you type. Bash and PowerShell have no right
+          prompt, so on those shells the last row's <code>right</code> isn't shown.
+        </p>
+        <div class="examples">
+          <div class="example wide stacked" data-example="rows/two-rows">
+  <div class="ex-label">Two rows, both sides</div>
+  <figure class="term shot"><img src="img/config/rows-two-rows.png" width="948" height="69" loading="lazy" alt="The rows example: Two rows, both sides."></figure>
+  <pre class="json"><code>{
+  <span class="k">"theme"</span>: <span class="s">"rainbow"</span>,
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+        <span class="s">"git"</span>
+      ],
+      <span class="k">"right"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+        <span class="s">"os"</span>,
+        { <span class="k">"time"</span>: { <span class="k">"format"</span>: <span class="s">"%H:%M"</span> } },
+        { <span class="k">"padding"</span>: <span class="n">0</span> }
+      ]
+    },
+    {
+      <span class="k">"left"</span>: [<span class="s">"shell"</span>, <span class="s">"cmd"</span>],
+      <span class="k">"right"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+        <span class="s">"cargo"</span>,
+        { <span class="k">"padding"</span>: <span class="n">0</span> }
+      ]
+    }
+  ]
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <h2 class="group">Layout</h2>
+      <p class="group-intro">Layout segments control how other segments are grouped and joined. They can appear anywhere in a <code>left</code> or <code>right</code> array.</p>
+
+      <section id="separator" class="component">
+        <h3><code>separator</code></h3>
+        <p>
+          Sets the shape drawn between segments. It applies to every following segment on the same side until
+          another <code>separator</code> changes it.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Value</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>separator</code></td><td>string</td><td><code>"chevron"</code></td><td><code>"chevron"</code>, <code>"round"</code>, <code>"angle_line"</code>, or <code>"none"</code> for no glyph at all.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example wide stacked" data-example="separator/chevron">
+  <div class="ex-label">chevron (default)</div>
+  <figure class="term shot"><img src="img/config/separator-chevron.png" width="325" height="49" loading="lazy" alt="The separator example: chevron (default)."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"separator"</span>: <span class="s">"chevron"</span> },
+    <span class="s">"os"</span>,
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+    <span class="s">"shell"</span>
+  ]
+}</code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="separator/round">
+  <div class="ex-label">round</div>
+  <figure class="term shot"><img src="img/config/separator-round.png" width="325" height="49" loading="lazy" alt="The separator example: round."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+    <span class="s">"os"</span>,
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+    <span class="s">"shell"</span>
+  ]
+}</code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="separator/angle_line">
+  <div class="ex-label">angle_line</div>
+  <figure class="term shot"><img src="img/config/separator-angle_line.png" width="325" height="49" loading="lazy" alt="The separator example: angle_line."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"separator"</span>: <span class="s">"angle_line"</span> },
+    <span class="s">"os"</span>,
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+    <span class="s">"shell"</span>
+  ]
+}</code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="separator/none">
+  <div class="ex-label">none</div>
+  <figure class="term shot"><img src="img/config/separator-none.png" width="274" height="49" loading="lazy" alt="The separator example: none."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"separator"</span>: <span class="s">"none"</span> },
+    <span class="s">"os"</span>,
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+    <span class="s">"shell"</span>
+  ]
+}</code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="separator/mixed">
+  <div class="ex-label">Changing style mid-row</div>
+  <figure class="term shot"><img src="img/config/separator-mixed.png" width="325" height="49" loading="lazy" alt="The separator example: Changing style mid-row."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    <span class="s">"os"</span>,
+    { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+    { <span class="k">"separator"</span>: <span class="s">"angle_line"</span> },
+    <span class="s">"shell"</span>
+  ]
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="spacers" class="component">
+        <h3><code>small_spacer</code> / <code>large_spacer</code></h3>
+        <p>Blank segments with a black background, drawn as part of the current block. They take no options.</p>
+        <div class="examples">
+          <div class="example wide stacked" data-example="spacers/small">
+  <div class="ex-label">small_spacer</div>
+  <figure class="term shot"><img src="img/config/spacers-small.png" width="304" height="49" loading="lazy" alt="The spacers example: small_spacer."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
+    <span class="s">"small_spacer"</span>,
+    <span class="s">"shell"</span>
+  ]
+}</code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="spacers/large">
+  <div class="ex-label">large_spacer</div>
+  <figure class="term shot"><img src="img/config/spacers-large.png" width="325" height="49" loading="lazy" alt="The spacers example: large_spacer."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
+    <span class="s">"large_spacer"</span>,
+    <span class="s">"shell"</span>
+  ]
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="padding" class="component">
+        <h3><code>padding</code></h3>
+        <p>
+          Ends the current block and clears the background. The next segment starts a new block with a reversed
+          separator. <code>0</code> is common at the end of a <code>right</code> array to close the last block.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Value</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>padding</code></td><td>integer</td><td>required</td><td>Width of the gap in cells.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example wide stacked" data-example="padding/blocks">
+  <div class="ex-label">Splitting a row into blocks</div>
+  <figure class="term shot"><img src="img/config/padding-blocks.png" width="386" height="49" loading="lazy" alt="The padding example: Splitting a row into blocks."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+    { <span class="k">"padding"</span>: <span class="n">1</span> },
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
+    { <span class="k">"padding"</span>: <span class="n">3</span> },
+    <span class="s">"os"</span>,
+    <span class="s">"shell"</span>,
+    { <span class="k">"padding"</span>: <span class="n">0</span> }
+  ]
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <h2 class="group">Path &amp; prompt</h2>
+
+      <section id="cwd" class="component">
+        <h3><code>cwd</code></h3>
+        <p>
+          The current directory, one segment per path component, with your home directory shown as
+          <code>~</code>. Once the path is longer than <code>max_length</code> characters and deeper than
+          <code>wanted_seg_num</code> components, it's cut down to <code>wanted_seg_num</code> components: the
+          first half, then <code>...</code>, then the rest.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>max_length</code></td><td>integer</td><td>required</td><td>Characters (after <code>~</code>) before the path is shortened.</td></tr>
+            <tr><td><code>wanted_seg_num</code></td><td>integer</td><td>required</td><td>Components to keep once it is.</td></tr>
+            <tr><td><code>resolve_symlinks</code></td><td>boolean</td><td><code>false</code></td><td>Show the resolved path instead of the path used to reach the directory. The example below sits in <code>~/work/current</code>, a link to a deep directory.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example wide stacked" data-example="cwd/minimal">
+  <div class="ex-label">Minimal</div>
+  <figure class="term shot"><img src="img/config/cwd-minimal.png" width="437" height="49" loading="lazy" alt="The cwd example: Minimal."></figure>
+  <pre class="json"><code>{ <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">60</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">5</span> } }</code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="cwd/full">
+  <div class="ex-label">All options</div>
+  <figure class="term shot"><img src="img/config/cwd-full.png" width="233" height="49" loading="lazy" alt="The cwd example: All options."></figure>
+  <pre class="json"><code>{
+  <span class="k">"cwd"</span>: {
+    <span class="k">"max_length"</span>: <span class="n">30</span>,
+    <span class="k">"wanted_seg_num"</span>: <span class="n">2</span>,
+    <span class="k">"resolve_symlinks"</span>: <span class="n">true</span>
+  }
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="read_only" class="component">
+        <h3><code>read_only</code></h3>
+        <p>A lock icon, shown when the current directory is not writable. No options. Themed as <code>readonly</code>.</p>
+        <div class="examples">
+          <div class="example wide stacked" data-example="read_only/default">
+  <div class="ex-label">In a read-only directory</div>
+  <figure class="term shot"><img src="img/config/read_only-default.png" width="304" height="49" loading="lazy" alt="The read_only example: In a read-only directory."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    <span class="s">"read_only"</span>,
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">2</span> } }
+  ]
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="cmd" class="component">
+        <h3><code>cmd</code></h3>
+        <p>
+          The prompt character before your input. After a failed command it turns red and shows the exit code.
+          No options; the symbol comes from the theme's <code>cmd.user_symbol</code>.
+        </p>
+        <div class="examples">
+          <div class="example" data-example="cmd/default">
+  <div class="ex-label">After a success, then a failure</div>
+  <figure class="term shot"><img src="img/config/cmd-default.png" width="99" height="86" loading="lazy" alt="The cmd example: After a success, then a failure."></figure>
+  <pre class="json"><code><span class="s">"cmd"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="last_cmd_duration" class="component">
+        <h3><code>last_cmd_duration</code></h3>
+        <p>How long the previous command took, shown only when it ran for at least <code>min_run_time</code>.</p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>min_run_time</code></td><td>integer</td><td>required</td><td>Threshold in milliseconds. The default config uses <code>50</code>.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example wide stacked" data-example="last_cmd_duration/default">
+  <div class="ex-label">min_run_time: 500</div>
+  <figure class="term shot"><img src="img/config/last_cmd_duration-default.png" width="138" height="86" loading="lazy" alt="The last_cmd_duration example: min_run_time: 500."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"last_cmd_duration"</span>: { <span class="k">"min_run_time"</span>: <span class="n">500</span> } },
+    <span class="s">"cmd"</span>
+  ]
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="shell" class="component">
+        <h3><code>shell</code></h3>
+        <p>The name of the running shell: <code>fish</code>, <code>zsh</code>, <code>bash</code>, <code>pwsh</code> or <code>nu</code>. No options.</p>
+        <div class="examples">
+          <div class="example" data-example="shell/default">
+  <div class="ex-label">Default</div>
+  <figure class="term shot"><img src="img/config/shell-default.png" width="88" height="48" loading="lazy" alt="The shell example: Default."></figure>
+  <pre class="json"><code><span class="s">"shell"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="jobs" class="component">
+        <h3><code>jobs</code></h3>
+        <p>
+          A gears icon and the number of running background jobs owned by this shell, hidden when there are none.
+          Stopped jobs aren't counted, since some shells keep them in the job table indefinitely. No options.
+        </p>
+        <div class="examples">
+          <div class="example" data-example="jobs/default">
+  <div class="ex-label">With two background jobs</div>
+  <figure class="term shot"><img src="img/config/jobs-default.png" width="211" height="86" loading="lazy" alt="The jobs example: With two background jobs."></figure>
+  <pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"jobs"</span>, <span class="s">"cmd"</span>] }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <h2 class="group">Git &amp; GitHub</h2>
+
+      <section id="git" class="component">
+        <h3><code>git</code></h3>
+        <p>
+          The branch, then modified, untracked and staged counts, then commits ahead of and behind the upstream.
+          A GitHub logo appears when the repo has a remote and links to its web page. A detached HEAD shows the
+          short hash, followed by the branch it's the tip of, if any.
+        </p>
+        <p>
+          Status collection waits up to <code>status_timeout_ms</code>. If it takes longer, the last cached result
+          is shown while a refresh finishes in the background; before anything is cached the segment says
+          <code>loading…</code>.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>status_timeout_ms</code></td><td>integer</td><td><code>250</code></td><td>How long to wait for a fresh status before falling back to the cache.</td></tr>
+            <tr><td><code>backend</code></td><td>string</td><td><code>"auto"</code></td><td>
+              <code>"cli"</code> runs <code>git</code>, the fastest option on big trees since it's the only one that uses git's untracked cache and fsmonitor.
+              <code>"gitoxide"</code> reads the repo in-process and needs no <code>git</code> binary.
+              <code>"auto"</code> picks by the size of <code>.git/index</code>, and uses gitoxide when <code>git</code> isn't on your <code>PATH</code>.
+            </td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example wide" data-example="git/minimal">
+  <div class="ex-label">Minimal</div>
+  <figure class="term shot"><img src="img/config/git-minimal.png" width="417" height="49" loading="lazy" alt="The git example: Minimal."></figure>
+  <pre class="json"><code><span class="s">"git"</span></code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="git/full">
+  <div class="ex-label">All options, detached HEAD</div>
+  <figure class="term shot"><img src="img/config/git-full.png" width="284" height="48" loading="lazy" alt="The git example: All options, detached HEAD."></figure>
+  <pre class="json"><code>{ <span class="k">"git"</span>: { <span class="k">"status_timeout_ms"</span>: <span class="n">500</span>, <span class="k">"backend"</span>: <span class="s">"cli"</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="pr" class="component">
+        <h3><code>pr</code></h3>
+        <p>
+          A clickable link to the current branch's pull request, looked up through the
+          <a href="https://cli.github.com"><code>gh</code></a> CLI. Its colour shows the state: draft, open,
+          merged or closed. The lookup runs in the background and is cached, so the link appears on a later
+          prompt once it's ready. It's skipped on <code>main</code>, <code>master</code> and <code>develop</code>.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>status</code></td><td>boolean</td><td><code>true</code></td><td>Add a dot for CI while the PR is open: green passing, yellow pending, red failing.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example wide" data-example="pr/minimal">
+  <div class="ex-label">Minimal: open PR, checks passing</div>
+  <figure class="term shot"><img src="img/config/pr-minimal.png" width="458" height="48" loading="lazy" alt="The pr example: Minimal: open PR, checks passing."></figure>
+  <pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"git"</span>, <span class="s">"pr"</span>] }</code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="pr/full">
+  <div class="ex-label">All options: CI dot hidden</div>
+  <figure class="term shot"><img src="img/config/pr-full.png" width="437" height="48" loading="lazy" alt="The pr example: All options: CI dot hidden."></figure>
+  <pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"git"</span>, { <span class="k">"pr"</span>: { <span class="k">"status"</span>: <span class="n">false</span> } }] }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <h2 class="group" id="languages">Languages</h2>
+      <div class="component">
+        <p>
+          <code>python</code>, <code>node</code>, <code>java</code> and <code>cargo</code> each show their logo when
+          the current directory belongs to a project, and add the version when one is pinned.
+        </p>
+        <p>
+          Versions come first from <a href="https://mise.jdx.dev">mise</a> configs (<code>mise.toml</code>,
+          <code>.mise.toml</code>, <code>.config/mise/config.toml</code>, <code>.tool-versions</code> and their
+          <code>.local</code> variants), searched upwards from the current directory. A mise version beats one from
+          a language-specific file, and is marked with a tools icon (Nerd Font <code>md-tools</code>, U+F1064), which themes can change or hide with each
+          module's <code>mise_icon</code>. The global mise config in <code>$HOME</code> is ignored, so a global
+          pin doesn't make the modules appear in every directory.
+        </p>
+      </div>
+
+      <section id="python" class="component">
+        <h3><code>python</code></h3>
+        <p>
+          Detects an active virtualenv (venv, conda or mamba), or a directory with a <code>.python-version</code>
+          or <code>pyproject.toml</code>. Inside a venv the version is the interpreter the env was built from, read
+          from <code>pyvenv.cfg</code> or <code>conda-meta</code>. Outside one it's the pinned version. Also
+          accepted as <code>python_env</code>.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>version</code></td><td>boolean</td><td><code>true</code></td><td>Show the Python version.</td></tr>
+            <tr><td><code>venv</code></td><td>boolean</td><td><code>true</code></td><td>Show the active env's name.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example" data-example="python/minimal">
+  <div class="ex-label">Minimal, in an active venv</div>
+  <figure class="term shot"><img src="img/config/python-minimal.png" width="243" height="48" loading="lazy" alt="The python example: Minimal, in an active venv."></figure>
+  <pre class="json"><code><span class="s">"python"</span></code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="python/project">
+  <div class="ex-label">Minimal, pinned project without a venv</div>
+  <figure class="term shot"><img src="img/config/python-project.png" width="171" height="48" loading="lazy" alt="The python example: Minimal, pinned project without a venv."></figure>
+  <pre class="json"><code><span class="s">"python"</span></code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="python/full">
+  <div class="ex-label">All options</div>
+  <figure class="term shot"><img src="img/config/python-full.png" width="181" height="48" loading="lazy" alt="The python example: All options."></figure>
+  <pre class="json"><code>{ <span class="k">"python"</span>: { <span class="k">"version"</span>: <span class="n">true</span>, <span class="k">"venv"</span>: <span class="n">false</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="node" class="component">
+        <h3><code>node</code></h3>
+        <p>
+          Detects the version nvm has activated, a mise pin, or an <code>.nvmrc</code>. A version that only comes
+          from <code>.nvmrc</code> gets a darker background, since nothing has activated it. Also accepted as
+          <code>nvm</code>.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>version</code></td><td>boolean</td><td><code>true</code></td><td>Show the Node version.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example" data-example="node/minimal">
+  <div class="ex-label">Minimal</div>
+  <figure class="term shot"><img src="img/config/node-minimal.png" width="161" height="48" loading="lazy" alt="The node example: Minimal."></figure>
+  <pre class="json"><code><span class="s">"node"</span></code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="node/full">
+  <div class="ex-label">All options</div>
+  <figure class="term shot"><img src="img/config/node-full.png" width="79" height="48" loading="lazy" alt="The node example: All options."></figure>
+  <pre class="json"><code>{ <span class="k">"node"</span>: { <span class="k">"version"</span>: <span class="n">false</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="java" class="component">
+        <h3><code>java</code></h3>
+        <p>
+          Detects a mise pin, or the <code>.sdkmanrc</code> that sdkman's auto-env has exported for the current
+          directory (through <code>SDKMAN_ENV</code>). Shows the major version and the JDK distribution. Also
+          accepted as <code>sdkman</code>.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>version</code></td><td>boolean</td><td><code>true</code></td><td>Show the major version.</td></tr>
+            <tr><td><code>jdk</code></td><td>boolean</td><td><code>true</code></td><td>Show the distribution (Temurin, Corretto, ...).</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example" data-example="java/minimal">
+  <div class="ex-label">Minimal</div>
+  <figure class="term shot"><img src="img/config/java-minimal.png" width="192" height="48" loading="lazy" alt="The java example: Minimal."></figure>
+  <pre class="json"><code><span class="s">"java"</span></code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="java/full">
+  <div class="ex-label">All options</div>
+  <figure class="term shot"><img src="img/config/java-full.png" width="110" height="48" loading="lazy" alt="The java example: All options."></figure>
+  <pre class="json"><code>{ <span class="k">"java"</span>: { <span class="k">"version"</span>: <span class="n">true</span>, <span class="k">"jdk"</span>: <span class="n">false</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="cargo" class="component">
+        <h3><code>cargo</code></h3>
+        <p>
+          Detects a <code>Cargo.toml</code> in the current directory. The version is a mise pin, or the channel from
+          <code>rust-toolchain.toml</code> (or the legacy <code>rust-toolchain</code>), searched upwards as rustup
+          does so workspace members pick up the root's pin.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>version</code></td><td>boolean</td><td><code>true</code></td><td>Show the toolchain version. The mise marker stays either way.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example" data-example="cargo/minimal">
+  <div class="ex-label">Minimal, rust-toolchain.toml</div>
+  <figure class="term shot"><img src="img/config/cargo-minimal.png" width="151" height="48" loading="lazy" alt="The cargo example: Minimal, rust-toolchain.toml."></figure>
+  <pre class="json"><code><span class="s">"cargo"</span></code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="cargo/mise">
+  <div class="ex-label">Minimal, pinned by mise</div>
+  <figure class="term shot"><img src="img/config/cargo-mise.png" width="171" height="48" loading="lazy" alt="The cargo example: Minimal, pinned by mise."></figure>
+  <pre class="json"><code><span class="s">"cargo"</span></code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="cargo/full">
+  <div class="ex-label">All options</div>
+  <figure class="term shot"><img src="img/config/cargo-full.png" width="79" height="48" loading="lazy" alt="The cargo example: All options."></figure>
+  <pre class="json"><code>{ <span class="k">"cargo"</span>: { <span class="k">"version"</span>: <span class="n">false</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <h2 class="group">AI usage</h2>
+
+      <section id="ai_usage" class="component">
+        <h3><code>ai_usage</code></h3>
+        <p>
+          Claude or Codex subscription usage, read through the provider's CLI on your <code>PATH</code>. It's
+          refreshed in the background and cached, so rendering never waits on the provider. Add the module more
+          than once to show both providers, or the same one in different styles.
+        </p>
+        <p>
+          Until the first reading is cached it shows <code>…</code>. If the CLI isn't installed it shows
+          <code>?</code>, and if it's installed but logged out it shows a logged-out user icon.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>provider</code></td><td>string</td><td>required</td><td><code>"claude"</code> or <code>"codex"</code>.</td></tr>
+            <tr><td><code>session</code></td><td>boolean</td><td><code>true</code></td><td>Show the five-hour window.</td></tr>
+            <tr><td><code>weekly</code></td><td>boolean</td><td><code>true</code></td><td>Show the seven-day window.</td></tr>
+            <tr><td><code>fable</code></td><td>boolean</td><td><code>false</code></td><td>Show Claude's weekly Fable window. Ignored for Codex.</td></tr>
+            <tr><td><code>display</code></td><td>string</td><td><code>"percentage"</code></td><td>How each window is drawn; see the styles below.</td></tr>
+            <tr><td><code>threshold</code></td><td>number</td><td>none</td><td>Percent used at which the whole widget switches to the theme's <code>ai_usage.threshold_bg</code>. Any visible lane counts, credits included.</td></tr>
+            <tr><td><code>session_label</code></td><td>string</td><td><code>"5h "</code></td><td rowspan="3">Labels for each window. The spaces keep adjacent windows apart; <code>""</code> drops the label.</td></tr>
+            <tr><td><code>weekly_label</code></td><td>string</td><td><code>" 7d "</code></td></tr>
+            <tr><td><code>fable_label</code></td><td>string</td><td><code>" F "</code></td></tr>
+            <tr><td><code>credits</code></td><td>boolean</td><td><code>false</code></td><td>Add a lane for usage credits: dollars against the limit for Claude, a per-seat count for Codex.</td></tr>
+            <tr><td><code>credits_display</code></td><td>string</td><td>follows <code>display</code></td><td>Any display style, or <code>"numeric"</code> for raw figures such as <code>$12.50/$50</code>.</td></tr>
+            <tr><td><code>credits_label</code></td><td>string</td><td><code>" C "</code></td><td>Label for the credits lane.</td></tr>
+            <tr><td><code>credits_only_when_limited</code></td><td>boolean</td><td><code>false</code></td><td>Show credits only once a window has hit 100%, which is when the provider starts spending them.</td></tr>
+            <tr><td><code>session_time_remaining</code></td><td>boolean</td><td><code>false</code></td><td>Show a countdown to the five-hour window's reset.</td></tr>
+            <tr><td><code>session_time_remaining_only_at_limit</code></td><td>number</td><td><code>0</code></td><td>Fraction from 0 to 1: only show the countdown once the session is at least this full. <code>0.8</code> shows it from 80%.</td></tr>
+          </tbody>
+        </table>
+        <table class="opts styles">
+          <thead><tr><th>Display style</th><th>Also accepted</th><th>Looks like</th></tr></thead>
+          <tbody>
+            <tr><td><code>"percentage"</code></td><td><code>percent</code>, <code>pct</code></td><td><code>5h 61%</code></td></tr>
+            <tr><td><code>"bar"</code></td><td><code>bars</code></td><td><code>5h ▄▄▄▁▁</code></td></tr>
+            <tr><td><code>"capped_bar"</code></td><td><code>capped</code></td><td><code>5h ▗▄▄▄▁▁▖</code></td></tr>
+            <tr><td><code>"block"</code></td><td><code>blocks</code></td><td><code>5h ███░░</code></td></tr>
+            <tr><td><code>"sparkline"</code></td><td><code>spark</code></td><td><code>5h ▅</code></td></tr>
+            <tr><td><code>"numeric"</code></td><td><code>num</code></td><td>Raw figures for credits; same as <code>percentage</code> for windows.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example" data-example="ai_usage/minimal">
+  <div class="ex-label">Minimal</div>
+  <figure class="term shot"><img src="img/config/ai_usage-minimal.png" width="220" height="48" loading="lazy" alt="The ai_usage example: Minimal."></figure>
+  <pre class="json"><code>{ <span class="k">"ai_usage"</span>: { <span class="k">"provider"</span>: <span class="s">"claude"</span> } }</code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="ai_usage/codex">
+  <div class="ex-label">Codex as a sparkline</div>
+  <figure class="term shot"><img src="img/config/ai_usage-codex.png" width="180" height="48" loading="lazy" alt="The ai_usage example: Codex as a sparkline."></figure>
+  <pre class="json"><code>{ <span class="k">"ai_usage"</span>: { <span class="k">"provider"</span>: <span class="s">"codex"</span>, <span class="k">"display"</span>: <span class="s">"sparkline"</span> } }</code></pre>
+</div><!-- /example -->
+          <div class="example wide stacked" data-example="ai_usage/full">
+  <div class="ex-label">All options</div>
+  <figure class="term shot"><img src="img/config/ai_usage-full.png" width="625" height="49" loading="lazy" alt="The ai_usage example: All options."></figure>
+  <pre class="json"><code>{
+  <span class="k">"ai_usage"</span>: {
+    <span class="k">"provider"</span>: <span class="s">"claude"</span>,
+    <span class="k">"session"</span>: <span class="n">true</span>,
+    <span class="k">"weekly"</span>: <span class="n">true</span>,
+    <span class="k">"fable"</span>: <span class="n">true</span>,
+    <span class="k">"display"</span>: <span class="s">"capped_bar"</span>,
+    <span class="k">"threshold"</span>: <span class="n">60</span>,
+    <span class="k">"session_label"</span>: <span class="s">"5h "</span>,
+    <span class="k">"weekly_label"</span>: <span class="s">" 7d "</span>,
+    <span class="k">"fable_label"</span>: <span class="s">" F "</span>,
+    <span class="k">"credits"</span>: <span class="n">true</span>,
+    <span class="k">"credits_display"</span>: <span class="s">"numeric"</span>,
+    <span class="k">"credits_label"</span>: <span class="s">" C "</span>,
+    <span class="k">"credits_only_when_limited"</span>: <span class="n">false</span>,
+    <span class="k">"session_time_remaining"</span>: <span class="n">true</span>,
+    <span class="k">"session_time_remaining_only_at_limit"</span>: <span class="n">0</span>
+  }
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <h2 class="group">System</h2>
+
+      <section id="os" class="component">
+        <h3><code>os</code></h3>
+        <p>
+          An icon for the operating system family: Linux, macOS, Windows, Android or one of the common BSDs.
+          The family is fixed when superline is compiled, so no lookup happens at render time. No options.
+        </p>
+        <div class="examples">
+          <div class="example" data-example="os/default">
+  <div class="ex-label">Default</div>
+  <figure class="term shot"><img src="img/config/os-default.png" width="70" height="48" loading="lazy" alt="The os example: Default."></figure>
+  <pre class="json"><code><span class="s">"os"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="memory_usage" class="component">
+        <h3><code>memory_usage</code></h3>
+        <p>
+          RAM usage as a percentage, with swap alongside once it's at least 1% used. The reading is a local system call, so
+          it is not cached. Available on Linux, macOS and Windows.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>threshold</code></td><td>integer</td><td>none</td><td>Hide the segment below this percentage. Without it, it's always shown.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example" data-example="memory_usage/minimal">
+  <div class="ex-label">Minimal</div>
+  <figure class="term shot"><img src="img/config/memory_usage-minimal.png" width="233" height="49" loading="lazy" alt="The memory_usage example: Minimal."></figure>
+  <pre class="json"><code><span class="s">"memory_usage"</span></code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="memory_usage/full">
+  <div class="ex-label">All options</div>
+  <figure class="term shot"><img src="img/config/memory_usage-full.png" width="233" height="49" loading="lazy" alt="The memory_usage example: All options."></figure>
+  <pre class="json"><code>{ <span class="k">"memory_usage"</span>: { <span class="k">"threshold"</span>: <span class="n">10</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="time" class="component">
+        <h3><code>time</code></h3>
+        <p>The current time.</p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>format</code></td><td>string</td><td><code>"%H:%M:%S"</code></td><td>A <a href="https://docs.rs/chrono/latest/chrono/format/strftime/index.html">strftime</a> format string.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example" data-example="time/minimal">
+  <div class="ex-label">Minimal</div>
+  <figure class="term shot"><img src="img/config/time-minimal.png" width="140" height="48" loading="lazy" alt="The time example: Minimal."></figure>
+  <pre class="json"><code><span class="s">"time"</span></code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="time/full">
+  <div class="ex-label">All options</div>
+  <figure class="term shot"><img src="img/config/time-full.png" width="223" height="48" loading="lazy" alt="The time example: All options."></figure>
+  <pre class="json"><code>{ <span class="k">"time"</span>: { <span class="k">"format"</span>: <span class="s">"%a %d %b %H:%M"</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="text" class="component">
+        <h3><code>text</code></h3>
+        <p>
+          Literal text in the theme's default colours. Unicode and punctuation are kept. Control characters and
+          line breaks are shown as visible escapes, and shell prompt syntax is quoted, so a config value can't
+          inject anything into the prompt.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Value</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>text</code></td><td>string</td><td>required</td><td>The text to show.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example wide stacked" data-example="text/default">
+  <div class="ex-label">Default</div>
+  <figure class="term shot"><img src="img/config/text-default.png" width="344" height="49" loading="lazy" alt="The text example: Default."></figure>
+  <pre class="json"><code>{
+  <span class="k">"left"</span>: [
+    { <span class="k">"text"</span>: <span class="s">"hello 🌈"</span> },
+    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } }
+  ]
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="identity" class="component">
+        <h3><code>username</code>, <code>hostname</code>, <code>local_ip</code></h3>
+        <p>
+          The current user (in the root colour when running as root), the machine's hostname, and its primary
+          non-loopback IPv4 address, read from the network interfaces without opening a socket. They take no
+          options. <code>"user"</code>, <code>"host"</code> and <code>"localip"</code> still work as older
+          spellings. No screenshots are shown for these, since they would expose details of the machine that took them.
+        </p>
+<pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"username"</span>, <span class="s">"hostname"</span>, <span class="s">"local_ip"</span>] }</code></pre>
+      </section>
+
+      <section id="battery" class="component">
+        <h3><code>battery</code></h3>
+        <p>
+          A low-battery warning with the charge and charging state. It appears only at 10% or below, and stays
+          hidden on machines without a battery. No options.
+        </p>
+<pre class="json"><code><span class="s">"battery"</span></code></pre>
+      </section>
+
+      <section id="sudo" class="component">
+        <h3><code>sudo</code></h3>
+        <p>
+          Shows a key symbol (<code>U+26BF</code>) while your sudo credentials are cached. The check is non-interactive
+          (<code>sudo -Nnv</code>) and runs in the background, so it never prompts for a password or extends the
+          sudo timestamp. Because of that, the marker can linger for up to ten seconds after the credentials expire. No options.
+        </p>
+<pre class="json"><code><span class="s">"sudo"</span></code></pre>
+      </section>
+
+      <h2 class="group" id="themes">Themes</h2>
+      <section class="component">
+        <p>
+          <code>theme</code> is <code>"rainbow"</code>, <code>"simple"</code>, or a path to a theme file. Paths
+          starting with <code>/</code> are absolute; anything else is relative to the config directory. If a
+          custom theme fails to load, superline falls back to <code>rainbow</code>.
+        </p>
+        <p>
+          A theme file has <code>defaults</code>, the <code>fg</code> and <code>bg</code> for anything a module
+          doesn't set, and <code>modules</code>, per-module overrides. Most modules take <code>fg</code> and
+          <code>bg</code>; some have more (<code>git</code> has <code>staged_bg</code>, <code>cwd</code> takes a
+          <code>bg_colors</code> list, <code>cmd</code> has <code>user_symbol</code>). Colours are a name from
+          <code>src/colors.rs</code> or an ANSI 256-colour code from <code>0</code> to <code>255</code>.
+          <a href="https://github.com/alxhill/superline/blob/main/example_theme.json"><code>example_theme.json</code></a>
+          covers every module.
+        </p>
+        <div class="examples">
+          <div class="example wide stacked" data-example="theme/ocean">
+  <div class="ex-label">theme.json</div>
+  <figure class="term shot"><img src="img/theme-custom.png" width="673" height="48" loading="lazy" alt="The theme example: theme.json."></figure>
+  <pre class="json"><code>{
+  <span class="k">"defaults"</span>: { <span class="k">"fg"</span>: <span class="n">153</span>, <span class="k">"bg"</span>: <span class="n">235</span> },
+  <span class="k">"modules"</span>: {
+    <span class="k">"cwd"</span>: {
+      <span class="k">"path_fg"</span>: <span class="n">255</span>,
+      <span class="k">"bg_colors"</span>: [<span class="n">23</span>, <span class="n">24</span>, <span class="n">25</span>, <span class="n">31</span>, <span class="n">37</span>, <span class="n">38</span>]
+    },
+    <span class="k">"git"</span>: {
+      <span class="k">"clean_bg"</span>: <span class="n">30</span>,
+      <span class="k">"clean_fg"</span>: <span class="n">255</span>,
+      <span class="k">"dirty_bg"</span>: <span class="n">61</span>,
+      <span class="k">"dirty_fg"</span>: <span class="n">255</span>,
+      <span class="k">"notstaged_bg"</span>: <span class="n">97</span>,
+      <span class="k">"notstaged_fg"</span>: <span class="n">255</span>,
+      <span class="k">"untracked_bg"</span>: <span class="n">133</span>,
+      <span class="k">"untracked_fg"</span>: <span class="n">255</span>,
+      <span class="k">"staged_bg"</span>: <span class="n">29</span>,
+      <span class="k">"staged_fg"</span>: <span class="n">255</span>,
+      <span class="k">"remote_bg"</span>: <span class="n">238</span>,
+      <span class="k">"remote_fg"</span>: <span class="n">250</span>
+    },
+    <span class="k">"cargo"</span>: { <span class="k">"fg"</span>: <span class="n">255</span>, <span class="k">"bg"</span>: <span class="n">67</span> },
+    <span class="k">"cmd"</span>: {
+      <span class="k">"passed_fg"</span>: <span class="n">81</span>,
+      <span class="k">"failed_bg"</span>: <span class="n">161</span>,
+      <span class="k">"failed_fg"</span>: <span class="n">255</span>,
+      <span class="k">"user_symbol"</span>: <span class="s">"λ"</span>
+    }
+  }
+}</code></pre>
+</div><!-- /example -->
+        </div>
+        <p class="note">Used with <code>{ "theme": "theme.json", ... }</code> next to <code>config.json</code>.</p>
+      </section>
+
+      <h2 class="group" id="commands">Commands</h2>
+      <section class="component">
+        <table class="opts">
+          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>superline install &lt;shell&gt;</code></td><td>Append the prompt loader to the shell's config file. Safe to run more than once.</td></tr>
+            <tr><td><code>superline init &lt;shell&gt;</code></td><td>Print the loader snippet instead.</td></tr>
+            <tr><td><code>superline config</code></td><td>Open the config file in <code>$EDITOR</code>.</td></tr>
+            <tr><td><code>superline clear-caches</code></td><td>Wipe cached git status, PR lookups and AI usage so the next prompt starts cold.</td></tr>
+            <tr><td><code>SUPERLINE_DEBUG=1</code></td><td>Print a per-module timing report to stderr after each render.</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p>
+        superline is MIT licensed and grew out of
+        <a href="https://github.com/cirho/powerline-rust">powerline-rust</a> and
+        <a href="https://github.com/b-ryan/powerline-shell">powerline-shell</a>.
+      </p>
+      <p>
+        <a href="https://github.com/alxhill/superline">Source</a> &middot;
+        <a href="https://crates.io/crates/superline">crates.io</a> &middot;
+        <a href="https://github.com/alxhill/superline/releases">Releases</a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Highlight the section being read in the sidebar.
+    const links = new Map([...document.querySelectorAll('.toc a')].map((a) => [a.hash.slice(1), a]));
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        links.forEach((a) => a.classList.remove('active'));
+        links.get(entry.target.id)?.classList.add('active');
+      }
+    }, { rootMargin: '-80px 0px -70% 0px' });
+    links.forEach((_, id) => { const el = document.getElementById(id); if (el) observer.observe(el); });
+  </script>
+</body>
+</html>
