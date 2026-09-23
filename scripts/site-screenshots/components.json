@@ -95,25 +95,6 @@
         }
       },
       {
-        "name": "angle_line",
-        "label": "angle_line",
-        "row": {
-          "left": [
-            {
-              "separator": "angle_line"
-            },
-            "os",
-            {
-              "cwd": {
-                "max_length": 40,
-                "wanted_seg_num": 3
-              }
-            },
-            "shell"
-          ]
-        }
-      },
-      {
         "name": "none",
         "label": "none",
         "row": {
@@ -148,7 +129,7 @@
               }
             },
             {
-              "separator": "angle_line"
+              "separator": "chevron"
             },
             "shell"
           ]

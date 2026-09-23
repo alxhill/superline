@@ -16,6 +16,12 @@
   AI usage) under `<cache_dir>/superline/` when testing the async refresh paths
   from a cold start.
 - Default to creating a new branch and PR at the start of each session.
+- Before creating or merging a PR, check whether the docs need updating to match
+  it: `README.md`, `docs/`, and the website in `site/` (`index.html` and the
+  configuration reference in `config.html`). A change to a widget's options or
+  appearance usually also needs its examples in
+  `scripts/site-screenshots/components.json` and the screenshots regenerated with
+  `scripts/site-screenshots/generate.sh`.
 - When a change adds a new feature or option, also update the user's live
   superline config (`~/.config/superline/config.json`, or the file it points at)
   to use it so it can be tried immediately. If that config lives in a git repo,
