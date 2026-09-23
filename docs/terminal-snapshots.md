@@ -179,7 +179,7 @@ The `Terminal snapshots` workflow captures every supported shell on macOS, and
 PowerShell and Git Bash through ConPTY on Windows. It builds the pinned VHS, installs
 pinned, checksum-verified ttyd, ffmpeg (Windows), and Nerd Font builds, and
 uploads `terminal-snapshots-macos` and `terminal-snapshots-windows` artifacts
-on success or failure. They are retained for 14 days on every pull request,
+on success or failure. They are retained for 1 day on every pull request,
 `main` push, and manual run.
 
 The job fails when a case's waits or checks fail. The screenshots

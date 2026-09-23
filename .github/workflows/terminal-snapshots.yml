@@ -79,7 +79,7 @@ jobs:
           name: terminal-snapshots-macos
           path: target/terminal-snapshots/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
 
   windows:
     name: Windows (PowerShell, Git Bash)
@@ -167,4 +167,4 @@ jobs:
           name: terminal-snapshots-windows
           path: target/terminal-snapshots/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
