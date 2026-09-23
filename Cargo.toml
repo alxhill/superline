@@ -35,6 +35,7 @@ chrono = "0.4.38"
 fs2 = "0.4"
 portable-pty = "0.9.0"
 regex = "1"
+unicode-width = "0.2"
 
 # Unix-only: the `users` crate wraps libc's passwd/uid APIs, and `libc::access`
 # powers the read-only check. Windows uses the env-var / std fallbacks in

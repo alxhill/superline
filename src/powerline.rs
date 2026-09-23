@@ -2,6 +2,8 @@ use std::fmt;
 use std::fmt::{Display, Write};
 use std::time::Duration;
 
+use unicode_width::UnicodeWidthStr;
+
 use crate::colors::Color;
 use crate::config;
 use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
@@ -232,12 +234,12 @@ impl Powerline {
             write!(self.left_buffer, "{}", seg)?;
         };
 
-        // attempt to account for symbols in the segment by assuming all chars
-        // printed are of length 1. When the segment carries invisible escapes
-        // (e.g. a hyperlink) the caller passes the real visible width instead.
+        // Count terminal cells, so wide characters take two columns. When the
+        // segment carries invisible escapes (e.g. a hyperlink) the caller
+        // passes the real visible width instead.
         self.left_columns += visible_width
             .map(|width| width + if spaces { 2 } else { 0 })
-            .unwrap_or_else(|| self.left_buffer[orig_len..].chars().count());
+            .unwrap_or_else(|| self.left_buffer[orig_len..].width());
 
         self.last_style = Some(style);
         Ok(())
@@ -273,13 +275,12 @@ impl Powerline {
             write!(self.right_buffer, "{}", seg)?;
         };
 
-        // attempt to account for symbols in the segment by assuming all chars
-        // printed are of length 1 (so multi-byte chars don't over-inflate the
-        // size). When the segment carries invisible escapes (e.g. a hyperlink)
-        // the caller passes the real visible width instead.
+        // Count terminal cells, so wide characters take two columns. When the
+        // segment carries invisible escapes (e.g. a hyperlink) the caller
+        // passes the real visible width instead.
         self.right_columns += visible_width
             .map(|width| width + if spaces { 2 } else { 0 })
-            .unwrap_or_else(|| self.right_buffer[orig_len..].chars().count());
+            .unwrap_or_else(|| self.right_buffer[orig_len..].width());
 
         self.last_style_right = Some(style);
         Ok(())
@@ -312,12 +313,12 @@ impl Powerline {
         style: Style,
         marker: Option<(&str, Color)>,
     ) {
-        let mut visible_width = label.chars().count();
+        let mut visible_width = label.width();
         let link = Hyperlink { url, label }.to_string();
         let seg = match marker {
             Some((glyph, color)) => {
                 // separating space + the glyph itself
-                visible_width += 1 + glyph.chars().count();
+                visible_width += 1 + glyph.width();
                 // Colour the glyph, then restore the segment's foreground so the
                 // terminal state matches what the renderer records for it.
                 format!("{} {}{}{}", link, FgColor::from(color), glyph, style.fg)
@@ -589,5 +590,20 @@ mod tests {
 
         // " one " (5) + " two " (5), no separator glyph counted between them
         assert_eq!(powerline.left_columns, 10);
+    }
+
+    #[test]
+    fn wide_characters_count_two_columns() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.set_separator(Separator::None);
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        powerline.add_segment("データ", style.clone());
+        powerline.start_right();
+        powerline.add_segment("日本語", style);
+
+        // " データ " and " 日本語 ": three double-width characters plus padding
+        assert_eq!(powerline.left_columns, 8);
+        assert_eq!(powerline.right_columns, 8);
     }
 }
