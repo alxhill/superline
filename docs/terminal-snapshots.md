@@ -190,7 +190,10 @@ after editing the file, since no screenshots are involved.
 Besides the dependencies above it needs `fish`, `jq`, `uv`, and
 [Symbols Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1)
 (`NerdFontsSymbolsOnly.zip`) 3.4 or newer, which supplies the Claude and Codex
-glyphs when the installed Meslo predates them. The script also updates the
+glyphs when the installed Meslo predates them. `trim.py` crops each capture
+and opens a 10px gap between terminal rows, so stacked prompts do not run
+together; it finds the row boundaries from the long horizontal edges of the
+segments, since VHS scales its screenshots. The script also updates the
 image sizes on both pages. Commit the regenerated PNGs; the `Website`
 workflow publishes `site/` to GitHub Pages on every push to `main` that
 touches it.
