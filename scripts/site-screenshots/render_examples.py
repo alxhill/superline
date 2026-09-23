@@ -1,5 +1,6 @@
-"""Fill the example placeholders in site/config.html from components.json and
-sync every screenshot's width/height attributes on the site's pages.
+"""Fill the example placeholders in site/config.html from components.json, the
+theme option tables from theme-options.json, and sync every screenshot's
+width/height attributes on the site's pages.
 
 A placeholder is `<div class="example" data-example="<component>/<variant>">`
 up to the next `<!-- /example -->`. Its contents are rewritten with the
@@ -117,6 +118,57 @@ def render(key, example):
     )
 
 
+def theme_table(module, spec):
+    rows = "".join(
+        f"<tr><td><code>{html.escape(name)}</code></td><td>{kind}</td>"
+        f"<td>{html.escape(styles, quote=False)}</td><td>{fallback_html(fallback)}</td></tr>"
+        for name, kind, styles, fallback in spec["properties"]
+    )
+    aliases = spec.get("aliases", [])
+    note = ""
+    if aliases:
+        names = ", ".join(f"<code>modules.{a}</code>" for a in aliases)
+        note = f'\n    <p class="note">Also read from {names}, the key this module had before it was renamed.</p>'
+    return (
+        f'\n    <summary>Theme options <code>modules.{module}</code></summary>'
+        '\n    <table class="opts">'
+        "<thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table>{note}\n  "
+    )
+
+
+def fallback_html(fallback):
+    if fallback.startswith("U+") or " " in fallback and not fallback.startswith('"'):
+        return html.escape(fallback, quote=False)
+    return f"<code>{html.escape(fallback, quote=False)}</code>"
+
+
+def fill_theme_options(text):
+    options = json.loads((HERE / "theme-options.json").read_text())
+    options.pop("_comment", None)
+    missing = set(options)
+
+    def fill(match):
+        module = match[1]
+        if module not in options:
+            raise SystemExit(f"config.html references unknown theme module {module}")
+        missing.discard(module)
+        return (
+            f'<details class="theme-opts" data-theme="{module}">'
+            f"{theme_table(module, options[module])}</details><!-- /theme -->"
+        )
+
+    text = re.sub(
+        r'<details class="theme-opts" data-theme="([^"]+)">.*?</details><!-- /theme -->',
+        fill,
+        text,
+        flags=re.S,
+    )
+    if missing:
+        print("theme options not placed in config.html:", ", ".join(sorted(missing)))
+    return text
+
+
 def main():
     rendered = dict(examples())
     config_page = SITE / "config.html"
@@ -136,6 +188,7 @@ def main():
         text,
         flags=re.S,
     )
+    text = fill_theme_options(text)
     config_page.write_text(text)
     if missing:
         print("examples not placed in config.html:", ", ".join(sorted(missing)))

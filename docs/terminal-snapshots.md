@@ -180,6 +180,13 @@ the page, then run:
 COMPONENTS="git" scripts/site-screenshots/generate.sh components
 ```
 
+Each component's collapsible *Theme options* table comes from
+`scripts/site-screenshots/theme-options.json`, which mirrors the properties
+`src/themes/custom.rs` reads. `render_examples.py` fills every
+`<details class="theme-opts" data-theme="<module>">` placeholder from it; run
+it directly (`uv run --with pillow python scripts/site-screenshots/render_examples.py`)
+after editing the file, since no screenshots are involved.
+
 Besides the dependencies above it needs `fish`, `jq`, `uv`, and
 [Symbols Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1)
 (`NerdFontsSymbolsOnly.zip`) 3.4 or newer, which supplies the Claude and Codex

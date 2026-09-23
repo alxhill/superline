@@ -215,6 +215,10 @@
       <section id="spacers" class="component">
         <h3><code>small_spacer</code> / <code>large_spacer</code></h3>
         <p>Blank segments with a black background, drawn as part of the current block. They take no options.</p>
+        <details class="theme-opts" data-theme="spacer">
+    <summary>Theme options <code>modules.spacer</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Unused by the blank segment, but accepted.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Spacer background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="spacers/small">
   <div class="ex-label">small_spacer</div>
@@ -290,6 +294,10 @@
             <tr><td><code>resolve_symlinks</code></td><td>boolean</td><td><code>false</code></td><td>Show the resolved path instead of the path used to reach the directory. The example below sits in <code>~/work/current</code>, a link to a deep directory.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="cwd">
+    <summary>Theme options <code>modules.cwd</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>path_fg</code></td><td>color</td><td>Text of every path component.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg_colors</code></td><td>color list</td><td>Backgrounds for successive path components, repeating from the start when the path is longer.</td><td><code>[defaults.bg]</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="cwd/minimal">
   <div class="ex-label">Minimal</div>
@@ -312,7 +320,11 @@
 
       <section id="read_only" class="component">
         <h3><code>read_only</code></h3>
-        <p>A lock icon, shown when the current directory is not writable. No options. Themed as <code>readonly</code>.</p>
+        <p>A lock icon, shown when the current directory is not writable. No config options. Themed as <code>readonly</code>.</p>
+        <details class="theme-opts" data-theme="readonly">
+    <summary>Theme options <code>modules.readonly</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The lock icon.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="read_only/default">
   <div class="ex-label">In a read-only directory</div>
@@ -331,8 +343,12 @@
         <h3><code>cmd</code></h3>
         <p>
           The prompt character before your input. After a failed command it turns red and shows the exit code.
-          No options; the symbol comes from the theme's <code>cmd.user_symbol</code>.
+          No config options; the symbol comes from the theme's <code>cmd.user_symbol</code>.
         </p>
+        <details class="theme-opts" data-theme="cmd">
+    <summary>Theme options <code>modules.cmd</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>passed_fg</code></td><td>color</td><td>The prompt symbol after a successful command.</td><td><code>defaults.fg</code></td></tr><tr><td><code>passed_bg</code></td><td>color</td><td>Background after a successful command.</td><td><code>defaults.bg</code></td></tr><tr><td><code>failed_fg</code></td><td>color</td><td>The exit code after a failed command.</td><td><code>defaults.bg</code></td></tr><tr><td><code>failed_bg</code></td><td>color</td><td>Background after a failed command.</td><td><code>defaults.fg</code></td></tr><tr><td><code>user_symbol</code></td><td>string</td><td>The prompt symbol.</td><td><code>"$"</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="cmd/default">
   <div class="ex-label">After a success, then a failure</div>
@@ -351,6 +367,10 @@
             <tr><td><code>min_run_time</code></td><td>integer</td><td>required</td><td>Threshold in milliseconds. The default config uses <code>50</code>.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="last_cmd_duration">
+    <summary>Theme options <code>modules.last_cmd_duration</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The duration text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>time_icon</code></td><td>string</td><td>Icon after the duration.</td><td>U+F1ACC</td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="last_cmd_duration/default">
   <div class="ex-label">min_run_time: 500</div>
@@ -367,7 +387,11 @@
 
       <section id="shell" class="component">
         <h3><code>shell</code></h3>
-        <p>The name of the running shell: <code>fish</code>, <code>zsh</code>, <code>bash</code>, <code>pwsh</code> or <code>nu</code>. No options.</p>
+        <p>The name of the running shell: <code>fish</code>, <code>zsh</code>, <code>bash</code>, <code>pwsh</code> or <code>nu</code>. No config options.</p>
+        <details class="theme-opts" data-theme="shell">
+    <summary>Theme options <code>modules.shell</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The shell name.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="shell/default">
   <div class="ex-label">Default</div>
@@ -381,8 +405,12 @@
         <h3><code>jobs</code></h3>
         <p>
           A gears icon and the number of running background jobs owned by this shell, hidden when there are none.
-          Stopped jobs aren't counted, since some shells keep them in the job table indefinitely. No options.
+          Stopped jobs aren't counted, since some shells keep them in the job table indefinitely. No config options.
         </p>
+        <details class="theme-opts" data-theme="jobs">
+    <summary>Theme options <code>modules.jobs</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The icon and job count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="jobs/default">
   <div class="ex-label">With two background jobs</div>
@@ -417,6 +445,10 @@
             </td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="git">
+    <summary>Theme options <code>modules.git</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>clean_fg</code></td><td>color</td><td>Branch name when the working tree is clean.</td><td><code>defaults.fg</code></td></tr><tr><td><code>clean_bg</code></td><td>color</td><td>Branch background when clean.</td><td><code>defaults.bg</code></td></tr><tr><td><code>dirty_fg</code></td><td>color</td><td>Branch name when there are changes.</td><td><code>defaults.fg</code></td></tr><tr><td><code>dirty_bg</code></td><td>color</td><td>Branch background when there are changes.</td><td><code>defaults.bg</code></td></tr><tr><td><code>notstaged_fg</code></td><td>color</td><td>Modified-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>notstaged_bg</code></td><td>color</td><td>Modified-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>untracked_fg</code></td><td>color</td><td>Untracked-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>untracked_bg</code></td><td>color</td><td>Untracked-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>staged_fg</code></td><td>color</td><td>Staged-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>staged_bg</code></td><td>color</td><td>Staged-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>conflicted_fg</code></td><td>color</td><td>Conflicted-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>conflicted_bg</code></td><td>color</td><td>Conflicted-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>remote_fg</code></td><td>color</td><td>GitHub logo and ahead/behind counts.</td><td><code>defaults.fg</code></td></tr><tr><td><code>remote_bg</code></td><td>color</td><td>Remote segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="git/minimal">
   <div class="ex-label">Minimal</div>
@@ -445,6 +477,10 @@
             <tr><td><code>status</code></td><td>boolean</td><td><code>true</code></td><td>Add a dot for CI while the PR is open: green passing, yellow pending, red failing.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="pr">
+    <summary>Theme options <code>modules.pr</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>draft_fg</code></td><td>color</td><td>Link text for a draft PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>draft_bg</code></td><td>color</td><td>Background for a draft PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>open_fg</code></td><td>color</td><td>Link text for an open PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>open_bg</code></td><td>color</td><td>Background for an open PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>merged_fg</code></td><td>color</td><td>Link text for a merged PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>merged_bg</code></td><td>color</td><td>Background for a merged PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>closed_fg</code></td><td>color</td><td>Link text for a closed PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>closed_bg</code></td><td>color</td><td>Background for a closed PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>status_success_fg</code></td><td>color</td><td>CI dot when checks pass.</td><td><code>defaults.fg</code></td></tr><tr><td><code>status_failure_fg</code></td><td>color</td><td>CI dot when checks fail.</td><td><code>defaults.fg</code></td></tr><tr><td><code>status_pending_fg</code></td><td>color</td><td>CI dot while checks run.</td><td><code>defaults.fg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Icon before the PR number.</td><td>U+EA64</td></tr><tr><td><code>status_icon</code></td><td>string</td><td>The CI dot.</td><td><code>"●"</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="pr/minimal">
   <div class="ex-label">Minimal: open PR, checks passing</div>
@@ -490,6 +526,11 @@
             <tr><td><code>venv</code></td><td>boolean</td><td><code>true</code></td><td>Show the active env's name.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="python">
+    <summary>Theme options <code>modules.python</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>env_fg</code></td><td>color</td><td>Logo, venv name and pinned version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>env_bg</code></td><td>color</td><td>Background of that segment.</td><td><code>defaults.bg</code></td></tr><tr><td><code>version_fg</code></td><td>color</td><td>Interpreter version shown next to an active venv.</td><td><code>defaults.fg</code></td></tr><tr><td><code>version_bg</code></td><td>color</td><td>Background of the version segment.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr></tbody></table>
+    <p class="note">Also read from <code>modules.py</code>, the key this module had before it was renamed.</p>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="python/minimal">
   <div class="ex-label">Minimal, in an active venv</div>
@@ -522,6 +563,11 @@
             <tr><td><code>version</code></td><td>boolean</td><td><code>true</code></td><td>Show the Node version.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="node">
+    <summary>Theme options <code>modules.node</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo and version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Background for a version nvm or mise has activated.</td><td><code>defaults.bg</code></td></tr><tr><td><code>inactive_bg</code></td><td>color</td><td>Background for a version that only comes from .nvmrc.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr></tbody></table>
+    <p class="note">Also read from <code>modules.nvm</code>, the key this module had before it was renamed.</p>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="node/minimal">
   <div class="ex-label">Minimal</div>
@@ -550,6 +596,11 @@
             <tr><td><code>jdk</code></td><td>boolean</td><td><code>true</code></td><td>Show the distribution (Temurin, Corretto, ...).</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="java">
+    <summary>Theme options <code>modules.java</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo, version and distribution.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it. Read from java only.</td><td>U+F1064</td></tr></tbody></table>
+    <p class="note">Also read from <code>modules.sdkman</code>, the key this module had before it was renamed.</p>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="java/minimal">
   <div class="ex-label">Minimal</div>
@@ -577,6 +628,10 @@
             <tr><td><code>version</code></td><td>boolean</td><td><code>true</code></td><td>Show the toolchain version. The mise marker stays either way.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="cargo">
+    <summary>Theme options <code>modules.cargo</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo and toolchain version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="cargo/minimal">
   <div class="ex-label">Minimal, rust-toolchain.toml</div>
@@ -640,6 +695,10 @@
             <tr><td><code>"numeric"</code></td><td><code>num</code></td><td>Raw figures for credits; same as <code>percentage</code> for windows.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="ai_usage">
+    <summary>Theme options <code>modules.ai_usage</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>claude_fg</code></td><td>color</td><td>Claude widget text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>claude_bg</code></td><td>color</td><td>Claude widget background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>codex_fg</code></td><td>color</td><td>Codex widget text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>codex_bg</code></td><td>color</td><td>Codex widget background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>threshold_bg</code></td><td>color</td><td>Background once a visible lane crosses threshold.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="ai_usage/minimal">
   <div class="ex-label">Minimal</div>
@@ -683,8 +742,12 @@
         <h3><code>os</code></h3>
         <p>
           An icon for the operating system family: Linux, macOS, Windows, Android or one of the common BSDs.
-          The family is fixed when superline is compiled, so no lookup happens at render time. No options.
+          The family is fixed when superline is compiled, so no lookup happens at render time. No config options.
         </p>
+        <details class="theme-opts" data-theme="os">
+    <summary>Theme options <code>modules.os</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The icon.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>symbol</code></td><td>string</td><td>Icon used for every operating system.</td><td>per-OS Nerd Font icon</td></tr><tr><td><code>macos_symbol</code></td><td>string</td><td>Icon on macOS. Takes precedence over symbol, as do the keys below.</td><td><code>symbol</code></td></tr><tr><td><code>linux_symbol</code></td><td>string</td><td>Icon on Linux.</td><td><code>symbol</code></td></tr><tr><td><code>windows_symbol</code></td><td>string</td><td>Icon on Windows.</td><td><code>symbol</code></td></tr><tr><td><code>android_symbol</code></td><td>string</td><td>Icon on Android.</td><td><code>symbol</code></td></tr><tr><td><code>freebsd_symbol</code></td><td>string</td><td>Icon on FreeBSD. Also openbsd_symbol, netbsd_symbol, dragonfly_symbol, illumos_symbol, solaris_symbol, haiku_symbol and unknown_symbol.</td><td><code>symbol</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="os/default">
   <div class="ex-label">Default</div>
@@ -706,6 +769,10 @@
             <tr><td><code>threshold</code></td><td>integer</td><td>none</td><td>Hide the segment below this percentage. Without it, it's always shown.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="memory_usage">
+    <summary>Theme options <code>modules.memory_usage</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Icon and percentages.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="memory_usage/minimal">
   <div class="ex-label">Minimal</div>
@@ -729,6 +796,10 @@
             <tr><td><code>format</code></td><td>string</td><td><code>"%H:%M:%S"</code></td><td>A <a href="https://docs.rs/chrono/latest/chrono/format/strftime/index.html">strftime</a> format string.</td></tr>
           </tbody>
         </table>
+        <details class="theme-opts" data-theme="time">
+    <summary>Theme options <code>modules.time</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The time.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="time/minimal">
   <div class="ex-label">Minimal</div>
@@ -748,7 +819,7 @@
         <p>
           Literal text in the theme's default colours. Unicode and punctuation are kept. Control characters and
           line breaks are shown as visible escapes, and shell prompt syntax is quoted, so a config value can't
-          inject anything into the prompt.
+          inject anything into the prompt. It has no theme options of its own and uses the theme's <code>defaults</code>.
         </p>
         <table class="opts">
           <thead><tr><th>Value</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
@@ -778,6 +849,18 @@
           options. <code>"user"</code>, <code>"host"</code> and <code>"localip"</code> still work as older
           spellings. No screenshots are shown for these, since they would expose details of the machine that took them.
         </p>
+        <details class="theme-opts" data-theme="username">
+    <summary>Theme options <code>modules.username</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The username.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>root_bg</code></td><td>color</td><td>Background when running as root.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
+        <details class="theme-opts" data-theme="hostname">
+    <summary>Theme options <code>modules.hostname</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The hostname.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
+        <details class="theme-opts" data-theme="local_ip">
+    <summary>Theme options <code>modules.local_ip</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The address.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
 <pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"username"</span>, <span class="s">"hostname"</span>, <span class="s">"local_ip"</span>] }</code></pre>
       </section>
 
@@ -785,8 +868,12 @@
         <h3><code>battery</code></h3>
         <p>
           A low-battery warning with the charge and charging state. It appears only at 10% or below, and stays
-          hidden on machines without a battery. No options.
+          hidden on machines without a battery. No config options.
         </p>
+        <details class="theme-opts" data-theme="battery">
+    <summary>Theme options <code>modules.battery</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Charge and charging state.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
 <pre class="json"><code><span class="s">"battery"</span></code></pre>
       </section>
 
@@ -795,8 +882,12 @@
         <p>
           Shows a key symbol (<code>U+26BF</code>) while your sudo credentials are cached. The check is non-interactive
           (<code>sudo -Nnv</code>) and runs in the background, so it never prompts for a password or extends the
-          sudo timestamp. Because of that, the marker can linger for up to ten seconds after the credentials expire. No options.
+          sudo timestamp. Because of that, the marker can linger for up to ten seconds after the credentials expire. No config options.
         </p>
+        <details class="theme-opts" data-theme="sudo">
+    <summary>Theme options <code>modules.sudo</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The key symbol.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>symbol</code></td><td>string</td><td>Symbol shown while credentials are cached.</td><td><code>"⚿"</code></td></tr></tbody></table>
+  </details><!-- /theme -->
 <pre class="json"><code><span class="s">"sudo"</span></code></pre>
       </section>
 
@@ -853,6 +944,22 @@
 </div><!-- /example -->
         </div>
         <p class="note">Used with <code>{ "theme": "theme.json", ... }</code> next to <code>config.json</code>.</p>
+        <p>
+          Each component above lists the properties it reads under <em>Theme options</em>. A few theme keys style
+          segments that aren't configured directly:
+        </p>
+        <details class="theme-opts" data-theme="update">
+    <summary>Theme options <code>modules.update</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Icon of the update notice.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Icon background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Icon that opens the notice.</td><td>U+F0AA</td></tr></tbody></table>
+  </details><!-- /theme -->
+        <details class="theme-opts" data-theme="error">
+    <summary>Theme options <code>modules.error</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Text of error segments, such as a config that fails to parse.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Error segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
+        <details class="theme-opts" data-theme="unknown">
+    <summary>Theme options <code>modules.unknown</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Text of the segment shown for an unknown module name.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Unknown segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
       </section>
 
       <h2 class="group" id="commands">Commands</h2>
