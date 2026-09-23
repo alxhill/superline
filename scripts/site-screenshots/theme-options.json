@@ -1,0 +1,202 @@
+{
+  "_comment": "Theme file properties per module, as read by src/themes/custom.rs. Each entry is [property, type, what it styles, fallback]. Fallbacks name the theme file's defaults.",
+  "cwd": {
+    "properties": [
+      ["path_fg", "color", "Text of every path component.", "defaults.fg"],
+      ["bg_colors", "color list", "Backgrounds for successive path components, repeating from the start when the path is longer.", "[defaults.bg]"]
+    ]
+  },
+  "readonly": {
+    "properties": [
+      ["fg", "color", "The lock icon.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "cmd": {
+    "properties": [
+      ["passed_fg", "color", "The prompt symbol after a successful command.", "defaults.fg"],
+      ["passed_bg", "color", "Background after a successful command.", "defaults.bg"],
+      ["failed_fg", "color", "The exit code after a failed command.", "defaults.bg"],
+      ["failed_bg", "color", "Background after a failed command.", "defaults.fg"],
+      ["user_symbol", "string", "The prompt symbol.", "\"$\""]
+    ]
+  },
+  "last_cmd_duration": {
+    "properties": [
+      ["fg", "color", "The duration text.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["time_icon", "string", "Icon after the duration.", "U+F1ACC"]
+    ]
+  },
+  "shell": {
+    "properties": [
+      ["fg", "color", "The shell name.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "jobs": {
+    "properties": [
+      ["fg", "color", "The icon and job count.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "git": {
+    "properties": [
+      ["clean_fg", "color", "Branch name when the working tree is clean.", "defaults.fg"],
+      ["clean_bg", "color", "Branch background when clean.", "defaults.bg"],
+      ["dirty_fg", "color", "Branch name when there are changes.", "defaults.fg"],
+      ["dirty_bg", "color", "Branch background when there are changes.", "defaults.bg"],
+      ["notstaged_fg", "color", "Modified-file count.", "defaults.fg"],
+      ["notstaged_bg", "color", "Modified-file background.", "defaults.bg"],
+      ["untracked_fg", "color", "Untracked-file count.", "defaults.fg"],
+      ["untracked_bg", "color", "Untracked-file background.", "defaults.bg"],
+      ["staged_fg", "color", "Staged-file count.", "defaults.fg"],
+      ["staged_bg", "color", "Staged-file background.", "defaults.bg"],
+      ["conflicted_fg", "color", "Conflicted-file count.", "defaults.fg"],
+      ["conflicted_bg", "color", "Conflicted-file background.", "defaults.bg"],
+      ["remote_fg", "color", "GitHub logo and ahead/behind counts.", "defaults.fg"],
+      ["remote_bg", "color", "Remote segment background.", "defaults.bg"]
+    ]
+  },
+  "pr": {
+    "properties": [
+      ["draft_fg", "color", "Link text for a draft PR.", "defaults.fg"],
+      ["draft_bg", "color", "Background for a draft PR.", "defaults.bg"],
+      ["open_fg", "color", "Link text for an open PR.", "defaults.fg"],
+      ["open_bg", "color", "Background for an open PR.", "defaults.bg"],
+      ["merged_fg", "color", "Link text for a merged PR.", "defaults.fg"],
+      ["merged_bg", "color", "Background for a merged PR.", "defaults.bg"],
+      ["closed_fg", "color", "Link text for a closed PR.", "defaults.fg"],
+      ["closed_bg", "color", "Background for a closed PR.", "defaults.bg"],
+      ["status_success_fg", "color", "CI dot when checks pass.", "defaults.fg"],
+      ["status_failure_fg", "color", "CI dot when checks fail.", "defaults.fg"],
+      ["status_pending_fg", "color", "CI dot while checks run.", "defaults.fg"],
+      ["icon", "string", "Icon before the PR number.", "U+EA64"],
+      ["status_icon", "string", "The CI dot.", "\"●\""]
+    ]
+  },
+  "python": {
+    "aliases": ["py"],
+    "properties": [
+      ["env_fg", "color", "Logo, venv name and pinned version.", "defaults.fg"],
+      ["env_bg", "color", "Background of that segment.", "defaults.bg"],
+      ["version_fg", "color", "Interpreter version shown next to an active venv.", "defaults.fg"],
+      ["version_bg", "color", "Background of the version segment.", "defaults.bg"],
+      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"]
+    ]
+  },
+  "node": {
+    "aliases": ["nvm"],
+    "properties": [
+      ["fg", "color", "Logo and version.", "defaults.fg"],
+      ["bg", "color", "Background for a version nvm or mise has activated.", "defaults.bg"],
+      ["inactive_bg", "color", "Background for a version that only comes from .nvmrc.", "defaults.bg"],
+      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"]
+    ]
+  },
+  "java": {
+    "aliases": ["sdkman"],
+    "properties": [
+      ["fg", "color", "Logo, version and distribution.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it. Read from java only.", "U+F1064"]
+    ]
+  },
+  "cargo": {
+    "properties": [
+      ["fg", "color", "Logo and toolchain version.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"]
+    ]
+  },
+  "ai_usage": {
+    "properties": [
+      ["claude_fg", "color", "Claude widget text.", "defaults.fg"],
+      ["claude_bg", "color", "Claude widget background.", "defaults.bg"],
+      ["codex_fg", "color", "Codex widget text.", "defaults.fg"],
+      ["codex_bg", "color", "Codex widget background.", "defaults.bg"],
+      ["threshold_bg", "color", "Background once a visible lane crosses threshold.", "defaults.bg"]
+    ]
+  },
+  "os": {
+    "properties": [
+      ["fg", "color", "The icon.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["symbol", "string", "Icon used for every operating system.", "per-OS Nerd Font icon"],
+      ["macos_symbol", "string", "Icon on macOS. Takes precedence over symbol, as do the keys below.", "symbol"],
+      ["linux_symbol", "string", "Icon on Linux.", "symbol"],
+      ["windows_symbol", "string", "Icon on Windows.", "symbol"],
+      ["android_symbol", "string", "Icon on Android.", "symbol"],
+      ["freebsd_symbol", "string", "Icon on FreeBSD. Also openbsd_symbol, netbsd_symbol, dragonfly_symbol, illumos_symbol, solaris_symbol, haiku_symbol and unknown_symbol.", "symbol"]
+    ]
+  },
+  "memory_usage": {
+    "properties": [
+      ["fg", "color", "Icon and percentages.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "time": {
+    "properties": [
+      ["fg", "color", "The time.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "username": {
+    "properties": [
+      ["fg", "color", "The username.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["root_bg", "color", "Background when running as root.", "defaults.bg"]
+    ]
+  },
+  "hostname": {
+    "properties": [
+      ["fg", "color", "The hostname.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "local_ip": {
+    "properties": [
+      ["fg", "color", "The address.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "battery": {
+    "properties": [
+      ["fg", "color", "Charge and charging state.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "sudo": {
+    "properties": [
+      ["fg", "color", "The key symbol.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["symbol", "string", "Symbol shown while credentials are cached.", "\"⚿\""]
+    ]
+  },
+  "spacer": {
+    "properties": [
+      ["fg", "color", "Unused by the blank segment, but accepted.", "defaults.fg"],
+      ["bg", "color", "Spacer background.", "defaults.bg"]
+    ]
+  },
+  "update": {
+    "properties": [
+      ["fg", "color", "Icon of the update notice.", "defaults.fg"],
+      ["bg", "color", "Icon background.", "defaults.bg"],
+      ["icon", "string", "Icon that opens the notice.", "U+F0AA"]
+    ]
+  },
+  "error": {
+    "properties": [
+      ["fg", "color", "Text of error segments, such as a config that fails to parse.", "defaults.fg"],
+      ["bg", "color", "Error segment background.", "defaults.bg"]
+    ]
+  },
+  "unknown": {
+    "properties": [
+      ["fg", "color", "Text of the segment shown for an unknown module name.", "defaults.fg"],
+      ["bg", "color", "Unknown segment background.", "defaults.bg"]
+    ]
+  }
+}

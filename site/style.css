@@ -376,6 +376,37 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .opts td:nth-child(2), .opts td:nth-child(3) { white-space: nowrap; }
 .opts.styles td:last-child code { background: none; border: 0; }
 
+.theme-opts {
+  margin: 14px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.theme-opts summary {
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+.theme-opts summary::-webkit-details-marker { display: none; }
+.theme-opts summary::before {
+  content: "\25B8";
+  display: inline-block;
+  width: 1.1em;
+  font-size: 15px;
+  color: var(--dim);
+  transition: transform 0.15s;
+}
+.theme-opts[open] summary::before { transform: rotate(90deg); }
+.theme-opts summary:hover { color: var(--text); }
+.theme-opts summary code { margin-left: 4px; }
+.theme-opts .opts { margin: 0; padding: 0 14px 6px; }
+.theme-opts .opts tr:last-child td { border-bottom: 0; }
+.theme-opts .note { margin: 0; padding: 0 14px 12px; color: var(--dim); font-size: 13px; }
+.component > .theme-opts + .theme-opts { margin-top: 8px; }
+
 .examples { display: grid; gap: 16px; margin-top: 20px; }
 .example {
   display: grid;
