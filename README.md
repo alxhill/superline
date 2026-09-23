@@ -58,6 +58,11 @@ cargo binstall superline
 
 Prebuilt binaries are published for macOS (Apple Silicon), Linux (x86-64 and arm64) and Windows (x86-64).
 
+The x86-64 Linux and Windows builds need a CPU with AVX2 (Haswell or newer). For older CPUs, NASes such as Synology, or
+musl distros like Alpine, download the static `x86_64-unknown-linux-musl` build from the
+[releases page](https://github.com/alxhill/superline/releases), or run
+`cargo binstall superline --targets x86_64-unknown-linux-musl`.
+
 Or build from source via crates.io (cargo's bin directory must be on your `$PATH`):
 
 ```bash
