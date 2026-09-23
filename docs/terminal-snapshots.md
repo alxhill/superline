@@ -26,7 +26,10 @@ screens.
 
 These are test-only dependencies; nothing here is needed to use superline.
 
-- The shells to exercise: `bash`, `zsh`, `fish`, `pwsh`, `nu`.
+- The shells to exercise: `bash`, `zsh`, `fish`, `pwsh`, `nu`. The
+  `bash-3.2` variant runs macOS's `/bin/bash` (bash 3.2) through a shim on
+  `PATH`, next to the `bash` found on `PATH` (Homebrew's bash 5 in CI), and is
+  skipped where `/bin/bash` is not bash 3.x.
 - `ttyd` and `ffmpeg` on `PATH` (`brew install ttyd ffmpeg` on macOS; on
   Windows the CI workflow downloads pinned builds).
 - Chrome or Chromium. VHS downloads a Chromium into its cache if none is found.
@@ -105,8 +108,12 @@ cargo run --example terminal-snapshot -- \
 
 1. creates a scratch home with `examples/terminal-snapshot/config.json` and a
    `superline-e2e` working directory;
-2. runs `superline init <shell>` and saves the snippet as a startup file
-   (PowerShell's copy also gets an explicit `--config` path);
+2. for bash, zsh, and fish, runs `superline install <shell>` against the
+   scratch home, so the capture loads the exact line users get in `.bashrc`,
+   `.zshrc`, or `config.fish`. PowerShell and nushell resolve their profile
+   paths outside the home directory, so for them it saves `superline init
+   <shell>` output as a startup file instead (PowerShell's copy also gets an
+   explicit `--config` path);
 3. fills `examples/terminal-snapshot/tape.template` and writes the tape next
    to the screenshots;
 4. runs VHS with a pinned locale and `PATH` pointed at the branch-local
@@ -115,7 +122,7 @@ cargo run --example terminal-snapshot -- \
 
 The tape hides the setup, waits for the shell's stock prompt, types one line
 that exports the isolated home (`HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`,
-`XDG_CACHE_HOME`), sources the snippet, enters the fixture directory, and
+`XDG_CACHE_HOME`), sources the startup file, enters the fixture directory, and
 clears the screen, then shows the recording. Paths are typed with forward
 slashes, which PowerShell, nushell, and Git Bash all accept on Windows. The home is exported inside the
 shell rather than on the VHS process because Chrome on Windows resolves its
@@ -128,7 +135,8 @@ fails instead of producing a misleading image.
 
 ## CI artifacts
 
-The `Terminal snapshots` workflow captures every supported shell on macOS, and
+The `Terminal snapshots` workflow captures every supported shell on macOS,
+including both bash 5 and the system bash 3.2, and
 PowerShell and Git Bash through ConPTY on Windows. It builds the pinned VHS, installs
 pinned, checksum-verified ttyd, ffmpeg (Windows), and Nerd Font builds, and
 uploads `terminal-snapshots-macos` and `terminal-snapshots-windows` artifacts

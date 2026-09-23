@@ -1,7 +1,8 @@
 //! Capture superline prompts from real interactive shells through VHS.
 //!
 //! The example prepares an isolated home directory with a deterministic
-//! config, loads `superline init <shell>` into the shell, and drives the
+//! config, loads superline into the shell the way a user's startup file does,
+//! and drives the
 //! session with a VHS tape generated from `terminal-snapshot/tape.template`.
 //! VHS owns the PTY (ConPTY on Windows), the terminal emulation, and the
 //! rendering; this file only wires up fixtures and checks that every expected
@@ -24,12 +25,17 @@ const VHS_TIMEOUT: Duration = Duration::from_secs(240);
 /// Powerline separator and success chevron, as RE2 escapes for the tape.
 const SEPARATOR: &str = r"\x{E0B0}";
 const SUCCESS_MARK: &str = r"\x{F105}";
+/// The bash that macOS ships, which the `bash-3.2` variant runs.
+const SYSTEM_BASH: &str = "/bin/bash";
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Shell {
+    /// Whichever `bash` is on `PATH` (bash 5 on the CI runners).
     Bash,
+    /// macOS's `/bin/bash`, which is still bash 3.2.
+    Bash32,
     Zsh,
     Fish,
     Pwsh,
@@ -37,11 +43,28 @@ enum Shell {
 }
 
 impl Shell {
-    const ALL: [Self; 5] = [Self::Bash, Self::Zsh, Self::Fish, Self::Pwsh, Self::Nu];
+    const ALL: [Self; 6] = [
+        Self::Bash,
+        Self::Bash32,
+        Self::Zsh,
+        Self::Fish,
+        Self::Pwsh,
+        Self::Nu,
+    ];
 
+    /// The name used on the command line and in output file names.
     fn name(self) -> &'static str {
         match self {
-            Self::Bash => "bash",
+            Self::Bash32 => "bash-3.2",
+            _ => self.program(),
+        }
+    }
+
+    /// The executable VHS starts, which is also the shell name superline
+    /// renders in the prompt.
+    fn program(self) -> &'static str {
+        match self {
+            Self::Bash | Self::Bash32 => "bash",
             Self::Zsh => "zsh",
             Self::Fish => "fish",
             Self::Pwsh => "pwsh",
@@ -49,9 +72,23 @@ impl Shell {
         }
     }
 
+    /// The startup file `superline install` writes to, relative to the home
+    /// directory. PowerShell and nushell ask the shell itself for the path,
+    /// which would escape the fixture home, so they load `superline init`
+    /// output from a file instead.
+    fn install_file(self) -> Option<&'static str> {
+        match self {
+            Self::Bash | Self::Bash32 => Some(".bashrc"),
+            Self::Zsh => Some(".zshrc"),
+            Self::Fish => Some(".config/fish/config.fish"),
+            Self::Pwsh | Self::Nu => None,
+        }
+    }
+
     fn parse(value: &str) -> Result<Self> {
         match value {
             "bash" => Ok(Self::Bash),
+            "bash-3.2" => Ok(Self::Bash32),
             "zsh" => Ok(Self::Zsh),
             "fish" => Ok(Self::Fish),
             "pwsh" | "powershell" => Ok(Self::Pwsh),
@@ -62,7 +99,7 @@ impl Shell {
 
     fn init_file_name(self) -> &'static str {
         match self {
-            Self::Bash => "superline-init.sh",
+            Self::Bash | Self::Bash32 => "superline-init.sh",
             Self::Zsh => "superline-init.zsh",
             Self::Fish => "superline-init.fish",
             Self::Pwsh => "superline-init.ps1",
@@ -71,27 +108,27 @@ impl Shell {
     }
 
     /// One hidden command line that points the shell at the isolated home,
-    /// loads the init snippet, enters the fixture directory, and clears the
+    /// loads the startup file, enters the fixture directory, and clears the
     /// setup output. The home is exported inside the shell rather than on the
     /// VHS process: on Windows, Chrome resolves its own app-data folders
     /// through `%USERPROFILE%` and exits when that points at the fixture.
     /// `USERPROFILE` is what superline reads on Windows, including under Git
     /// Bash, where `HOME` is an MSYS path.
-    fn setup_command(self, home: &str, init: &str, fixture: &str) -> String {
+    fn setup_command(self, home: &str, startup: &str, fixture: &str) -> String {
         let config = format!("{home}/.config");
         let cache = format!("{home}/.cache");
         match self {
-            Self::Bash | Self::Zsh => format!(
-                "export HOME='{home}' USERPROFILE='{home}' XDG_CONFIG_HOME='{config}' XDG_CACHE_HOME='{cache}' && source '{init}' && cd '{fixture}' && clear"
+            Self::Bash | Self::Bash32 | Self::Zsh => format!(
+                "export HOME='{home}' USERPROFILE='{home}' XDG_CONFIG_HOME='{config}' XDG_CACHE_HOME='{cache}' && source '{startup}' && cd '{fixture}' && clear"
             ),
             Self::Fish => format!(
-                "set -gx HOME '{home}'; set -gx XDG_CONFIG_HOME '{config}'; set -gx XDG_CACHE_HOME '{cache}'; source '{init}'; and cd '{fixture}'; and clear"
+                "set -gx HOME '{home}'; set -gx XDG_CONFIG_HOME '{config}'; set -gx XDG_CACHE_HOME '{cache}'; source '{startup}'; and cd '{fixture}'; and clear"
             ),
             Self::Pwsh => format!(
-                "$env:HOME = '{home}'; $env:USERPROFILE = '{home}'; $env:XDG_CONFIG_HOME = '{config}'; $env:XDG_CACHE_HOME = '{cache}'; . '{init}'; Set-Location '{fixture}'; Clear-Host"
+                "$env:HOME = '{home}'; $env:USERPROFILE = '{home}'; $env:XDG_CONFIG_HOME = '{config}'; $env:XDG_CACHE_HOME = '{cache}'; . '{startup}'; Set-Location '{fixture}'; Clear-Host"
             ),
             Self::Nu => format!(
-                "$env.HOME = '{home}'; $env.USERPROFILE = '{home}'; $env.XDG_CONFIG_HOME = '{config}'; $env.XDG_CACHE_HOME = '{cache}'; source '{init}'; cd '{fixture}'; clear"
+                "$env.HOME = '{home}'; $env.USERPROFILE = '{home}'; $env.XDG_CONFIG_HOME = '{config}'; $env.XDG_CACHE_HOME = '{cache}'; source '{startup}'; cd '{fixture}'; clear"
             ),
         }
     }
@@ -99,7 +136,7 @@ impl Shell {
     /// A visible command that makes the shell report exit status 7.
     fn failure_command(self) -> &'static str {
         match (self, cfg!(windows)) {
-            (Self::Bash | Self::Zsh, _) => "(exit 7)",
+            (Self::Bash | Self::Bash32 | Self::Zsh, _) => "(exit 7)",
             (Self::Fish, _) => "sh -c 'exit 7'",
             (Self::Pwsh, true) => "cmd /c exit 7",
             (Self::Pwsh, false) => "& sh -c 'exit 7'",
@@ -173,8 +210,7 @@ fn run() -> Result<()> {
 
     let mut captured = 0;
     for shell in args.shells {
-        if find_executable(shell.name()).is_none() {
-            let message = format!("{} is not on PATH", shell.name());
+        if let Err(message) = check_available(shell) {
             if args.require_all {
                 return Err(message.into());
             }
@@ -196,7 +232,7 @@ fn run() -> Result<()> {
             render_tape(shell, &args.scenarios, &fixture, &output, &platform),
         )?;
 
-        let result = run_vhs(&vhs, &tape_path, &log_path, &superline, &output)
+        let result = run_vhs(&vhs, &tape_path, &log_path, &fixture.path, &output)
             .and_then(|()| verify_screenshots(shell, &args.scenarios, &output, &platform));
         let _ = fs::remove_dir_all(&fixture.root);
         if let Err(error) = result {
@@ -254,7 +290,7 @@ fn parse_args() -> Result<Args> {
             Some("--require-all") => require_all = true,
             Some("-h" | "--help") => {
                 println!(
-                    "Usage: cargo run --example terminal-snapshot -- [--shell <all|bash|zsh|fish|pwsh|nu>]... [--scenario <all|clean|failure>]... [--output <DIR>] [--vhs <VHS_BINARY>] [--config <CONFIG_JSON>] [--workdir <DIR>] [--require-all]\n\n--config captures with that superline config (plus a sibling theme file it names) instead of the fixture config; --workdir runs the shell in an existing directory instead of the empty fixture directory."
+                    "Usage: cargo run --example terminal-snapshot -- [--shell <all|bash|bash-3.2|zsh|fish|pwsh|nu>]... [--scenario <all|clean|failure>]... [--output <DIR>] [--vhs <VHS_BINARY>] [--config <CONFIG_JSON>] [--workdir <DIR>] [--require-all]\n\n--config captures with that superline config (plus a sibling theme file it names) instead of the fixture config; --workdir runs the shell in an existing directory instead of the empty fixture directory."
                 );
                 std::process::exit(0);
             }
@@ -342,7 +378,11 @@ struct Fixture {
     root: PathBuf,
     home: PathBuf,
     dir: PathBuf,
-    init: PathBuf,
+    /// The file the setup command sources.
+    startup: PathBuf,
+    /// `PATH` for VHS: the branch-local binary first, plus a shim directory
+    /// for `bash-3.2`.
+    path: OsString,
     /// Whether the fixture config is in use, so the tape can assert on the
     /// exact `shell` + `cmd` layout it renders.
     fixture_config: bool,
@@ -381,44 +421,127 @@ impl Fixture {
             None => fs::write(&config, CONFIG)?,
         }
 
-        let output = Command::new(superline)
-            .args(["init", shell.name()])
-            .output()?;
-        if !output.status.success() {
-            return Err(format!(
-                "`superline init {}` failed: {}",
-                shell.name(),
-                String::from_utf8_lossy(&output.stderr)
-            )
-            .into());
+        let startup = match shell.install_file() {
+            Some(file) => install(shell, superline, &home, file)?,
+            None => write_init(shell, superline, &home, &config)?,
+        };
+
+        let mut bin_dirs = Vec::new();
+        if shell == Shell::Bash32 {
+            let shim = root.join("bin");
+            fs::create_dir_all(&shim)?;
+            link_system_bash(&shim.join("bash"))?;
+            bin_dirs.push(shim);
         }
-        let mut init = String::from_utf8(output.stdout)?;
-        if shell == Shell::Pwsh {
-            // PowerShell resolves the home directory itself, so point it at
-            // the fixture config explicitly rather than trusting inheritance.
-            let original = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')";
-            if !init.contains(original) {
-                return Err("PowerShell init no longer contains the expected argument list".into());
-            }
-            let config = forward_slashes(&config).replace('\'', "''");
-            init = init.replace(
-                original,
-                &format!(
-                    "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh', '--config', '{config}')"
-                ),
-            );
-        }
-        let init_path = home.join(shell.init_file_name());
-        fs::write(&init_path, init)?;
+        bin_dirs.push(
+            superline
+                .parent()
+                .ok_or("superline binary has no parent")?
+                .to_path_buf(),
+        );
 
         Ok(Self {
             root,
             home,
             dir,
-            init: init_path,
+            startup,
+            path: path_with(bin_dirs)?,
             fixture_config: config_override.is_none(),
         })
     }
+}
+
+/// Run `superline install` against the fixture home and return the startup
+/// file it wrote, so the capture loads exactly the line users get.
+fn install(shell: Shell, superline: &Path, home: &Path, file: &str) -> Result<PathBuf> {
+    let output = Command::new(superline)
+        .args(["install", shell.program()])
+        .env("HOME", home)
+        .env("USERPROFILE", home)
+        .output()?;
+    let startup = home.join(file);
+    if !output.status.success() || !startup.is_file() {
+        return Err(format!(
+            "`superline install {}` did not write {}: {}",
+            shell.program(),
+            startup.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(startup)
+}
+
+/// Save `superline init` output for shells whose install target lives outside
+/// the home directory.
+fn write_init(shell: Shell, superline: &Path, home: &Path, config: &Path) -> Result<PathBuf> {
+    let output = Command::new(superline)
+        .args(["init", shell.program()])
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "`superline init {}` failed: {}",
+            shell.program(),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    let mut init = String::from_utf8(output.stdout)?;
+    if shell == Shell::Pwsh {
+        // PowerShell resolves the home directory itself, so point it at
+        // the fixture config explicitly rather than trusting inheritance.
+        let original = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')";
+        if !init.contains(original) {
+            return Err("PowerShell init no longer contains the expected argument list".into());
+        }
+        let config = forward_slashes(config).replace('\'', "''");
+        init = init.replace(
+                original,
+                &format!(
+                    "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh', '--config', '{config}')"
+                ),
+            );
+    }
+    let init_path = home.join(shell.init_file_name());
+    fs::write(&init_path, init)?;
+    Ok(init_path)
+}
+
+#[cfg(unix)]
+fn link_system_bash(link: &Path) -> Result<()> {
+    Ok(std::os::unix::fs::symlink(SYSTEM_BASH, link)?)
+}
+
+#[cfg(not(unix))]
+fn link_system_bash(_link: &Path) -> Result<()> {
+    Err(format!("{SYSTEM_BASH} is only available on Unix").into())
+}
+
+/// Why `shell` cannot be captured here, if it cannot.
+fn check_available(shell: Shell) -> std::result::Result<(), String> {
+    let program = match shell {
+        Shell::Bash32 => PathBuf::from(SYSTEM_BASH),
+        _ => find_executable(shell.program())
+            .ok_or_else(|| format!("{} is not on PATH", shell.program()))?,
+    };
+    if matches!(shell, Shell::Bash | Shell::Bash32) {
+        let version =
+            bash_version(&program).ok_or_else(|| format!("could not run {}", program.display()))?;
+        if shell == Shell::Bash32 && !version.starts_with("3.") {
+            return Err(format!("{SYSTEM_BASH} is bash {version}, not 3.x"));
+        }
+        println!("{} is bash {version}", shell.name());
+    }
+    Ok(())
+}
+
+fn bash_version(bash: &Path) -> Option<String> {
+    let output = Command::new(bash)
+        .args(["-c", "echo $BASH_VERSION"])
+        .output()
+        .ok()?;
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (output.status.success() && !version.is_empty()).then_some(version)
 }
 
 /// Copy a user config into the fixture, along with a theme file it names
@@ -445,10 +568,11 @@ fn render_tape(
     output: &Path,
     platform: &str,
 ) -> String {
-    let name = shell.name();
+    let name = shell.program();
+    let stem = shell.name();
     let setup = shell.setup_command(
         &forward_slashes(&fixture.home),
-        &forward_slashes(&fixture.init),
+        &forward_slashes(&fixture.startup),
         &forward_slashes(&fixture.dir),
     );
     // The fixture config puts the shell name right before the cmd widget, so
@@ -467,7 +591,7 @@ fn render_tape(
         )
     };
     let screenshot = |scenario: Scenario| {
-        let path = output.join(format!("{platform}-{name}-{}.png", scenario.name()));
+        let path = output.join(format!("{platform}-{stem}-{}.png", scenario.name()));
         format!("Screenshot \"{}\"\nSleep 1s\n", forward_slashes(&path))
     };
 
@@ -505,13 +629,7 @@ fn tape_regex(literal: &str) -> String {
     regex::escape(literal).replace('/', "\\/")
 }
 
-fn run_vhs(
-    vhs: &Path,
-    tape: &Path,
-    log_path: &Path,
-    superline: &Path,
-    output: &Path,
-) -> Result<()> {
+fn run_vhs(vhs: &Path, tape: &Path, log_path: &Path, path: &OsString, output: &Path) -> Result<()> {
     let log = fs::File::create(log_path)?;
     let mut child = Command::new(vhs)
         .arg(tape)
@@ -521,7 +639,7 @@ fn run_vhs(
         .stderr(Stdio::from(log))
         .env("LANG", "en_US.UTF-8")
         .env("LC_ALL", "en_US.UTF-8")
-        .env("PATH", path_with_binary(superline)?)
+        .env("PATH", path)
         .spawn()?;
 
     let started = Instant::now();
@@ -578,9 +696,8 @@ fn forward_slashes(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn path_with_binary(superline: &Path) -> Result<OsString> {
-    let bin_dir = superline.parent().ok_or("superline binary has no parent")?;
-    let mut paths = vec![bin_dir.to_path_buf()];
+/// The current `PATH` with `paths` in front.
+fn path_with(mut paths: Vec<PathBuf>) -> Result<OsString> {
     if let Some(path) = env::var_os("PATH") {
         paths.extend(env::split_paths(&path));
     }

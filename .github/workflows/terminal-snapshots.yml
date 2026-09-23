@@ -45,8 +45,10 @@ jobs:
 
       - name: Install shells and VHS runtime dependencies
         run: |
-          brew install fish nushell ttyd ffmpeg
+          brew install bash fish nushell ttyd ffmpeg
           command -v pwsh >/dev/null || brew install --cask powershell
+          # `bash` must be Homebrew's bash 5; the `bash-3.2` capture covers /bin/bash.
+          bash -c '[ "${BASH_VERSINFO[0]}" -ge 5 ]' || { echo "bash on PATH is $(bash -c 'echo $BASH_VERSION')"; exit 1; }
 
       - name: Cache pinned VHS build
         id: vhs-cache
