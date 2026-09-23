@@ -92,10 +92,14 @@ source <(superline init zsh)
 const BASH_CONF: &str = r#"
 export SUPERLINE_BASH=1
 
+# bash 3.2 leaves checkwinsize off, so $COLUMNS stays unset until it is on.
+shopt -s checkwinsize
+
 function _update_ps1() {
     local __pl_status=$?
     local __pl_jobs=$(jobs -pr 2>/dev/null | wc -l)
-    PS1="$(superline show -s $__pl_status -c $COLUMNS bash --jobs $__pl_jobs)"
+    local __pl_columns=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+    PS1="$(superline show -s $__pl_status -c $__pl_columns bash --jobs $__pl_jobs)"
 }
 
 if [ "$TERM" != "linux" ]; then

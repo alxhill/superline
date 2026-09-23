@@ -407,14 +407,16 @@ fn have_bash() -> bool {
         .unwrap_or(false)
 }
 
-/// The `.bashrc` line `superline install bash` writes must set the prompt up.
+/// The `.bashrc` line `superline install bash` writes must set the prompt up,
+/// including before bash has set `$COLUMNS` (bash 3.2 leaves it unset).
 #[cfg(unix)]
 #[test]
-fn bash_install_snippet_sets_up_the_prompt() {
+fn bash_install_snippet_renders_the_prompt() {
     if !have_bash() {
         eprintln!("skipping: bash not on PATH");
         return;
     }
+    let home = scratch_home("bash-install");
     let bin_dir = PathBuf::from(BIN).parent().unwrap().to_path_buf();
     let path = format!(
         "{}:{}",
@@ -426,15 +428,19 @@ fn bash_install_snippet_sets_up_the_prompt() {
             "--norc",
             "--noprofile",
             "-c",
-            r#"eval "$(superline init bash)"; echo "$SUPERLINE_BASH|$PROMPT_COMMAND""#,
+            r#"eval "$(superline init bash)"; _update_ps1; echo "$SUPERLINE_BASH|$PROMPT_COMMAND|$PS1""#,
         ])
         .env("PATH", path)
+        .env("HOME", &home)
+        .env_remove("COLUMNS")
         .output()
         .expect("failed to run bash");
+    let _ = fs::remove_dir_all(&home);
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stdout.starts_with("1|_update_ps1"),
-        "bash init did not install the prompt; stdout:\n{stdout}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stderr),
+        stdout.starts_with("1|_update_ps1") && stdout.contains("\\["),
+        "bash init did not render the prompt; stdout:\n{stdout}\nstderr:\n{stderr}",
     );
+    assert!(stderr.is_empty(), "bash init wrote to stderr:\n{stderr}");
 }
