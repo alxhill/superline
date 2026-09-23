@@ -35,7 +35,6 @@ impl Style {
 pub enum Separator {
     Chevron,
     Round,
-    AngleLine,
     None,
 }
 
@@ -52,8 +51,6 @@ impl Separator {
             (Separator::Chevron, Direction::Left) => "\u{e0b2}",
             (Separator::Round, Direction::Right) => "\u{e0b4}",
             (Separator::Round, Direction::Left) => "\u{e0b6}",
-            (Separator::AngleLine, Direction::Right) => "\u{e0b1}",
-            (Separator::AngleLine, Direction::Left) => "\u{e0b3}",
             (Separator::None, _) => "",
         }
     }
@@ -70,7 +67,6 @@ impl From<&SeparatorStyle> for Separator {
         match style {
             SeparatorStyle::Chevron => Separator::Chevron,
             SeparatorStyle::Round => Separator::Round,
-            SeparatorStyle::AngleLine => Separator::AngleLine,
             SeparatorStyle::None => Separator::None,
         }
     }
@@ -555,7 +551,7 @@ mod tests {
 
     #[test]
     fn other_separators_are_a_single_column_wide() {
-        for sep in [Separator::Chevron, Separator::Round, Separator::AngleLine] {
+        for sep in [Separator::Chevron, Separator::Round] {
             assert_eq!(sep.width(), 1);
         }
     }

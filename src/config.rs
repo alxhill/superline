@@ -511,7 +511,6 @@ pub enum UsageDisplay {
 pub enum SeparatorStyle {
     Chevron,
     Round,
-    AngleLine,
     None,
 }
 
