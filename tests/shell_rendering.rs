@@ -381,3 +381,59 @@ fn nushell_prompt_closure_renders_end_to_end() {
         "nushell prompt end-to-end failed\nstdout:\n{stdout}\nstderr:\n{stderr}",
     );
 }
+
+/// bash 3.2 (the macOS `/bin/bash`) closes `source <(superline init bash)`'s
+/// pipe without reading it, so `init` must not panic on a broken pipe.
+#[test]
+fn init_exits_quietly_when_stdout_is_closed() {
+    let (reader, writer) = std::io::pipe().expect("create pipe");
+    drop(reader);
+    let output = Command::new(BIN)
+        .args(["init", "bash"])
+        .stdout(writer)
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .expect("failed to run `superline init bash`");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("panicked"), "init panicked:\n{stderr}");
+}
+
+fn have_bash() -> bool {
+    Command::new("bash")
+        .args(["-c", "true"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// The `.bashrc` line `superline install bash` writes must set the prompt up.
+#[cfg(unix)]
+#[test]
+fn bash_install_snippet_sets_up_the_prompt() {
+    if !have_bash() {
+        eprintln!("skipping: bash not on PATH");
+        return;
+    }
+    let bin_dir = PathBuf::from(BIN).parent().unwrap().to_path_buf();
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .args([
+            "--norc",
+            "--noprofile",
+            "-c",
+            r#"eval "$(superline init bash)"; echo "$SUPERLINE_BASH|$PROMPT_COMMAND""#,
+        ])
+        .env("PATH", path)
+        .output()
+        .expect("failed to run bash");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.starts_with("1|_update_ps1"),
+        "bash init did not install the prompt; stdout:\n{stdout}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+}

@@ -103,9 +103,11 @@ if [ "$TERM" != "linux" ]; then
 fi
 "#;
 
+// bash 3.2 (the macOS /bin/bash) does not `source` process substitutions, so
+// bash uses `eval` instead of `source <(...)`.
 const BASH_INSTALL: &str = r#"
 # automatically added by superline
-source <(superline init bash)
+eval "$(superline init bash)"
 "#;
 
 const PWSH_CONF: &str = r#"
@@ -536,13 +538,16 @@ fn open_config() {
 }
 
 fn print_shell_conf(shell: ShellSubcommand) {
-    match shell {
-        ShellSubcommand::Bash => println!("{}", BASH_CONF),
-        ShellSubcommand::Zsh => println!("{}", ZSH_CONF),
-        ShellSubcommand::Fish => println!("{}", FISH_CONF),
-        ShellSubcommand::Pwsh => println!("{}", PWSH_CONF),
-        ShellSubcommand::Nu => println!("{}", NU_CONF),
-    }
+    let conf = match shell {
+        ShellSubcommand::Bash => BASH_CONF,
+        ShellSubcommand::Zsh => ZSH_CONF,
+        ShellSubcommand::Fish => FISH_CONF,
+        ShellSubcommand::Pwsh => PWSH_CONF,
+        ShellSubcommand::Nu => NU_CONF,
+    };
+    // The shell may close the pipe without reading it (bash 3.2 does with
+    // `source <(superline init bash)`); exit quietly rather than panic.
+    let _ = writeln!(io::stdout(), "{conf}");
 }
 
 fn show(args: ShowArgs, right_only: bool) {
