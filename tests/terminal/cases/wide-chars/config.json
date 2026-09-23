@@ -1,0 +1,7 @@
+{
+  "theme": "rainbow",
+  "rows": [
+    { "left": [{ "cwd": { "max_length": 40, "wanted_seg_num": 2 } }], "right": [{ "text": "edge" }, { "padding": 0 }] },
+    { "left": ["shell", "cmd"] }
+  ]
+}

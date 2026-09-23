@@ -9,7 +9,7 @@
 #   scripts/site-screenshots/generate.sh [scene...]
 #   COMPONENTS="git pr" scripts/site-screenshots/generate.sh components
 #
-# Needs the patched VHS from examples/terminal-snapshot/build-vhs.sh (pass it
+# Needs the patched VHS from tests/terminal/build-vhs.sh (pass it
 # with SUPERLINE_E2E_VHS, or it is built into target/vhs-bin on first run),
 # plus fish, git, jq, uv, ttyd, ffmpeg, the MesloLGS Nerd Font and Symbols
 # Nerd Font Mono 3.4 or newer (for the Claude and Codex glyphs).
@@ -21,7 +21,7 @@ out="$repo/site/img"
 vhs=${SUPERLINE_E2E_VHS:-$repo/target/vhs-bin/vhs}
 
 if [[ ! -x "$vhs" ]]; then
-  "$repo/examples/terminal-snapshot/build-vhs.sh" "$repo/target/vhs-bin"
+  "$repo/tests/terminal/build-vhs.sh" "$repo/target/vhs-bin"
 fi
 cargo build --quiet --release --bin superline --manifest-path "$repo/Cargo.toml"
 mkdir -p "$out"
