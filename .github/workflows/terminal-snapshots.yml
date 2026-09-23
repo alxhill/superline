@@ -71,7 +71,6 @@ jobs:
           cargo build --locked --bin superline --example terminal-snapshot
           cargo run --locked --example terminal-snapshot -- \
             --shell all \
-            --scenario all \
             --output target/terminal-snapshots \
             --vhs "$RUNNER_TEMP/vhs-bin/vhs" \
             --require-all
@@ -162,7 +161,6 @@ jobs:
           cargo run --locked --example terminal-snapshot -- `
             --shell pwsh `
             --shell bash `
-            --scenario all `
             --output target/terminal-snapshots `
             --vhs (Join-Path $env:RUNNER_TEMP 'vhs-bin\vhs.exe') `
             --require-all
