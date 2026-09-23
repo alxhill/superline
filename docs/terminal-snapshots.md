@@ -258,10 +258,9 @@ tests cover prompt content and escape-style contracts.
 The rig exercises shell startup snippets, each shell's prompt hook, terminal
 width calculation, ANSI color, Nerd Font glyphs, multi-row layout, right
 prompts, line continuation, exit-status propagation, and that a new prompt
-does not clobber the previous one. The built-in `wide-chars` and `no-newline`
-cases are marked `xfail`: superline measures segment widths in characters
-rather than terminal cells, and bash has no way to start the prompt on a fresh
-line after output without a trailing newline. Everything is rendered and
+does not clobber the previous one. The built-in `no-newline` case is marked
+`xfail` for bash, which has no way to start the prompt on a fresh line after
+output without a trailing newline. Everything is rendered and
 answered by a pinned xterm.js-based terminal, so it does not guarantee
 identical behavior in every native terminal application. Host-specific
 settings and timing-sensitive input such as rapid Ctrl-C still need a focused

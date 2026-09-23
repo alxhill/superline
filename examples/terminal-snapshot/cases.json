@@ -102,7 +102,6 @@
     "description": "Double-width characters in the path keep the right side flush with the edge",
     "dir": "superline-e2e/日本語/データ",
     "columns": 60,
-    "xfail": "superline counts characters rather than terminal cells, so each wide character pushes the right side one column further",
     "config": {
       "theme": "rainbow",
       "rows": [
