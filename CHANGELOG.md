@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.2](https://github.com/alxhill/superline/compare/v0.19.1...v0.19.2) - 2026-09-23
+
+### Other
+
+- add a configuration reference page with generated examples ([#134](https://github.com/alxhill/superline/pull/134))
+- add a GitHub Pages site with VHS-generated screenshots ([#133](https://github.com/alxhill/superline/pull/133))
+- add visual terminal snapshots ([#128](https://github.com/alxhill/superline/pull/128))
+
 ## [0.19.1](https://github.com/alxhill/superline/compare/v0.19.0...v0.19.1) - 2026-09-21
 
 ### Other
