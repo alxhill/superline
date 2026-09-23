@@ -42,6 +42,12 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
             rustflags: -Ctarget-cpu=x86-64-v3
+          # Static and on the baseline CPU, for machines the gnu build cannot
+          # run on: old glibc, musl distros, and CPUs without AVX2 such as the
+          # Atoms and Celerons in most NASes.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            rustflags: -Ctarget-cpu=x86-64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04-arm
             rustflags: ""
