@@ -1,0 +1,3 @@
+#!/bin/sh
+# Provider CLIs are never needed: usage is served from a seeded cache.
+exit 1

@@ -6,6 +6,8 @@ A fast, opinionated powerline-style prompt written in Rust. It understands git a
 Node and Java project environments, and can show your Claude or Codex subscription usage, with async rendering
 support for the slower lookups.
 
+See the [website](https://alxhill.github.io/superline/) for a tour of the features.
+
 ![Shell with pyenv showing](https://raw.githubusercontent.com/alxhill/superline/main/with_pyenv.png)
 
 With the [`gh`](https://cli.github.com) CLI installed, it also links to the current branch's pull request and shows

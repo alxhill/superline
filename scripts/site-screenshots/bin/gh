@@ -1,0 +1,16 @@
+#!/bin/sh
+# Stand-in for the GitHub CLI: `gh pr view <branch> --json ...` answers with a
+# canned PR per branch, so PR segments render the same on every run.
+[ "$1 $2" = "pr view" ] || exit 1
+url=https://github.com/alxhill/superline/pull
+check() { printf '[{"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"%s","conclusion":%s}]' "$1" "$2"; }
+case "$3" in
+  feat/usage-sparklines) n=142 state=OPEN draft=false checks=$(check COMPLETED '"SUCCESS"') ;;
+  feat/draft-themes) n=151 state=OPEN draft=true checks='[]' ;;
+  feat/login) n=148 state=OPEN draft=false checks=$(check IN_PROGRESS null) ;;
+  fix/flaky-test) n=147 state=OPEN draft=false checks=$(check COMPLETED '"FAILURE"') ;;
+  feat/nushell) n=139 state=MERGED draft=false checks=$(check COMPLETED '"SUCCESS"') ;;
+  *) exit 1 ;;
+esac
+printf '{"number":%s,"url":"%s/%s","state":"%s","isDraft":%s,"statusCheckRollup":%s}\n' \
+  "$n" "$url" "$n" "$state" "$draft" "$checks"

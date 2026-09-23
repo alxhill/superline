@@ -1,0 +1,16 @@
+{
+  "theme": "rainbow",
+  "update": { "disable": true },
+  "rows": [
+    {
+      "left": [
+        { "cwd": { "max_length": 40, "wanted_seg_num": 2 } },
+        "python",
+        "node",
+        "java",
+        "cargo",
+        "cmd"
+      ]
+    }
+  ]
+}
