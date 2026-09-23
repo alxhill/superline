@@ -4,9 +4,7 @@ sync every screenshot's width/height attributes on the site's pages.
 A placeholder is `<div class="example" data-example="<component>/<variant>">`
 up to the next `<!-- /example -->`. Its contents are rewritten with the
 variant's screenshot and the JSON it was rendered from, so the page can never
-show a config that differs from the one in the picture. Examples whose JSON
-or screenshot is too wide for a half-width card span the whole row, and JSON
-too long to sit beside its screenshot goes underneath it.
+show a config that differs from the one in the picture.
 """
 
 import html
@@ -19,12 +17,6 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 SITE = HERE.parent.parent / "site"
 WIDTH = 66
-# Longest line that fits a half-width example card.
-NARROW = 44
-# Room in a full-width card for a screenshot and JSON side by side, and the
-# width of one character of 13px JetBrains Mono, both in CSS pixels.
-ROW_WIDTH = 740
-CHAR_WIDTH = 8
 
 # Examples that are not a single prompt row, keyed like the manifest's.
 EXTRA = {
@@ -118,11 +110,10 @@ def examples():
 def render(key, example):
     component = key.split("/")[0]
     alt = f"The {component} example: {example['label']}."
-    source = pretty(example["json"])
     return (
         f'\n  <div class="ex-label">{html.escape(example["label"], quote=False)}</div>'
         f'\n  <figure class="term shot">{image_tag(example["image"], alt)}</figure>'
-        f'\n  <pre class="json"><code>{highlight(source)}</code></pre>\n'
+        f'\n  <pre class="json"><code>{highlight(pretty(example["json"]))}</code></pre>\n'
     )
 
 
@@ -137,15 +128,7 @@ def main():
         if key not in rendered:
             raise SystemExit(f"config.html references unknown example {key}")
         missing.discard(key)
-        source = pretty(rendered[key]["json"])
-        width = Image.open(SITE / rendered[key]["image"]).size[0] // 2
-        longest = max(map(len, source.splitlines()))
-        classes = "example"
-        if longest > NARROW or width > 380:
-            classes += " wide"
-        if longest > NARROW or width + longest * CHAR_WIDTH > ROW_WIDTH:
-            classes += " stacked"
-        return f'<div class="{classes}" data-example="{key}">{render(key, rendered[key])}</div><!-- /example -->'
+        return f'<div class="example" data-example="{key}">{render(key, rendered[key])}</div><!-- /example -->'
 
     text = re.sub(
         r'<div class="example[^"]*" data-example="([^"]+)">.*?</div><!-- /example -->',

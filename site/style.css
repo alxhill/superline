@@ -376,16 +376,9 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .opts td:nth-child(2), .opts td:nth-child(3) { white-space: nowrap; }
 .opts.styles td:last-child code { background: none; border: 0; }
 
-.examples {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
-  gap: 16px;
-  margin-top: 20px;
-}
+.examples { display: grid; gap: 16px; margin-top: 20px; }
 .example {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
   gap: 12px;
   min-width: 0;
   padding: 14px;
@@ -393,17 +386,13 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
-.example.wide, .examples:has(.example:only-child) .example { grid-column: 1 / -1; }
-/* Full-width cards with short JSON put it beside the screenshot. */
-.example.wide:not(.stacked) { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
-.ex-label { grid-column: 1 / -1; color: var(--text); font-size: 13px; font-weight: 600; }
+.ex-label { color: var(--text); font-size: 13px; font-weight: 600; }
 .example .shot { justify-self: start; box-shadow: none; border-radius: 8px; }
 .example pre { min-width: 0; margin: 0; font-size: 13px; }
 .doc > .component > pre.json, .component > pre.json { max-width: 760px; }
 
 @media (max-width: 960px) {
   .docs { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 32px; }
-  .example.wide:not(.stacked) { grid-template-columns: minmax(0, 1fr); }
   .toc { display: none; }
 }
 
