@@ -55,11 +55,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/vhs-bin
-          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('examples/terminal-snapshot/build-vhs.sh', 'examples/terminal-snapshot/vhs-fixes.patch') }}
+          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('tests/terminal/build-vhs.sh', 'tests/terminal/vhs-fixes.patch') }}
 
       - name: Build pinned VHS
         if: steps.vhs-cache.outputs.cache-hit != 'true'
-        run: examples/terminal-snapshot/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
+        run: tests/terminal/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
 
       - name: Install pinned Nerd Font
         run: |
@@ -69,14 +69,10 @@ jobs:
           cp "$RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf" "$HOME/Library/Fonts/"
 
       - name: Capture prompts
-        run: |
-          cargo build --locked --bin superline --example terminal-snapshot
-          cargo run --locked --example terminal-snapshot -- \
-            --shell all \
-            --scenario all \
-            --output target/terminal-snapshots \
-            --vhs "$RUNNER_TEMP/vhs-bin/vhs" \
-            --require-all
+        env:
+          SUPERLINE_E2E_VHS: ${{ runner.temp }}/vhs-bin/vhs
+          SUPERLINE_E2E_REQUIRE_ALL: "1"
+        run: cargo test --locked --test terminal_snapshots
 
       - name: Upload screenshots, tapes, and VHS logs
         if: always()
@@ -85,7 +81,7 @@ jobs:
           name: terminal-snapshots-macos
           path: target/terminal-snapshots/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
 
   windows:
     name: Windows (PowerShell, Git Bash)
@@ -112,12 +108,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/vhs-bin
-          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('examples/terminal-snapshot/build-vhs.sh', 'examples/terminal-snapshot/vhs-fixes.patch') }}
+          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('tests/terminal/build-vhs.sh', 'tests/terminal/vhs-fixes.patch') }}
 
       - name: Build pinned VHS
         if: steps.vhs-cache.outputs.cache-hit != 'true'
         shell: bash
-        run: examples/terminal-snapshot/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
+        run: tests/terminal/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
 
       - name: Put Git Bash ahead of the WSL bash stub
         shell: pwsh
@@ -158,16 +154,13 @@ jobs:
 
       - name: Capture PowerShell and Git Bash prompts
         shell: pwsh
+        env:
+          SUPERLINE_E2E_VHS: ${{ runner.temp }}\vhs-bin\vhs.exe
+          SUPERLINE_E2E_SHELLS: pwsh,bash
+          SUPERLINE_E2E_REQUIRE_ALL: "1"
         run: |
           Write-Host "bash resolves to $((Get-Command bash).Source)"
-          cargo build --locked --bin superline --example terminal-snapshot
-          cargo run --locked --example terminal-snapshot -- `
-            --shell pwsh `
-            --shell bash `
-            --scenario all `
-            --output target/terminal-snapshots `
-            --vhs (Join-Path $env:RUNNER_TEMP 'vhs-bin\vhs.exe') `
-            --require-all
+          cargo test --locked --test terminal_snapshots
 
       - name: Upload screenshots, tapes, and VHS logs
         if: always()
@@ -176,4 +169,4 @@ jobs:
           name: terminal-snapshots-windows
           path: target/terminal-snapshots/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1

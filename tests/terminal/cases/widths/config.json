@@ -1,0 +1,7 @@
+{
+  "theme": "rainbow",
+  "rows": [
+    { "left": [{ "text": "left-top" }], "right": [{ "text": "right-top" }, { "padding": 0 }] },
+    { "left": ["shell", "cmd"], "right": [{ "text": "right-bottom" }, { "padding": 0 }] }
+  ]
+}

@@ -25,6 +25,22 @@ index 1189ada..3ee6a1f 100644
  		}
  
  		// When changing the FontFamily, FontSize, LineHeight, Padding
+diff --git a/testing.go b/testing.go
+index f3b8ac0..51aa3a3 100644
+--- a/testing.go
++++ b/testing.go
+@@ -66,8 +66,9 @@ func (v *VHS) SaveOutput() error {
+ 
+ // Buffer returns the current buffer.
+ func (v *VHS) Buffer() ([]string, error) {
+-	// Get the current buffer.
+-	buf, err := v.Page.Eval("() => Array(term.rows).fill(0).map((e, i) => term.buffer.active.getLine(i).translateToString().trimEnd())")
++	// Get the visible screen, which starts at viewportY once output has
++	// scrolled lines into the scrollback.
++	buf, err := v.Page.Eval("() => Array(term.rows).fill(0).map((e, i) => term.buffer.active.getLine(term.buffer.active.viewportY+i).translateToString().trimEnd())")
+ 	if err != nil {
+ 		return nil, fmt.Errorf("read buffer: %w", err)
+ 	}
 diff --git a/tty.go b/tty.go
 index 491050d..cc37ab8 100644
 --- a/tty.go

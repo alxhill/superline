@@ -1,301 +1,102 @@
-//! Capture superline prompts from real interactive shells through VHS.
+//! Capture superline prompts from real interactive shells through VHS: pass
+//! a config (and optionally a tape), get back PNGs and screen text.
 //!
-//! The example prepares an isolated home directory with a deterministic
-//! config, loads superline into the shell the way a user's startup file does,
-//! and drives the
-//! session with a VHS tape generated from `terminal-snapshot/tape.template`.
-//! VHS owns the PTY (ConPTY on Windows), the terminal emulation, and the
-//! rendering; this file only wires up fixtures and checks that every expected
-//! PNG exists afterwards.
+//! The checked cases live in `tests/terminal_snapshots.rs`; this is for
+//! one-off captures, such as debugging a prompt from a real config.
+
+#[path = "../tests/terminal/rig.rs"]
+mod rig;
 
 use std::env;
-use std::error::Error;
 use std::ffi::OsString;
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
 
-const CONFIG: &str = include_str!("terminal-snapshot/config.json");
-const TAPE_TEMPLATE: &str = include_str!("terminal-snapshot/tape.template");
-const FIXTURE_DIR: &str = "superline-e2e";
-const FAILURE_STATUS: &str = "7";
-const VHS_TIMEOUT: Duration = Duration::from_secs(240);
-/// Powerline separator and success chevron, as RE2 escapes for the tape.
-const SEPARATOR: &str = r"\x{E0B0}";
-const SUCCESS_MARK: &str = r"\x{F105}";
-/// The bash that macOS ships, which the `bash-3.2` variant runs.
-const SYSTEM_BASH: &str = "/bin/bash";
+use rig::{Case, Rig, Shell};
 
-type Result<T> = std::result::Result<T, Box<dyn Error>>;
+const USAGE: &str = "\
+Usage: cargo run --example terminal-snapshot -- [OPTIONS]
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Shell {
-    /// Whichever `bash` is on `PATH` (bash 5 on the CI runners).
-    Bash,
-    /// macOS's `/bin/bash`, which is still bash 3.2.
-    Bash32,
-    Zsh,
-    Fish,
-    Pwsh,
-    Nu,
-}
+Runs a superline config in real shells through VHS and prints the screen
+text of every snapshot.
 
-impl Shell {
-    const ALL: [Self; 6] = [
-        Self::Bash,
-        Self::Bash32,
-        Self::Zsh,
-        Self::Fish,
-        Self::Pwsh,
-        Self::Nu,
-    ];
-
-    /// The name used on the command line and in output file names.
-    fn name(self) -> &'static str {
-        match self {
-            Self::Bash32 => "bash-3.2",
-            _ => self.program(),
-        }
-    }
-
-    /// The executable VHS starts, which is also the shell name superline
-    /// renders in the prompt.
-    fn program(self) -> &'static str {
-        match self {
-            Self::Bash | Self::Bash32 => "bash",
-            Self::Zsh => "zsh",
-            Self::Fish => "fish",
-            Self::Pwsh => "pwsh",
-            Self::Nu => "nu",
-        }
-    }
-
-    /// The startup file `superline install` writes to, relative to the home
-    /// directory. PowerShell and nushell ask the shell itself for the path,
-    /// which would escape the fixture home, so they load `superline init`
-    /// output from a file instead.
-    fn install_file(self) -> Option<&'static str> {
-        match self {
-            Self::Bash | Self::Bash32 => Some(".bashrc"),
-            Self::Zsh => Some(".zshrc"),
-            Self::Fish => Some(".config/fish/config.fish"),
-            Self::Pwsh | Self::Nu => None,
-        }
-    }
-
-    fn parse(value: &str) -> Result<Self> {
-        match value {
-            "bash" => Ok(Self::Bash),
-            "bash-3.2" => Ok(Self::Bash32),
-            "zsh" => Ok(Self::Zsh),
-            "fish" => Ok(Self::Fish),
-            "pwsh" | "powershell" => Ok(Self::Pwsh),
-            "nu" | "nushell" => Ok(Self::Nu),
-            _ => Err(format!("unsupported shell {value:?}").into()),
-        }
-    }
-
-    fn init_file_name(self) -> &'static str {
-        match self {
-            Self::Bash | Self::Bash32 => "superline-init.sh",
-            Self::Zsh => "superline-init.zsh",
-            Self::Fish => "superline-init.fish",
-            Self::Pwsh => "superline-init.ps1",
-            Self::Nu => "superline-init.nu",
-        }
-    }
-
-    /// One hidden command line that points the shell at the isolated home,
-    /// loads the startup file, enters the fixture directory, and clears the
-    /// setup output. The home is exported inside the shell rather than on the
-    /// VHS process: on Windows, Chrome resolves its own app-data folders
-    /// through `%USERPROFILE%` and exits when that points at the fixture.
-    /// `USERPROFILE` is what superline reads on Windows, including under Git
-    /// Bash, where `HOME` is an MSYS path.
-    fn setup_command(self, home: &str, startup: &str, fixture: &str) -> String {
-        let config = format!("{home}/.config");
-        let cache = format!("{home}/.cache");
-        match self {
-            Self::Bash | Self::Bash32 | Self::Zsh => format!(
-                "export HOME='{home}' USERPROFILE='{home}' XDG_CONFIG_HOME='{config}' XDG_CACHE_HOME='{cache}' && source '{startup}' && cd '{fixture}' && clear"
-            ),
-            Self::Fish => format!(
-                "set -gx HOME '{home}'; set -gx XDG_CONFIG_HOME '{config}'; set -gx XDG_CACHE_HOME '{cache}'; source '{startup}'; and cd '{fixture}'; and clear"
-            ),
-            Self::Pwsh => format!(
-                "$env:HOME = '{home}'; $env:USERPROFILE = '{home}'; $env:XDG_CONFIG_HOME = '{config}'; $env:XDG_CACHE_HOME = '{cache}'; . '{startup}'; Set-Location '{fixture}'; Clear-Host"
-            ),
-            Self::Nu => format!(
-                "$env.HOME = '{home}'; $env.USERPROFILE = '{home}'; $env.XDG_CONFIG_HOME = '{config}'; $env.XDG_CACHE_HOME = '{cache}'; source '{startup}'; cd '{fixture}'; clear"
-            ),
-        }
-    }
-
-    /// A visible command that makes the shell report exit status 7.
-    fn failure_command(self) -> &'static str {
-        match (self, cfg!(windows)) {
-            (Self::Bash | Self::Bash32 | Self::Zsh, _) => "(exit 7)",
-            (Self::Fish, _) => "sh -c 'exit 7'",
-            (Self::Pwsh, true) => "cmd /c exit 7",
-            (Self::Pwsh, false) => "& sh -c 'exit 7'",
-            (Self::Nu, true) => "^cmd /c exit 7",
-            (Self::Nu, false) => "^sh -c 'exit 7'",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Scenario {
-    Clean,
-    Failure,
-}
-
-impl Scenario {
-    const ALL: [Self; 2] = [Self::Clean, Self::Failure];
-
-    fn name(self) -> &'static str {
-        match self {
-            Self::Clean => "clean",
-            Self::Failure => "failure",
-        }
-    }
-
-    fn parse(value: &str) -> Result<Self> {
-        match value {
-            "clean" => Ok(Self::Clean),
-            "failure" => Ok(Self::Failure),
-            _ => Err(format!("unsupported scenario {value:?}").into()),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Args {
-    shells: Vec<Shell>,
-    scenarios: Vec<Scenario>,
-    output: PathBuf,
-    vhs: Option<PathBuf>,
-    config: Option<PathBuf>,
-    workdir: Option<PathBuf>,
-    require_all: bool,
-}
+  --config <FILE>      superline config (plus a sibling theme it names);
+                       default tests/terminal/config.json
+  --tape <FILE>        VHS commands to run after the first prompt, with
+                       `Screenshot <name>.png` for each capture; default one
+                       snapshot of the first prompt
+  --case <NAME>        Use the config and tape of tests/terminal/cases/<NAME>
+  --shell <LIST>       Shells, comma-separated or repeated (default all)
+  --columns <N>        Terminal width (repeatable; one run each; default 100)
+  --rows <N>           Terminal height (default 12)
+  --workdir <DIR>      Run in an existing directory
+  --env <KEY=VALUE>    Export a variable before the first prompt (repeatable)
+  --output <DIR>       Output directory (default target/terminal-snapshots)
+  --vhs <VHS_BINARY>   VHS build (or SUPERLINE_E2E_VHS, or vhs on PATH)
+  --jobs <N>           Captures to run at once (default 2)
+";
 
 fn main() {
+    rig::run_helper_if_invoked();
     if let Err(error) = run() {
         eprintln!("terminal snapshot failed: {error}");
         std::process::exit(1);
     }
 }
 
-fn run() -> Result<()> {
-    let args = parse_args()?;
-    let superline = superline_binary()?;
-    if !superline.is_file() {
-        return Err(format!(
-            "{} does not exist; run `cargo build --bin superline` first",
-            superline.display()
-        )
-        .into());
-    }
-    let vhs = locate_vhs(args.vhs.as_deref())?;
-    println!("using {}", vhs_version(&vhs)?);
-
-    fs::create_dir_all(&args.output)?;
-    // Not `canonicalize`: on Windows that yields a `\\?\` verbatim path,
-    // which ffmpeg does not accept as a screenshot destination.
-    let output = std::path::absolute(&args.output)?;
-    let platform = platform_name();
-
-    let mut captured = 0;
-    for shell in args.shells {
-        if let Err(message) = check_available(shell) {
-            if args.require_all {
-                return Err(message.into());
-            }
-            eprintln!("skipping {}: {message}", shell.name());
-            continue;
-        }
-
-        let fixture = Fixture::prepare(
-            shell,
-            &superline,
-            args.config.as_deref(),
-            args.workdir.as_deref(),
-        )?;
-        let stem = format!("{platform}-{}", shell.name());
-        let tape_path = output.join(format!("{stem}.tape"));
-        let log_path = output.join(format!("{stem}.log"));
-        fs::write(
-            &tape_path,
-            render_tape(shell, &args.scenarios, &fixture, &output, &platform),
-        )?;
-
-        let result = run_vhs(&vhs, &tape_path, &log_path, &fixture.path, &output)
-            .and_then(|()| verify_screenshots(shell, &args.scenarios, &output, &platform));
-        let _ = fs::remove_dir_all(&fixture.root);
-        if let Err(error) = result {
-            return Err(format!(
-                "{} capture failed: {error}\nvhs log ({}):\n{}",
-                shell.name(),
-                log_path.display(),
-                log_tail(&log_path)
-            )
-            .into());
-        }
-        captured += args.scenarios.len();
-    }
-
-    if captured == 0 {
-        return Err("no requested shell was available".into());
-    }
-    Ok(())
-}
-
-fn parse_args() -> Result<Args> {
+fn run() -> rig::Result<()> {
     let mut values = env::args_os().skip(1);
+    let mut config = None;
+    let mut tape = None;
+    let mut case_name = None;
     let mut shells = Vec::new();
-    let mut scenarios = Vec::new();
+    let mut columns = Vec::new();
+    let mut rows = None;
+    let mut workdir = None;
+    let mut vars = Vec::new();
     let mut output = PathBuf::from("target/terminal-snapshots");
     let mut vhs = env::var_os("SUPERLINE_E2E_VHS").map(PathBuf::from);
-    let mut config = None;
-    let mut workdir = None;
-    let mut require_all = false;
+    let mut jobs = 2;
 
     while let Some(arg) = values.next() {
-        match arg.to_str() {
-            Some("--shell") => {
-                let value = next_utf8(&mut values, "--shell")?;
-                if value == "all" {
-                    shells.extend(Shell::ALL);
-                } else {
-                    shells.push(Shell::parse(&value)?);
-                }
+        let flag = arg.to_string_lossy().into_owned();
+        match flag.as_str() {
+            "--config" => config = Some(PathBuf::from(value(&mut values, &flag)?)),
+            "--tape" => tape = Some(PathBuf::from(value(&mut values, &flag)?)),
+            "--case" => case_name = Some(utf8(&mut values, &flag)?),
+            "--shell" => shells.extend(Shell::parse_list(&utf8(&mut values, &flag)?)?),
+            "--columns" => columns.push(number(&mut values, &flag)?),
+            "--rows" => rows = Some(number(&mut values, &flag)?),
+            "--workdir" => workdir = Some(std::path::absolute(value(&mut values, &flag)?)?),
+            "--env" => {
+                let pair = utf8(&mut values, &flag)?;
+                let (key, value) = pair.split_once('=').ok_or("--env takes KEY=VALUE")?;
+                vars.push((key.to_string(), value.to_string()));
             }
-            Some("--scenario") => {
-                let value = next_utf8(&mut values, "--scenario")?;
-                if value == "all" {
-                    scenarios.extend(Scenario::ALL);
-                } else {
-                    scenarios.push(Scenario::parse(&value)?);
-                }
+            "--output" => output = PathBuf::from(value(&mut values, &flag)?),
+            "--vhs" => vhs = Some(PathBuf::from(value(&mut values, &flag)?)),
+            "--jobs" => jobs = number(&mut values, &flag)?,
+            "-h" | "--help" => {
+                print!("{USAGE}");
+                return Ok(());
             }
-            Some("--output") => output = PathBuf::from(next_value(&mut values, "--output")?),
-            Some("--vhs") => vhs = Some(PathBuf::from(next_value(&mut values, "--vhs")?)),
-            Some("--config") => config = Some(PathBuf::from(next_value(&mut values, "--config")?)),
-            Some("--workdir") => {
-                workdir = Some(PathBuf::from(next_value(&mut values, "--workdir")?))
-            }
-            Some("--require-all") => require_all = true,
-            Some("-h" | "--help") => {
-                println!(
-                    "Usage: cargo run --example terminal-snapshot -- [--shell <all|bash|bash-3.2|zsh|fish|pwsh|nu>]... [--scenario <all|clean|failure>]... [--output <DIR>] [--vhs <VHS_BINARY>] [--config <CONFIG_JSON>] [--workdir <DIR>] [--require-all]\n\n--config captures with that superline config (plus a sibling theme file it names) instead of the fixture config; --workdir runs the shell in an existing directory instead of the empty fixture directory."
-                );
-                std::process::exit(0);
-            }
-            _ => return Err(format!("unknown argument {}", arg.to_string_lossy()).into()),
+            _ => return Err(format!("unknown argument {flag}\n\n{USAGE}").into()),
         }
+    }
+
+    let mut case = match case_name {
+        Some(name) if config.is_none() && tape.is_none() => Case::load(&name)?,
+        Some(_) => return Err("--case cannot be combined with --config or --tape".into()),
+        None => Case::from_files("adhoc", config.as_deref(), tape.as_deref())?,
+    };
+    if !columns.is_empty() {
+        case = case.columns(&columns);
+    }
+    if let Some(rows) = rows {
+        case = case.rows(rows);
+    }
+    case.workdir = workdir;
+    for (key, value) in &vars {
+        case = case.env(key, value);
     }
 
     if shells.is_empty() {
@@ -303,429 +104,86 @@ fn parse_args() -> Result<Args> {
     }
     shells.sort_by_key(|shell| shell.name());
     shells.dedup();
-    if scenarios.is_empty() {
-        scenarios.extend(Scenario::ALL);
+    shells.retain(|shell| match shell.unavailable() {
+        None => true,
+        Some(reason) => {
+            eprintln!("skipping {}: {reason}", shell.name());
+            false
+        }
+    });
+    if shells.is_empty() {
+        return Err("none of the requested shells is available".into());
     }
-    scenarios.sort_by_key(|scenario| scenario.name());
-    scenarios.dedup();
 
-    Ok(Args {
-        shells,
-        scenarios,
-        output,
-        vhs,
-        config: config.map(std::path::absolute).transpose()?,
-        workdir: workdir.map(std::path::absolute).transpose()?,
-        require_all,
-    })
+    let vhs = match vhs {
+        Some(vhs) => vhs,
+        None => rig::find_executable("vhs").ok_or(
+            "vhs is not on PATH; pass --vhs or set SUPERLINE_E2E_VHS (see docs/terminal-snapshots.md)",
+        )?,
+    };
+    let rig = Rig::new(&vhs, &superline_binary()?, &output, jobs)?;
+    println!("using {}", rig.vhs_version()?);
+
+    let mut failed = false;
+    for (_, label, result) in rig.run(&[case], &shells) {
+        match result {
+            Ok(capture) => {
+                for snapshot in &capture.snapshots {
+                    println!(
+                        "── {label} {} ({}) ──\n{}",
+                        snapshot.name,
+                        snapshot.png.display(),
+                        snapshot.text
+                    );
+                }
+            }
+            Err(error) => {
+                failed = true;
+                println!("FAIL {label}: {error}");
+            }
+        }
+    }
+    if failed {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
-fn next_value(values: &mut impl Iterator<Item = OsString>, flag: &str) -> Result<OsString> {
+/// The `superline` binary built alongside this example.
+fn superline_binary() -> rig::Result<PathBuf> {
+    let executable = env::current_exe()?;
+    let profile_dir = executable
+        .parent()
+        .and_then(Path::parent)
+        .ok_or("example executable has no target profile directory")?;
+    let superline = profile_dir.join(format!("superline{}", env::consts::EXE_SUFFIX));
+    if !superline.is_file() {
+        return Err(format!(
+            "{} does not exist; run `cargo build --bin superline` first",
+            superline.display()
+        )
+        .into());
+    }
+    Ok(superline)
+}
+
+fn value(values: &mut impl Iterator<Item = OsString>, flag: &str) -> rig::Result<OsString> {
     values
         .next()
         .ok_or_else(|| format!("{flag} requires a value").into())
 }
 
-fn next_utf8(values: &mut impl Iterator<Item = OsString>, flag: &str) -> Result<String> {
-    next_value(values, flag)?
+fn utf8(values: &mut impl Iterator<Item = OsString>, flag: &str) -> rig::Result<String> {
+    value(values, flag)?
         .into_string()
         .map_err(|_| format!("{flag} must be valid UTF-8").into())
 }
 
-fn superline_binary() -> Result<PathBuf> {
-    let executable = env::current_exe()?;
-    let profile_dir = executable
-        .parent()
-        .and_then(Path::parent)
-        .ok_or("snapshot executable has no target profile directory")?;
-    Ok(profile_dir.join(format!("superline{}", env::consts::EXE_SUFFIX)))
-}
-
-fn locate_vhs(requested: Option<&Path>) -> Result<PathBuf> {
-    match requested {
-        // VHS runs with the output directory as its working directory, so a
-        // relative binary path must be resolved first.
-        Some(path) if path.is_file() => Ok(std::path::absolute(path)?),
-        Some(path) => Err(format!("vhs binary {} does not exist", path.display()).into()),
-        None => find_executable("vhs").ok_or_else(|| {
-            "vhs is not on PATH; pass --vhs or set SUPERLINE_E2E_VHS (see docs/terminal-snapshots.md)"
-                .into()
-        }),
-    }
-}
-
-fn vhs_version(vhs: &Path) -> Result<String> {
-    let output = Command::new(vhs).arg("--version").output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "`{} --version` failed: {}",
-            vhs.display(),
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn platform_name() -> String {
-    env::var("RUNNER_OS")
-        .unwrap_or_else(|_| env::consts::OS.to_string())
-        .to_ascii_lowercase()
-}
-
-/// Isolated home and working directory for one shell session.
-struct Fixture {
-    root: PathBuf,
-    home: PathBuf,
-    dir: PathBuf,
-    /// The file the setup command sources.
-    startup: PathBuf,
-    /// `PATH` for VHS: the branch-local binary first, plus a shim directory
-    /// for `bash-3.2`.
-    path: OsString,
-    /// Whether the fixture config is in use, so the tape can assert on the
-    /// exact `shell` + `cmd` layout it renders.
-    fixture_config: bool,
-}
-
-impl Fixture {
-    fn prepare(
-        shell: Shell,
-        superline: &Path,
-        config_override: Option<&Path>,
-        workdir: Option<&Path>,
-    ) -> Result<Self> {
-        let root = env::temp_dir().join(format!(
-            "superline-terminal-snapshot-{}-{}",
-            std::process::id(),
-            shell.name()
-        ));
-        if root.exists() {
-            fs::remove_dir_all(&root)?;
-        }
-        let home = root.join("home");
-        let dir = match workdir {
-            Some(workdir) if workdir.is_dir() => workdir.to_path_buf(),
-            Some(workdir) => {
-                return Err(format!("--workdir {} is not a directory", workdir.display()).into())
-            }
-            None => root.join(FIXTURE_DIR),
-        };
-        let config_dir = home.join(".config/superline");
-        fs::create_dir_all(&config_dir)?;
-        fs::create_dir_all(home.join(".cache"))?;
-        fs::create_dir_all(&dir)?;
-        let config = config_dir.join("config.json");
-        match config_override {
-            Some(source) => copy_config(source, &config_dir)?,
-            None => fs::write(&config, CONFIG)?,
-        }
-
-        let startup = match shell.install_file() {
-            Some(file) => install(shell, superline, &home, file)?,
-            None => write_init(shell, superline, &home, &config)?,
-        };
-
-        let mut bin_dirs = Vec::new();
-        if shell == Shell::Bash32 {
-            let shim = root.join("bin");
-            fs::create_dir_all(&shim)?;
-            link_system_bash(&shim.join("bash"))?;
-            bin_dirs.push(shim);
-        }
-        bin_dirs.push(
-            superline
-                .parent()
-                .ok_or("superline binary has no parent")?
-                .to_path_buf(),
-        );
-
-        Ok(Self {
-            root,
-            home,
-            dir,
-            startup,
-            path: path_with(bin_dirs)?,
-            fixture_config: config_override.is_none(),
-        })
-    }
-}
-
-/// Run `superline install` against the fixture home and return the startup
-/// file it wrote, so the capture loads exactly the line users get.
-fn install(shell: Shell, superline: &Path, home: &Path, file: &str) -> Result<PathBuf> {
-    let output = Command::new(superline)
-        .args(["install", shell.program()])
-        .env("HOME", home)
-        .env("USERPROFILE", home)
-        .output()?;
-    let startup = home.join(file);
-    if !output.status.success() || !startup.is_file() {
-        return Err(format!(
-            "`superline install {}` did not write {}: {}",
-            shell.program(),
-            startup.display(),
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    Ok(startup)
-}
-
-/// Save `superline init` output for shells whose install target lives outside
-/// the home directory.
-fn write_init(shell: Shell, superline: &Path, home: &Path, config: &Path) -> Result<PathBuf> {
-    let output = Command::new(superline)
-        .args(["init", shell.program()])
-        .output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "`superline init {}` failed: {}",
-            shell.program(),
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    let mut init = String::from_utf8(output.stdout)?;
-    if shell == Shell::Pwsh {
-        // PowerShell resolves the home directory itself, so point it at
-        // the fixture config explicitly rather than trusting inheritance.
-        let original = "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh')";
-        if !init.contains(original) {
-            return Err("PowerShell init no longer contains the expected argument list".into());
-        }
-        let config = forward_slashes(config).replace('\'', "''");
-        init = init.replace(
-                original,
-                &format!(
-                    "$__pl_args = @('show', '-s', $__pl_status, '-c', $__pl_cols, 'pwsh', '--config', '{config}')"
-                ),
-            );
-    }
-    let init_path = home.join(shell.init_file_name());
-    fs::write(&init_path, init)?;
-    Ok(init_path)
-}
-
-#[cfg(unix)]
-fn link_system_bash(link: &Path) -> Result<()> {
-    Ok(std::os::unix::fs::symlink(SYSTEM_BASH, link)?)
-}
-
-#[cfg(not(unix))]
-fn link_system_bash(_link: &Path) -> Result<()> {
-    Err(format!("{SYSTEM_BASH} is only available on Unix").into())
-}
-
-/// Why `shell` cannot be captured here, if it cannot.
-fn check_available(shell: Shell) -> std::result::Result<(), String> {
-    let program = match shell {
-        Shell::Bash32 => PathBuf::from(SYSTEM_BASH),
-        _ => find_executable(shell.program())
-            .ok_or_else(|| format!("{} is not on PATH", shell.program()))?,
-    };
-    if matches!(shell, Shell::Bash | Shell::Bash32) {
-        let version =
-            bash_version(&program).ok_or_else(|| format!("could not run {}", program.display()))?;
-        if shell == Shell::Bash32 && !version.starts_with("3.") {
-            return Err(format!("{SYSTEM_BASH} is bash {version}, not 3.x"));
-        }
-        println!("{} is bash {version}", shell.name());
-    }
-    Ok(())
-}
-
-fn bash_version(bash: &Path) -> Option<String> {
-    let output = Command::new(bash)
-        .args(["-c", "echo $BASH_VERSION"])
-        .output()
-        .ok()?;
-    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    (output.status.success() && !version.is_empty()).then_some(version)
-}
-
-/// Copy a user config into the fixture, along with a theme file it names
-/// relative to its own directory.
-fn copy_config(source: &Path, config_dir: &Path) -> Result<()> {
-    let contents = fs::read_to_string(source)
-        .map_err(|error| format!("could not read --config {}: {error}", source.display()))?;
-    fs::write(config_dir.join("config.json"), &contents)?;
-    let parsed: serde_json::Value = serde_json::from_str(&contents)
-        .map_err(|error| format!("--config {} is not valid JSON: {error}", source.display()))?;
-    if let Some(theme) = parsed.get("theme").and_then(|theme| theme.as_str()) {
-        let theme_file = source.parent().unwrap_or(Path::new(".")).join(theme);
-        if theme_file.is_file() {
-            fs::copy(&theme_file, config_dir.join(theme))?;
-        }
-    }
-    Ok(())
-}
-
-fn render_tape(
-    shell: Shell,
-    scenarios: &[Scenario],
-    fixture: &Fixture,
-    output: &Path,
-    platform: &str,
-) -> String {
-    let name = shell.program();
-    let stem = shell.name();
-    let setup = shell.setup_command(
-        &forward_slashes(&fixture.home),
-        &forward_slashes(&fixture.startup),
-        &forward_slashes(&fixture.dir),
-    );
-    // The fixture config puts the shell name right before the cmd widget, so
-    // the tape can pin the whole run of glyphs. A user config only guarantees
-    // the cmd widget itself: the success chevron, or the status followed by
-    // a separator glyph.
-    let (clean_prompt, failure_prompt) = if fixture.fixture_config {
-        (
-            format!("{name}{SEPARATOR}{SUCCESS_MARK}{SEPARATOR}"),
-            format!("{name}{SEPARATOR}{FAILURE_STATUS}{SEPARATOR}"),
-        )
-    } else {
-        (
-            SUCCESS_MARK.to_string(),
-            format!(r"(^|[^0-9]){FAILURE_STATUS}[\x{{E0B0}}\x{{E0B4}}]"),
-        )
-    };
-    let screenshot = |scenario: Scenario| {
-        let path = output.join(format!("{platform}-{stem}-{}.png", scenario.name()));
-        format!("Screenshot \"{}\"\nSleep 1s\n", forward_slashes(&path))
-    };
-
-    let clean_screenshot = if scenarios.contains(&Scenario::Clean) {
-        screenshot(Scenario::Clean)
-    } else {
-        String::new()
-    };
-    let failure_scenario = if scenarios.contains(&Scenario::Failure) {
-        let command = shell.failure_command();
-        format!(
-            "Type \"{command}\"\nEnter\n\
-             # The clean prompt and the typed command must survive above the new prompt.\n\
-             Wait+Screen /{clean_prompt}[^ ]* {}/\n\
-             Wait+Screen /{failure_prompt}/\n\
-             Sleep 1s\n{}",
-            tape_regex(command),
-            screenshot(Scenario::Failure)
-        )
-    } else {
-        String::new()
-    };
-
-    TAPE_TEMPLATE
-        .replace("{{shell}}", name)
-        .replace("{{setup}}", &setup)
-        .replace("{{clean_prompt}}", &clean_prompt)
-        .replace("{{clean_screenshot}}", &clean_screenshot)
-        .replace("{{failure_scenario}}", &failure_scenario)
-}
-
-/// Escape a literal for a `/.../` regex in the tape: RE2 metacharacters and
-/// the slash delimiter itself.
-fn tape_regex(literal: &str) -> String {
-    regex::escape(literal).replace('/', "\\/")
-}
-
-fn run_vhs(vhs: &Path, tape: &Path, log_path: &Path, path: &OsString, output: &Path) -> Result<()> {
-    let log = fs::File::create(log_path)?;
-    let mut child = Command::new(vhs)
-        .arg(tape)
-        .current_dir(output)
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(log.try_clone()?))
-        .stderr(Stdio::from(log))
-        .env("LANG", "en_US.UTF-8")
-        .env("LC_ALL", "en_US.UTF-8")
-        .env("PATH", path)
-        .spawn()?;
-
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if started.elapsed() >= VHS_TIMEOUT {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("vhs did not finish within {VHS_TIMEOUT:?}").into());
-        }
-        thread::sleep(Duration::from_millis(200));
-    };
-    if !status.success() {
-        return Err(format!("vhs exited with {status}").into());
-    }
-    Ok(())
-}
-
-fn verify_screenshots(
-    shell: Shell,
-    scenarios: &[Scenario],
-    output: &Path,
-    platform: &str,
-) -> Result<()> {
-    for scenario in scenarios {
-        let path = output.join(format!(
-            "{platform}-{}-{}.png",
-            shell.name(),
-            scenario.name()
-        ));
-        let size = fs::metadata(&path)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0);
-        if size == 0 {
-            return Err(format!("vhs did not write {}", path.display()).into());
-        }
-        println!("captured {}", path.display());
-    }
-    Ok(())
-}
-
-fn log_tail(path: &Path) -> String {
-    let log = fs::read_to_string(path).unwrap_or_default();
-    let lines: Vec<&str> = log.lines().collect();
-    let start = lines.len().saturating_sub(40);
-    lines[start..].join("\n")
-}
-
-/// Paths typed into the shell or written into the tape use forward slashes,
-/// which PowerShell, nushell, and VHS accept on Windows as well.
-fn forward_slashes(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-/// The current `PATH` with `paths` in front.
-fn path_with(mut paths: Vec<PathBuf>) -> Result<OsString> {
-    if let Some(path) = env::var_os("PATH") {
-        paths.extend(env::split_paths(&path));
-    }
-    Ok(env::join_paths(paths)?)
-}
-
-fn find_executable(name: &str) -> Option<PathBuf> {
-    let path = env::var_os("PATH")?;
-    let extensions: Vec<OsString> = if cfg!(windows) {
-        env::var_os("PATHEXT")
-            .unwrap_or_else(|| ".COM;.EXE;.BAT;.CMD".into())
-            .to_string_lossy()
-            .split(';')
-            .map(OsString::from)
-            .collect()
-    } else {
-        vec![OsString::new()]
-    };
-
-    for directory in env::split_paths(&path) {
-        for extension in &extensions {
-            let mut filename = OsString::from(name);
-            filename.push(extension);
-            let candidate = directory.join(filename);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
+fn number<T: std::str::FromStr>(
+    values: &mut impl Iterator<Item = OsString>,
+    flag: &str,
+) -> rig::Result<T> {
+    let text = utf8(values, flag)?;
+    text.parse()
+        .map_err(|_| format!("{flag} takes a number, not {text:?}").into())
 }

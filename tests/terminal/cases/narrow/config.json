@@ -1,0 +1,7 @@
+{
+  "theme": "rainbow",
+  "rows": [
+    { "left": [{ "text": "a-long-left-label-that-overflows" }], "right": [{ "text": "right-one" }, { "padding": 0 }] },
+    { "left": ["shell", "cmd"] }
+  ]
+}
