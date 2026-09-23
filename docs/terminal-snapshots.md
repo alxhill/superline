@@ -166,10 +166,24 @@ scripts/site-screenshots/generate.sh          # every scene
 scripts/site-screenshots/generate.sh pr usage # just these
 ```
 
+The [configuration reference](https://alxhill.github.io/superline/config.html)
+is driven by `scripts/site-screenshots/components.json`. Each entry lists a
+component's example variants: the row (or whole config) to render, the fixture
+to render it in, and any commands to type first. The `components` scene
+captures every variant to `site/img/config/`, and `render_examples.py` fills
+the matching `<div class="example" data-example="<component>/<variant>">`
+placeholders in `site/config.html` with the screenshot and the JSON it came
+from. To add an example, add a variant to the manifest and a placeholder to
+the page, then run:
+
+```bash
+COMPONENTS="git" scripts/site-screenshots/generate.sh components
+```
+
 Besides the dependencies above it needs `fish`, `jq`, `uv`, and
 [Symbols Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1)
 (`NerdFontsSymbolsOnly.zip`) 3.4 or newer, which supplies the Claude and Codex
 glyphs when the installed Meslo predates them. The script also updates the
-image sizes in `site/index.html`. Commit the regenerated PNGs; the `Website`
+image sizes on both pages. Commit the regenerated PNGs; the `Website`
 workflow publishes `site/` to GitHub Pages on every push to `main` that
 touches it.

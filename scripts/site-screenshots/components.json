@@ -1,0 +1,692 @@
+{
+  "rows": {
+    "cols": 90,
+    "variants": [
+      {
+        "name": "two-rows",
+        "label": "Two rows, both sides",
+        "fixture": "git-dirty",
+        "config": {
+          "theme": "rainbow",
+          "rows": [
+            {
+              "left": [
+                {
+                  "cwd": {
+                    "max_length": 40,
+                    "wanted_seg_num": 3
+                  }
+                },
+                "git"
+              ],
+              "right": [
+                {
+                  "separator": "round"
+                },
+                "os",
+                {
+                  "time": {
+                    "format": "%H:%M"
+                  }
+                },
+                {
+                  "padding": 0
+                }
+              ]
+            },
+            {
+              "left": [
+                "shell",
+                "cmd"
+              ],
+              "right": [
+                {
+                  "separator": "round"
+                },
+                "cargo",
+                {
+                  "padding": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "separator": {
+    "variants": [
+      {
+        "name": "chevron",
+        "label": "chevron (default)",
+        "row": {
+          "left": [
+            {
+              "separator": "chevron"
+            },
+            "os",
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 3
+              }
+            },
+            "shell"
+          ]
+        }
+      },
+      {
+        "name": "round",
+        "label": "round",
+        "row": {
+          "left": [
+            {
+              "separator": "round"
+            },
+            "os",
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 3
+              }
+            },
+            "shell"
+          ]
+        }
+      },
+      {
+        "name": "angle_line",
+        "label": "angle_line",
+        "row": {
+          "left": [
+            {
+              "separator": "angle_line"
+            },
+            "os",
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 3
+              }
+            },
+            "shell"
+          ]
+        }
+      },
+      {
+        "name": "none",
+        "label": "none",
+        "row": {
+          "left": [
+            {
+              "separator": "none"
+            },
+            "os",
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 3
+              }
+            },
+            "shell"
+          ]
+        }
+      },
+      {
+        "name": "mixed",
+        "label": "Changing style mid-row",
+        "row": {
+          "left": [
+            "os",
+            {
+              "separator": "round"
+            },
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 3
+              }
+            },
+            {
+              "separator": "angle_line"
+            },
+            "shell"
+          ]
+        }
+      }
+    ]
+  },
+  "spacers": {
+    "variants": [
+      {
+        "name": "small",
+        "label": "small_spacer",
+        "row": {
+          "left": [
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 1
+              }
+            },
+            "small_spacer",
+            "shell"
+          ]
+        }
+      },
+      {
+        "name": "large",
+        "label": "large_spacer",
+        "row": {
+          "left": [
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 1
+              }
+            },
+            "large_spacer",
+            "shell"
+          ]
+        }
+      }
+    ]
+  },
+  "padding": {
+    "variants": [
+      {
+        "name": "blocks",
+        "label": "Splitting a row into blocks",
+        "row": {
+          "left": [
+            {
+              "separator": "round"
+            },
+            {
+              "padding": 1
+            },
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 1
+              }
+            },
+            {
+              "padding": 3
+            },
+            "os",
+            "shell",
+            {
+              "padding": 0
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "cwd": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal",
+        "fixture": "deep",
+        "row": {
+          "left": [
+            {
+              "cwd": {
+                "max_length": 60,
+                "wanted_seg_num": 5
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options",
+        "fixture": "symlink",
+        "row": {
+          "left": [
+            {
+              "cwd": {
+                "max_length": 30,
+                "wanted_seg_num": 2,
+                "resolve_symlinks": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "read_only": {
+    "variants": [
+      {
+        "name": "default",
+        "label": "In a read-only directory",
+        "fixture": "readonly",
+        "row": {
+          "left": [
+            "read_only",
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 2
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "cmd": {
+    "variants": [
+      {
+        "name": "default",
+        "label": "After a success, then a failure",
+        "row": {
+          "left": [
+            "cmd"
+          ]
+        },
+        "commands": [
+          "true",
+          "false"
+        ]
+      }
+    ]
+  },
+  "last_cmd_duration": {
+    "variants": [
+      {
+        "name": "default",
+        "label": "min_run_time: 500",
+        "row": {
+          "left": [
+            {
+              "last_cmd_duration": {
+                "min_run_time": 500
+              }
+            },
+            "cmd"
+          ]
+        },
+        "commands": [
+          "sleep 0.2",
+          "sleep 1.5"
+        ]
+      }
+    ]
+  },
+  "shell": {
+    "variants": [
+      {
+        "name": "default",
+        "label": "Default",
+        "row": {
+          "left": [
+            "shell"
+          ]
+        }
+      }
+    ]
+  },
+  "jobs": {
+    "variants": [
+      {
+        "name": "default",
+        "label": "With two background jobs",
+        "row": {
+          "left": [
+            "jobs",
+            "cmd"
+          ]
+        },
+        "commands": [
+          "sleep 60 &",
+          "sleep 60 &"
+        ]
+      }
+    ]
+  },
+  "git": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal",
+        "fixture": "git-dirty",
+        "row": {
+          "left": [
+            "git"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options, detached HEAD",
+        "fixture": "git-detached",
+        "row": {
+          "left": [
+            {
+              "git": {
+                "status_timeout_ms": 500,
+                "backend": "cli"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "pr": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal: open PR, checks passing",
+        "fixture": "pr",
+        "row": {
+          "left": [
+            "git",
+            "pr"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options: CI dot hidden",
+        "fixture": "pr",
+        "row": {
+          "left": [
+            "git",
+            {
+              "pr": {
+                "status": false
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "ai_usage": {
+    "cols": 110,
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal",
+        "row": {
+          "left": [
+            {
+              "ai_usage": {
+                "provider": "claude"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "codex",
+        "label": "Codex as a sparkline",
+        "row": {
+          "left": [
+            {
+              "ai_usage": {
+                "provider": "codex",
+                "display": "sparkline"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options",
+        "row": {
+          "left": [
+            {
+              "ai_usage": {
+                "provider": "claude",
+                "session": true,
+                "weekly": true,
+                "fable": true,
+                "display": "capped_bar",
+                "threshold": 60,
+                "session_label": "5h ",
+                "weekly_label": " 7d ",
+                "fable_label": " F ",
+                "credits": true,
+                "credits_display": "numeric",
+                "credits_label": " C ",
+                "credits_only_when_limited": false,
+                "session_time_remaining": true,
+                "session_time_remaining_only_at_limit": 0
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "python": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal, in an active venv",
+        "fixture": "python",
+        "setup": "set -gx VIRTUAL_ENV $PWD/.venv",
+        "row": {
+          "left": [
+            "python"
+          ]
+        }
+      },
+      {
+        "name": "project",
+        "label": "Minimal, pinned project without a venv",
+        "fixture": "python",
+        "row": {
+          "left": [
+            "python"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options",
+        "fixture": "python",
+        "setup": "set -gx VIRTUAL_ENV $PWD/.venv",
+        "row": {
+          "left": [
+            {
+              "python": {
+                "version": true,
+                "venv": false
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "node": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal",
+        "fixture": "node",
+        "row": {
+          "left": [
+            "node"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options",
+        "fixture": "node",
+        "row": {
+          "left": [
+            {
+              "node": {
+                "version": false
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "java": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal",
+        "fixture": "java",
+        "row": {
+          "left": [
+            "java"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options",
+        "fixture": "java",
+        "row": {
+          "left": [
+            {
+              "java": {
+                "version": true,
+                "jdk": false
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "cargo": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal, rust-toolchain.toml",
+        "fixture": "cargo",
+        "row": {
+          "left": [
+            "cargo"
+          ]
+        }
+      },
+      {
+        "name": "mise",
+        "label": "Minimal, pinned by mise",
+        "fixture": "cargo-mise",
+        "row": {
+          "left": [
+            "cargo"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options",
+        "fixture": "cargo",
+        "row": {
+          "left": [
+            {
+              "cargo": {
+                "version": false
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "os": {
+    "variants": [
+      {
+        "name": "default",
+        "label": "Default",
+        "row": {
+          "left": [
+            "os"
+          ]
+        }
+      }
+    ]
+  },
+  "memory_usage": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal",
+        "row": {
+          "left": [
+            "memory_usage"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options",
+        "row": {
+          "left": [
+            {
+              "memory_usage": {
+                "threshold": 10
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "time": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Minimal",
+        "row": {
+          "left": [
+            "time"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options",
+        "row": {
+          "left": [
+            {
+              "time": {
+                "format": "%a %d %b %H:%M"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "text": {
+    "variants": [
+      {
+        "name": "default",
+        "label": "Default",
+        "row": {
+          "left": [
+            {
+              "text": "hello 🌈"
+            },
+            {
+              "cwd": {
+                "max_length": 40,
+                "wanted_seg_num": 1
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

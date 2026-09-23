@@ -2,7 +2,7 @@
 # under "$work/<name>/home" and calls `capture` with the tape body on stdin.
 # shellcheck shell=bash
 
-ALL_SCENES=(hero git pr languages status usage themes separators widgets)
+ALL_SCENES=(hero git pr languages status usage themes separators widgets components)
 
 configs="$here/configs"
 
@@ -169,4 +169,112 @@ Type "sleep 60 &; sleep 60 &"
 Enter
 Sleep 1.5s
 TAPE
+}
+
+# Builds a named fixture under a component scene's home and sets FIXTURE_DIR
+# (relative to the home) and FIXTURE_PRE (a hidden fish command, or empty).
+component_fixture() {
+  local home=$1 fixture=$2 dir
+  FIXTURE_PRE=""
+  case $fixture in
+    empty)
+      FIXTURE_DIR=code/superline
+      ;;
+    deep)
+      FIXTURE_DIR=code/superline/src/modules/git
+      ;;
+    symlink)
+      mkdir -p "$home/code/superline/src/modules/git" "$home/work"
+      ln -s "$home/code/superline/src/modules/git" "$home/work/current"
+      FIXTURE_DIR=work/current
+      ;;
+    readonly)
+      FIXTURE_DIR=code/vendor/lib
+      mkdir -p "$home/$FIXTURE_DIR"
+      chmod 555 "$home/$FIXTURE_DIR"
+      ;;
+    git-dirty)
+      FIXTURE_DIR=code/superline
+      dir="$home/$FIXTURE_DIR"
+      git_repo_with_upstream "$dir" 2 1 main
+      printf 'a\n' >"$dir/staged.rs" && git -C "$dir" add staged.rs
+      echo "changed" >>"$dir/README.md"
+      touch "$dir/notes.md"
+      printf '[package]\nname = "superline"\n' >"$dir/Cargo.toml"
+      printf '[toolchain]\nchannel = "1.90.0"\n' >"$dir/rust-toolchain.toml"
+      ;;
+    git-detached)
+      FIXTURE_DIR=code/superline
+      git_repo_with_upstream "$home/$FIXTURE_DIR" 0 0 main
+      git -C "$home/$FIXTURE_DIR" checkout --quiet --detach main
+      ;;
+    pr)
+      FIXTURE_DIR=code/superline
+      git_repo "$home/$FIXTURE_DIR"
+      git -C "$home/$FIXTURE_DIR" switch --quiet -c feat/usage-sparklines
+      FIXTURE_PRE="superline show fish -s 0 -c 90 >/dev/null; sleep 2"
+      ;;
+    python)
+      FIXTURE_DIR=code/api
+      dir="$home/$FIXTURE_DIR"
+      mkdir -p "$dir/.venv"
+      printf '[project]\nname = "api"\n' >"$dir/pyproject.toml"
+      echo "3.13.7" >"$dir/.python-version"
+      printf 'home = /usr/bin\nversion_info = 3.13.7\n' >"$dir/.venv/pyvenv.cfg"
+      ;;
+    node)
+      FIXTURE_DIR=code/web
+      mkdir -p "$home/$FIXTURE_DIR"
+      echo "22.19.0" >"$home/$FIXTURE_DIR/.nvmrc"
+      ;;
+    java)
+      FIXTURE_DIR=code/service
+      mkdir -p "$home/$FIXTURE_DIR"
+      echo "java=21.0.8-tem" >"$home/$FIXTURE_DIR/.sdkmanrc"
+      # What sdkman's auto-env exports on entering the directory.
+      FIXTURE_PRE='set -gx SDKMAN_ENV $PWD'
+      ;;
+    cargo)
+      FIXTURE_DIR=code/engine
+      rust_project "$home/$FIXTURE_DIR"
+      ;;
+    cargo-mise)
+      FIXTURE_DIR=code/engine
+      rust_project "$home/$FIXTURE_DIR"
+      rm "$home/$FIXTURE_DIR/rust-toolchain.toml"
+      printf '[tools]\nrust = "1.90.0"\n' >"$home/$FIXTURE_DIR/mise.toml"
+      ;;
+    *)
+      echo "unknown fixture $fixture" >&2
+      return 1
+      ;;
+  esac
+}
+
+# One screenshot per example variant in components.json, written to
+# site/img/config/<component>-<variant>.png. COMPONENTS limits it to some
+# components.
+scene_components() {
+  local manifest="$here/components.json" id variant fixture cols name home query setup
+  jq -r 'to_entries[] | .key as $id | (.value.cols // 90) as $cols
+    | .value.variants[] | [$id, .name, (.fixture // "empty"), $cols] | @tsv' "$manifest" |
+    while IFS=$'\t' read -r id variant fixture cols; do
+      if [[ -n ${COMPONENTS:-} && " $COMPONENTS " != *" $id "* ]]; then
+        continue
+      fi
+      name="config/$id-$variant"
+      home="$work/$name/home"
+      mkdir -p "$home"
+      seed_usage "$home"
+      component_fixture "$home" "$fixture"
+      query='.[$id].variants[] | select(.name == $variant)'
+      jq --arg id "$id" --arg variant "$variant" \
+        "$query | (.config // {theme: \"rainbow\", rows: [.row]}) | .update = {disable: true}" \
+        "$manifest" >"$work/$id-$variant.json"
+      setup=$(jq -r --arg id "$id" --arg variant "$variant" "$query | .setup // empty" "$manifest")
+      PRE="${FIXTURE_PRE:-true}; ${setup:-true}" capture "$name" "$cols" 10 "$work/$id-$variant.json" "$FIXTURE_DIR" < <(
+        jq -r --arg id "$id" --arg variant "$variant" \
+          "$query | .commands // [] | .[] | \"Type \\(tojson)\nEnter\nSleep 2.5s\"" "$manifest"
+      )
+    done
 }
