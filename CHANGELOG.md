@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/alxhill/superline/compare/v0.19.2...v0.20.0) - 2026-09-24
+
+### Added
+
+- [**breaking**] remove the angle_line separator ([#135](https://github.com/alxhill/superline/pull/135))
+
+### Fixed
+
+- set up the bash prompt on bash 3.2 and don't panic when init's stdout is closed ([#142](https://github.com/alxhill/superline/pull/142))
+- count wide characters as two columns when aligning prompts ([#141](https://github.com/alxhill/superline/pull/141))
+- read cmd failed_fg and failed_bg from the matching theme keys ([#137](https://github.com/alxhill/superline/pull/137))
+
+### Other
+
+- terminal snapshot tests from config.json + VHS tape cases ([#140](https://github.com/alxhill/superline/pull/140))
+- publish a static x86_64-unknown-linux-musl release binary ([#132](https://github.com/alxhill/superline/pull/132))
+- space out stacked rows in the website screenshots ([#139](https://github.com/alxhill/superline/pull/139))
+- list each widget's theme options in the configuration reference ([#138](https://github.com/alxhill/superline/pull/138))
+
 ## [0.19.2](https://github.com/alxhill/superline/compare/v0.19.1...v0.19.2) - 2026-09-23
 
 ### Other
