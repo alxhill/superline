@@ -137,10 +137,10 @@ impl GitStats {
 /// Label for a detached HEAD. A worktree checked out at a branch tip without
 /// a branch of its own (`git worktree add --detach`, `git checkout origin/main`)
 /// is what `git status` calls "HEAD detached at main"; it shows as
-/// `<hash> -> main`. Once HEAD moves off every branch tip only the hash remains.
+/// `<hash>  main`. Once HEAD moves off every branch tip only the hash remains.
 fn detached_label(branch: Option<String>, hash: &str) -> String {
     match branch {
-        Some(branch) => format!("{hash} -> {branch}"),
+        Some(branch) => format!("{hash} {DETACHED_ARROW} {branch}"),
         None => hash.to_owned(),
     }
 }
@@ -461,6 +461,7 @@ const FANCY_STAR: &str = "\u{273C}";
 const GITHUB_LOGO: &str = "\u{e709}";
 const GIT_ICON: &str = "\u{e0a0}";
 const WORKTREE_ICON: &str = "\u{f1bb}";
+const DETACHED_ARROW: &str = "\u{f432}";
 
 /// Git status for one repository. The status walk is always attempted live
 /// (see [`Git::with_config`]); the cache only stands in when it takes too
@@ -758,7 +759,7 @@ mod tests {
     fn detached_label_points_at_the_branch_when_known() {
         assert_eq!(
             detached_label(Some("main".into()), "abc1234"),
-            "abc1234 -> main"
+            "abc1234 \u{f432} main"
         );
         assert_eq!(detached_label(None, "abc1234"), "abc1234");
     }
