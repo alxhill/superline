@@ -51,8 +51,9 @@ pub fn get_branch_name(s: &str) -> Option<&str> {
 
 /// `None` when `git` could not be run at all; `Some("Big Bang")` when it ran
 /// but found no commit (an unborn HEAD).
-pub fn get_detached_branch_name() -> Option<String> {
+pub fn get_detached_branch_name(path: &Path) -> Option<String> {
     let child = Command::new("git")
+        .current_dir(path)
         .args(["rev-parse", "--short", "HEAD"])
         .output()
         .ok()?;
@@ -62,7 +63,7 @@ pub fn get_detached_branch_name() -> Option<String> {
             .ok()?
             .split('\n')
             .next()?;
-        Some(detached_label(branch_at_head(), hash))
+        Some(detached_label(branch_at_head(path), hash))
     } else {
         Some(String::from("Big Bang"))
     }
@@ -71,30 +72,42 @@ pub fn get_detached_branch_name() -> Option<String> {
 /// The branch whose tip is HEAD, for labelling a detached HEAD. Local branches
 /// are preferred; remote-tracking branches (`origin/main`) are only consulted
 /// when no local branch matches.
-fn branch_at_head() -> Option<String> {
+fn branch_at_head(path: &Path) -> Option<String> {
     ["refs/heads/", "refs/remotes/"]
         .into_iter()
         .find_map(|prefix| {
+            // `%(refname:short)` would shorten `refs/remotes/origin/HEAD` to
+            // `origin`, so names are stripped here instead.
             let output = Command::new("git")
+                .current_dir(path)
                 .args([
                     "for-each-ref",
                     "--points-at=HEAD",
-                    "--format=%(refname:short)",
+                    "--format=%(refname) %(symref)",
                     prefix,
                 ])
                 .output()
                 .ok()
                 .filter(|out| out.status.success())?;
             let stdout = String::from_utf8(output.stdout).ok()?;
-            preferred_branch(
-                stdout
-                    .lines()
-                    .map(str::trim)
-                    // `origin/HEAD` is a symbolic ref, not a branch of its own.
-                    .filter(|name| !name.is_empty() && !name.ends_with("/HEAD"))
-                    .map(ToOwned::to_owned),
-            )
+            preferred_branch(branches_in(&stdout, prefix))
         })
+}
+
+/// Branch names from `for-each-ref --format='%(refname) %(symref)'` output,
+/// with `prefix` stripped. Symbolic refs such as `origin/HEAD` are not
+/// branches of their own and are skipped, as the gitoxide backend does.
+fn branches_in<'a>(stdout: &'a str, prefix: &'a str) -> impl Iterator<Item = String> + 'a {
+    stdout.lines().filter_map(move |line| {
+        let (refname, symref) = line.split_once(' ').unwrap_or((line, ""));
+        if !symref.trim().is_empty() {
+            return None;
+        }
+        refname
+            .strip_prefix(prefix)
+            .filter(|name| !name.is_empty())
+            .map(ToOwned::to_owned)
+    })
 }
 
 /// Whether the repository has any remote configured, and the browser URL of
@@ -113,14 +126,18 @@ fn branch_at_head() -> Option<String> {
 /// deleted, and is absent on a branch that was never pushed even though the
 /// repo has a remote.
 pub(super) fn remote_info(path: &Path) -> (bool, Option<String>) {
-    super::gitoxide::remote_info(path).unwrap_or_else(remote_info_from_cli)
+    super::gitoxide::remote_info(path).unwrap_or_else(|| remote_info_from_cli(path))
 }
 
 /// [`remote_info`] via a single `git remote -v`. Both remote names and their
 /// URLs come out of the one call: `git remote` for the names plus
 /// `git remote get-url` for the chosen one would cost two more spawns.
-fn remote_info_from_cli() -> (bool, Option<String>) {
-    let Ok(output) = Command::new("git").args(["remote", "-v"]).output() else {
+fn remote_info_from_cli(path: &Path) -> (bool, Option<String>) {
+    let Ok(output) = Command::new("git")
+        .current_dir(path)
+        .args(["remote", "-v"])
+        .output()
+    else {
         return (false, None);
     };
     if !output.status.success() {
@@ -166,6 +183,7 @@ pub fn run_git(path: &Path) -> GitStats {
 
 fn try_run_git(path: &Path) -> Option<GitStats> {
     let output = Command::new("git")
+        .current_dir(path)
         .args(["status", "--porcelain", "-b"])
         .output()
         .ok()?
@@ -195,7 +213,7 @@ fn try_run_git(path: &Path) -> Option<GitStats> {
             }
             String::from(branch_name)
         } else {
-            get_detached_branch_name()?
+            get_detached_branch_name(path)?
         }
     };
     let mut add_file = |entry: &str| {
@@ -234,7 +252,20 @@ fn try_run_git(path: &Path) -> Option<GitStats> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_remote_listing;
+    use super::{branches_in, parse_remote_listing};
+
+    #[test]
+    fn symbolic_remote_heads_are_not_branches() {
+        let stdout = "\
+refs/remotes/origin/HEAD refs/remotes/origin/main
+refs/remotes/origin/main 
+refs/remotes/upstream/feat/x 
+";
+        assert_eq!(
+            branches_in(stdout, "refs/remotes/").collect::<Vec<_>>(),
+            ["origin/main", "upstream/feat/x"]
+        );
+    }
 
     #[test]
     fn a_repo_without_remotes_has_neither_flag_nor_url() {

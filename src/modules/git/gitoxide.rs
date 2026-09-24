@@ -274,6 +274,17 @@ mod tests {
         dir
     }
 
+    /// The label both backends should give HEAD when detached at `branch`.
+    fn detached(repo: &Path, branch: &str) -> String {
+        let output = Command::new("git")
+            .current_dir(repo)
+            .args(["rev-parse", "--short", "HEAD"])
+            .output()
+            .unwrap();
+        let hash = String::from_utf8(output.stdout).unwrap();
+        super::detached_label(Some(branch.to_owned()), hash.trim())
+    }
+
     /// The CLI backend takes its remote fields from here rather than spending a
     /// `git remote` spawn on them, so they have to agree with what a status
     /// walk of the same repository reports.
@@ -337,13 +348,9 @@ mod tests {
         let repo = init_repo();
         git(&repo, &["checkout", "-q", "--detach"]);
 
-        let stats = run_git(&repo);
-        assert!(
-            stats.branch_name.ends_with(" -> main"),
-            "expected `<hash> -> main`, got {:?}",
-            stats.branch_name
-        );
-        assert!(stats.branch_name.len() > " -> main".len());
+        let expected = detached(&repo, "main");
+        assert_eq!(run_git(&repo).branch_name, expected);
+        assert_eq!(super::super::process::run_git(&repo).branch_name, expected);
 
         std::fs::remove_dir_all(&repo).ok();
     }
@@ -356,7 +363,7 @@ mod tests {
 
         let stats = run_git(&repo);
         assert!(
-            !stats.branch_name.contains("->") && stats.branch_name.len() >= 7,
+            !stats.branch_name.contains(' ') && stats.branch_name.len() >= 7,
             "expected a bare hash, got {:?}",
             stats.branch_name
         );
@@ -368,6 +375,14 @@ mod tests {
     fn detached_head_at_a_remote_tip_falls_back_to_the_remote_branch() {
         let repo = init_repo();
         git(&repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        git(
+            &repo,
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        );
         // Move `main` on so only the remote-tracking ref matches the old tip.
         git(&repo, &["commit", "-q", "--allow-empty", "-m", "ahead"]);
         git(
@@ -375,12 +390,9 @@ mod tests {
             &["checkout", "-q", "--detach", "refs/remotes/origin/main"],
         );
 
-        let stats = run_git(&repo);
-        assert!(
-            stats.branch_name.ends_with(" -> origin/main"),
-            "expected `<hash> -> origin/main`, got {:?}",
-            stats.branch_name
-        );
+        let expected = detached(&repo, "origin/main");
+        assert_eq!(run_git(&repo).branch_name, expected);
+        assert_eq!(super::super::process::run_git(&repo).branch_name, expected);
 
         std::fs::remove_dir_all(&repo).ok();
     }
