@@ -104,15 +104,15 @@ fn run() -> rig::Result<()> {
     }
     shells.sort_by_key(|shell| shell.name());
     shells.dedup();
-    shells.retain(|shell| {
-        let available = shell.is_available();
-        if !available {
-            eprintln!("skipping {}: not on PATH", shell.name());
+    shells.retain(|shell| match shell.unavailable() {
+        None => true,
+        Some(reason) => {
+            eprintln!("skipping {}: {reason}", shell.name());
+            false
         }
-        available
     });
     if shells.is_empty() {
-        return Err("none of the requested shells is on PATH".into());
+        return Err("none of the requested shells is available".into());
     }
 
     let vhs = match vhs {

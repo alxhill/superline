@@ -381,3 +381,81 @@ fn nushell_prompt_closure_renders_end_to_end() {
         "nushell prompt end-to-end failed\nstdout:\n{stdout}\nstderr:\n{stderr}",
     );
 }
+
+/// bash 3.2 (the macOS `/bin/bash`) closes `source <(superline init bash)`'s
+/// pipe without reading it, so `init` must not panic on a broken pipe.
+#[test]
+fn init_exits_quietly_when_stdout_is_closed() {
+    let (reader, writer) = std::io::pipe().expect("create pipe");
+    drop(reader);
+    let output = Command::new(BIN)
+        .args(["init", "bash"])
+        .stdout(writer)
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .expect("failed to run `superline init bash`");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("panicked"), "init panicked:\n{stderr}");
+}
+
+/// `$BASH_VERSION` of `bash`, or `None` when it cannot be run.
+#[cfg(unix)]
+fn bash_version(bash: &str) -> Option<String> {
+    let output = Command::new(bash)
+        .args(["-c", "echo $BASH_VERSION"])
+        .output()
+        .ok()?;
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (output.status.success() && !version.is_empty()).then_some(version)
+}
+
+/// The `.bashrc` line `superline install bash` writes must set the prompt up,
+/// including before bash has set `$COLUMNS` (bash 3.2 leaves it unset). Runs
+/// the `bash` on `PATH` and, when it is a different version, `/bin/bash`, which
+/// is bash 3.2 on macOS.
+#[cfg(unix)]
+#[test]
+fn bash_install_snippet_renders_the_prompt() {
+    let mut versions: Vec<String> = Vec::new();
+    for bash in ["bash", "/bin/bash"] {
+        let Some(version) = bash_version(bash) else {
+            eprintln!("skipping {bash}: not available");
+            continue;
+        };
+        if versions.contains(&version) {
+            continue;
+        }
+        versions.push(version.clone());
+
+        let home = scratch_home("bash-install");
+        let bin_dir = PathBuf::from(BIN).parent().unwrap().to_path_buf();
+        let path = format!(
+            "{}:{}",
+            bin_dir.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let output = Command::new(bash)
+            .args([
+                "--norc",
+                "--noprofile",
+                "-c",
+                r#"eval "$(superline init bash)"; _update_ps1; echo "$SUPERLINE_BASH|$PROMPT_COMMAND|$PS1""#,
+            ])
+            .env("PATH", path)
+            .env("HOME", &home)
+            .env_remove("COLUMNS")
+            .output()
+            .expect("failed to run bash");
+        let _ = fs::remove_dir_all(&home);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stdout.starts_with("1|_update_ps1") && stdout.contains("\\["),
+            "bash {version} init did not render the prompt; stdout:\n{stdout}\nstderr:\n{stderr}",
+        );
+        assert!(
+            stderr.is_empty(),
+            "bash {version} init wrote to stderr:\n{stderr}"
+        );
+    }
+}

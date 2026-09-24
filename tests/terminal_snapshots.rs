@@ -91,7 +91,7 @@ const TESTS: &[Test] = &[
 /// The last row of the shared config, and most case configs: the shell name
 /// followed by the `cmd` widget's success mark.
 fn ready(c: &Capture) -> String {
-    format!("{}{SEP}{OK}", c.shell.name())
+    format!("{}{SEP}{OK}", c.shell.program())
 }
 
 /// A line ending `margin` columns from the right edge.
@@ -107,7 +107,7 @@ fn check_flush(s: &Snapshot, c: &Capture, needle: &str, margins: std::ops::Range
 /// The success chevron, then a failing command's status below the intact
 /// previous prompt.
 fn status(c: &Capture) {
-    let shell = c.shell.name();
+    let shell = c.shell.program();
     let clean = c.snapshot("clean");
     clean.check(
         clean.text.contains(&format!("{shell}{SEP}{OK}{SEP}")),
@@ -212,7 +212,7 @@ fn continuation(c: &Capture) {
 fn no_newline(c: &Capture) {
     let after = c.snapshot("after");
     let joined = after.matches(r"partial[^\n]*superline-e2e");
-    if c.shell == Shell::Bash {
+    if c.shell.is_bash() {
         // Known bug: bash has no PROMPT_SP equivalent, so the first row starts
         // right after the unterminated output. Fixing it should flip this.
         after.check(
@@ -271,12 +271,15 @@ fn run(vhs: PathBuf) -> rig::Result<()> {
 
     let mut available = Vec::new();
     for shell in shells {
-        if shell.is_available() {
-            available.push(shell);
-        } else if require_all {
-            return Err(format!("{} is not on PATH", shell.name()).into());
-        } else {
-            println!("skipping {}: not on PATH", shell.name());
+        match shell.unavailable() {
+            None => {
+                if let Some(version) = shell.bash_version() {
+                    println!("{} is bash {version}", shell.name());
+                }
+                available.push(shell);
+            }
+            Some(reason) if require_all => return Err(reason.into()),
+            Some(reason) => println!("skipping {}: {reason}", shell.name()),
         }
     }
 
