@@ -522,6 +522,8 @@ fn spawn_child(kind: &str, source: &str) -> bool {
     let Ok(exe) = std::env::current_exe() else {
         return false;
     };
+    #[cfg(windows)]
+    stop_std_handles_inheriting();
     Command::new(exe)
         .arg("refresh")
         .arg(kind)
@@ -531,6 +533,39 @@ fn spawn_child(kind: &str, source: &str) -> bool {
         .stderr(Stdio::null())
         .spawn()
         .is_ok()
+}
+
+/// Nulling the child's stdio is not enough on Windows. `CreateProcess` runs
+/// with handle inheritance on, so the child also inherits every inheritable
+/// handle this process holds, and the shell hands us our stdout and stderr as
+/// inheritable pipe ends. The detached child would keep the prompt's pipe open,
+/// and PowerShell or bash would wait for it to finish the fetch (seconds, for a
+/// usage probe) before drawing the prompt. Clear the flag on our own copies so
+/// only the null handles reach the child. `Stdio::inherit` duplicates the
+/// handle with inheritance set, so children that do want our stdio still get
+/// it.
+#[cfg(all(windows, not(test)))]
+fn stop_std_handles_inheriting() {
+    use std::os::windows::io::{AsRawHandle, RawHandle};
+
+    const HANDLE_FLAG_INHERIT: u32 = 0x1;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn SetHandleInformation(handle: RawHandle, mask: u32, flags: u32) -> i32;
+    }
+
+    let handles = [
+        std::io::stdin().as_raw_handle(),
+        std::io::stdout().as_raw_handle(),
+        std::io::stderr().as_raw_handle(),
+    ];
+    for handle in handles {
+        if !handle.is_null() {
+            // Failure only brings back the wait this avoids.
+            unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) };
+        }
+    }
 }
 
 #[cfg(test)]
