@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/alxhill/superline/compare/v0.20.2...v0.21.0) - 2026-09-25
+
+### Added
+
+- enable auto-upgrade by default ([#154](https://github.com/alxhill/superline/pull/154))
+- download releases in-process with rustls, and cross-compile Linux builds with zigbuild ([#152](https://github.com/alxhill/superline/pull/152))
+- auto-upgrade prebuilt binaries in the background with update.auto ([#148](https://github.com/alxhill/superline/pull/148))
+- add superline upgrade to install the latest prebuilt release ([#147](https://github.com/alxhill/superline/pull/147))
+- publish static ARM Linux builds for the Raspberry Pi ([#150](https://github.com/alxhill/superline/pull/150))
+
+### Fixed
+
+- deflake the Windows CI tests ([#153](https://github.com/alxhill/superline/pull/153))
+
 ## [0.20.2](https://github.com/alxhill/superline/compare/v0.20.1...v0.20.2) - 2026-09-24
 
 ### Fixed
