@@ -60,12 +60,13 @@ cargo binstall superline
 
 Prebuilt binaries are published for macOS (Apple Silicon), Linux (x86-64, arm64 and 32-bit ARM) and Windows (x86-64).
 
-The x86-64 Linux and Windows builds need a CPU with AVX2 (Haswell or newer). For older CPUs, NASes such as Synology, or
-musl distros like Alpine, download the static `x86_64-unknown-linux-musl` build from the
+The Linux gnu builds run on any distro with glibc 2.17 or newer. The x86-64 Linux and Windows builds need a CPU with AVX2
+(Haswell or newer). For older CPUs, NASes such as Synology, or musl distros like Alpine, download the static
+`x86_64-unknown-linux-musl` build from the
 [releases page](https://github.com/alxhill/superline/releases), or run
 `cargo binstall superline --targets x86_64-unknown-linux-musl`.
 
-On a Raspberry Pi, or any ARM board whose distro predates glibc 2.34, use one of the static ARM builds:
+On a Raspberry Pi, a musl distro, or a 32-bit ARM OS, use one of the static ARM builds:
 
 | Board and OS | Target |
 |--------------|--------|

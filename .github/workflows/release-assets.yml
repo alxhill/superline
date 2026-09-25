@@ -37,33 +37,44 @@ jobs:
             # Every Apple silicon Mac is an M1 or later, so this baseline costs
             # no compatibility.
             rustflags: -Ctarget-cpu=apple-m1
-          # Built on the oldest supported runner image so the binary does not
-          # require a newer glibc than the distro the user is on.
+          # Every Linux target is cross-compiled with cargo-zigbuild, which
+          # uses Zig as the C compiler (for ring) and the linker, so one runner
+          # builds them all and no per-target C toolchain is needed. The gnu
+          # builds link against glibc 2.17, the oldest Rust supports, rather
+          # than whatever the runner image ships.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
+            os: ubuntu-latest
+            zig: true
+            glibc: "2.17"
             rustflags: -Ctarget-cpu=x86-64-v3
           # Static and on the baseline CPU, for machines the gnu build cannot
-          # run on: old glibc, musl distros, and CPUs without AVX2 such as the
-          # Atoms and Celerons in most NASes.
+          # run on: musl distros, and CPUs without AVX2 such as the Atoms and
+          # Celerons in most NASes.
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
+            zig: true
             rustflags: -Ctarget-cpu=x86-64
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-22.04-arm
+            os: ubuntu-latest
+            zig: true
+            glibc: "2.17"
             rustflags: ""
-          # Static ARM builds for older 32bit  Raspberry Pis and older distros
+          # Static ARM builds for the Raspberry Pi and musl distros.
           # 64-bit OS on a Pi 3, 4, 5 or Zero 2 W.
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
-            rustflags: -Clinker=rust-lld
+            zig: true
+            rustflags: ""
           # 32-bit OS on a Pi 2, 3, 4, 5 or Zero 2 W.
           - target: armv7-unknown-linux-musleabihf
             os: ubuntu-latest
-            rustflags: -Clinker=rust-lld
+            zig: true
+            rustflags: ""
           # ARMv6 with hard float: the Pi 1, Zero and Zero W.
           - target: arm-unknown-linux-musleabihf
             os: ubuntu-latest
-            rustflags: -Clinker=rust-lld
+            zig: true
+            rustflags: ""
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             rustflags: -Ctarget-cpu=x86-64-v3
@@ -87,8 +98,49 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install Zig
+        if: matrix.zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install cargo-zigbuild
+        if: matrix.zig
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.23.4
+
       - name: Build binary
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          ZIG: ${{ matrix.zig }}
+          # cargo-zigbuild reads the glibc version from a target suffix, and
+          # still writes to `target/<target>/`.
+          GLIBC: ${{ matrix.glibc }}
+        run: |
+          if [[ "$ZIG" == "true" ]]; then
+            cargo zigbuild --release --locked --target "${TARGET}${GLIBC:+.$GLIBC}"
+          else
+            cargo build --release --locked --target "$TARGET"
+          fi
+
+      # The glibc suffix is only a request: a dependency calling a newer glibc
+      # function would still raise the floor, so check what the binary needs.
+      - name: Check the glibc floor
+        if: matrix.glibc
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          GLIBC: ${{ matrix.glibc }}
+        run: |
+          needed=$(readelf -V "target/${TARGET}/release/superline" \
+            | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1)
+          echo "needs glibc ${needed}"
+          if [[ "$(printf '%s\n%s\n' "$needed" "$GLIBC" | sort -V | tail -1)" != "$GLIBC" ]]; then
+            echo "binary needs glibc ${needed}, newer than the ${GLIBC} it targets" >&2
+            exit 1
+          fi
 
       - name: Package and check the archive
         id: package

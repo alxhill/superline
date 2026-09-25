@@ -321,17 +321,59 @@ pub(crate) fn release_target() -> Option<&'static str> {
         } else {
             Some("x86_64-unknown-linux-musl")
         }
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        if cfg!(target_env = "gnu") {
+            Some("aarch64-unknown-linux-gnu")
+        } else {
+            Some("aarch64-unknown-linux-musl")
+        }
     } else if cfg!(all(
         target_os = "linux",
-        target_arch = "aarch64",
-        target_env = "gnu"
+        target_arch = "arm",
+        target_abi = "eabihf"
     )) {
-        Some("aarch64-unknown-linux-gnu")
+        arm_release_target(&machine()?)
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         supports_x86_64_v3().then_some("x86_64-pc-windows-msvc")
     } else {
         None
     }
+}
+
+/// The 32-bit ARM build for a `uname -m` machine name. Rust's `cfg` cannot
+/// tell ARMv6 from ARMv7, but the kernel can: a Pi 1 or Zero reports `armv6l`,
+/// and later boards `armv7l`, or `armv8l` when a 64-bit CPU runs a 32-bit OS.
+fn arm_release_target(machine: &str) -> Option<&'static str> {
+    let version: u32 = machine
+        .strip_prefix("armv")?
+        .trim_end_matches(|c: char| c.is_ascii_alphabetic())
+        .parse()
+        .ok()?;
+    match version {
+        6 => Some("arm-unknown-linux-musleabihf"),
+        7.. => Some("armv7-unknown-linux-musleabihf"),
+        _ => None,
+    }
+}
+
+/// The kernel's machine name, as `uname -m` prints it.
+#[cfg(unix)]
+fn machine() -> Option<String> {
+    // SAFETY: `uname` fills the zeroed struct with NUL-terminated strings.
+    let name = unsafe {
+        let mut name: libc::utsname = std::mem::zeroed();
+        if libc::uname(&mut name) != 0 {
+            return None;
+        }
+        name
+    };
+    let machine = unsafe { std::ffi::CStr::from_ptr(name.machine.as_ptr()) };
+    Some(machine.to_string_lossy().into_owned())
+}
+
+#[cfg(not(unix))]
+fn machine() -> Option<String> {
+    None
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -687,6 +729,35 @@ mod tests {
         }
         if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
             assert_eq!(target, None);
+        }
+    }
+
+    #[test]
+    fn arm_boards_get_the_build_for_their_architecture() {
+        assert_eq!(
+            arm_release_target("armv6l"),
+            Some("arm-unknown-linux-musleabihf")
+        );
+        assert_eq!(
+            arm_release_target("armv7l"),
+            Some("armv7-unknown-linux-musleabihf")
+        );
+        assert_eq!(
+            arm_release_target("armv8l"),
+            Some("armv7-unknown-linux-musleabihf")
+        );
+        assert_eq!(arm_release_target("armv5tel"), None);
+        assert_eq!(arm_release_target("aarch64"), None);
+        assert_eq!(arm_release_target("x86_64"), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_machine_name_is_read_from_the_kernel() {
+        let machine = machine().expect("uname should succeed");
+        assert!(!machine.is_empty());
+        if cfg!(target_arch = "aarch64") && cfg!(target_os = "linux") {
+            assert_eq!(machine, "aarch64");
         }
     }
 
