@@ -73,8 +73,7 @@ On a Raspberry Pi, or any ARM board whose distro predates glibc 2.34, use one of
 | Pi 2, 3, 4, 5 or Zero 2 W, 32-bit OS | `armv7-unknown-linux-musleabihf` |
 | Pi 1, Zero or Zero W | `arm-unknown-linux-musleabihf` |
 
-`uname -m` tells them apart: `aarch64`, `armv7l` or `armv6l`. Install with
-`cargo binstall superline --targets <target>`, or download the archive from the releases page and put `superline` on
+Install with `cargo binstall superline --targets <target>`, or download the archive from the releases page and put `superline` on
 your `$PATH`.
 
 Or build from source via crates.io (cargo's bin directory must be on your `$PATH`):
