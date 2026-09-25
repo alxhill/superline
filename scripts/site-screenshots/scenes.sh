@@ -163,7 +163,14 @@ TAPE
 }
 
 scene_widgets() {
-  mkdir -p "$work/widgets/home/code/superline"
+  mkdir -p "$work/widgets/home/code/superline" "$work/widgets/home/.kube"
+  cat >"$work/widgets/home/.kube/config" <<'YAML'
+current-context: prod
+contexts:
+- name: prod
+  context:
+    namespace: web
+YAML
   capture widgets 90 8 "$configs/widgets.json" code/superline <<'TAPE'
 Type "sleep 60 &; sleep 60 &"
 Enter
