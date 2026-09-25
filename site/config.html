@@ -65,6 +65,7 @@
       <a href="#identity"><code>username</code>, <code>hostname</code>, <code>local_ip</code></a>
       <a href="#battery"><code>battery</code></a>
       <a href="#sudo"><code>sudo</code></a>
+      <a href="#kubernetes"><code>kubernetes</code></a>
       <p class="toc-title">Reference</p>
       <a href="#themes">Themes</a>
       <a href="#commands">Commands</a>
@@ -890,6 +891,21 @@
     <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The key symbol.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>symbol</code></td><td>string</td><td>Symbol shown while credentials are cached.</td><td><code>"⚿"</code></td></tr></tbody></table>
   </details><!-- /theme -->
 <pre class="json"><code><span class="s">"sudo"</span></code></pre>
+      </section>
+
+      <section id="kubernetes" class="component">
+        <h3><code>kubernetes</code></h3>
+        <p>
+          The active Kubernetes context, followed by its namespace in parentheses when the context sets one. It reads
+          <code>$KUBECONFIG</code> (a list of kubeconfig files, merged the way <code>kubectl</code> merges them) or
+          <code>~/.kube/config</code>, so a <code>kubectl config use-context</code> shows on the next prompt. Hidden when
+          there is no readable kubeconfig or no current context. No config options.
+        </p>
+        <details class="theme-opts" data-theme="kubernetes">
+    <summary>Theme options <code>modules.kubernetes</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Context and namespace.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Icon before the context; "" hides it.</td><td>U+F10FE</td></tr></tbody></table>
+  </details><!-- /theme -->
+<pre class="json"><code><span class="s">"kubernetes"</span></code></pre>
       </section>
 
       <h2 class="group" id="themes">Themes</h2>
