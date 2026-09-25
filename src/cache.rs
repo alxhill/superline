@@ -937,11 +937,11 @@ mod tests {
         // that has not produced anything yet.
         let started = Instant::now();
         assert!(matches!(
-            cached.load_with_timeout(Duration::from_millis(50)),
+            cached.load_with_timeout(Duration::from_secs(5)),
             Lookup::Loading
         ));
         assert!(
-            started.elapsed() < Duration::from_millis(50),
+            started.elapsed() < Duration::from_secs(1),
             "a failure is known at once and must not be waited out"
         );
         // Anything cached before is served instead of the loading state.
