@@ -88,7 +88,9 @@ fn a_newer_release_is_announced_once_above_the_prompt() {
     let notice = lines.next().expect("the notice line");
     assert!(notice.contains("v99.0.0"), "stdout:\n{first}");
     assert!(
-        notice.contains("available: cargo ") || notice.contains("available: brew "),
+        ["superline upgrade", "cargo ", "brew "]
+            .iter()
+            .any(|command| notice.contains(&format!("available: {command}"))),
         "the notice should end with the upgrade command\nstdout:\n{first}"
     );
     assert!(
