@@ -85,7 +85,9 @@ cargo install superline
 To update a cargo or cargo-binstall install, run `superline upgrade`, which swaps in the latest release's prebuilt
 binary; Homebrew installs update with `brew upgrade superline`. Once a day superline checks for a new release
 and prints a notice above the prompt when there is one; set `"update": {"disable": true}` in the config to turn that
-off.
+off, or `"update": {"auto": true}` to have superline install the new release in the background and say so on the next
+prompt. Auto-upgrade applies to the prebuilt release binaries only: a binary built from source keeps showing the notice
+until `superline upgrade` replaces it with a prebuilt one.
 
 ### 3. Hook it into your shell
 

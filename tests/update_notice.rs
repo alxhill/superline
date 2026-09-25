@@ -53,6 +53,26 @@ impl Fixture {
         .expect("write update cache");
     }
 
+    /// Seeds the entry an automatic upgrade to this binary's version leaves
+    /// behind.
+    fn cache_auto_upgrade(&self, from: &str) -> PathBuf {
+        let path = self
+            .cache_dir
+            .join(format!("auto-upgrade-v{CURRENT_VERSION}.json"));
+        fs::write(
+            &path,
+            format!(
+                r#"{{"fetched_at":{},"value":{{"installed":{{"from":"{from}","url":"https://github.com/alxhill/superline/releases/tag/v{CURRENT_VERSION}"}}}}}}"#,
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("current time")
+                    .as_secs()
+            ),
+        )
+        .expect("write auto-upgrade cache");
+        path
+    }
+
     fn shown_marker(&self) -> PathBuf {
         self.cache_dir.join("update-latest.shown")
     }
@@ -160,4 +180,54 @@ fn the_notice_can_be_disabled() {
     let stdout = fixture.render();
     assert!(!stdout.contains("v99.0.0"), "stdout:\n{stdout}");
     assert!(!fixture.shown_marker().exists());
+}
+
+#[test]
+fn a_finished_auto_upgrade_is_announced_once() {
+    let fixture = Fixture::new("upgraded", r#","update":{"auto":true}"#);
+    fixture.cache_release(&format!("v{CURRENT_VERSION}"));
+    let entry = fixture.cache_auto_upgrade("0.0.1");
+
+    let first = fixture.render();
+    let notice = first.lines().next().expect("the notice line");
+    assert!(
+        notice.contains(&format!(
+            "superline upgraded from v0.0.1 to \x1b]8;;https://github.com/alxhill/superline/releases/tag/v{CURRENT_VERSION}\x1b\\v{CURRENT_VERSION}\x1b]8;;\x1b\\"
+        )),
+        "stdout:\n{first}"
+    );
+    assert!(!entry.exists(), "the announcement should be used up");
+
+    let second = fixture.render();
+    assert!(!second.contains("upgraded"), "stdout:\n{second}");
+}
+
+#[test]
+fn a_finished_auto_upgrade_is_not_announced_with_auto_off() {
+    let fixture = Fixture::new("upgraded-off", "");
+    fixture.cache_release(&format!("v{CURRENT_VERSION}"));
+    let entry = fixture.cache_auto_upgrade("0.0.1");
+
+    let stdout = fixture.render();
+    assert!(!stdout.contains("upgraded"), "stdout:\n{stdout}");
+    assert!(entry.exists());
+}
+
+#[test]
+fn a_source_build_with_auto_on_still_shows_the_notice() {
+    if option_env!("SUPERLINE_RELEASE_BUILD").is_some() {
+        return;
+    }
+    let fixture = Fixture::new("auto-source", r#","update":{"auto":true}"#);
+    fixture.cache_release("v99.0.0");
+
+    let stdout = fixture.render();
+    assert!(stdout.contains("available: "), "stdout:\n{stdout}");
+    assert!(
+        !fixture
+            .cache_dir
+            .join("auto-upgrade-v99.0.0.refresh")
+            .exists(),
+        "a source build should never start an upgrade"
+    );
 }

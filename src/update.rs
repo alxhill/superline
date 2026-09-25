@@ -6,6 +6,10 @@
 //! the cached release is newer than the running binary the notice is rendered
 //! on one prompt and then suppressed for another day, using the same locked
 //! marker file the cache uses to rate-limit refreshes.
+//!
+//! With `update.auto` on, a prebuilt binary installs the release itself
+//! instead (see [`crate::upgrade::AutoUpgrade`]), and the binary it installs
+//! announces the upgrade on its first prompt.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -13,12 +17,12 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{claim_slot, Cached, Source};
+use crate::cache::{claim_slot, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::platform::resolve_binary;
 use crate::terminal::{BgColor, FgColor, Hyperlink, Reset};
 use crate::themes::DefaultColors;
-use crate::upgrade::{is_homebrew, release_target};
+use crate::upgrade::{auto_upgrades, is_homebrew, release_target, AutoUpgrade, AutoUpgradeOutcome};
 
 pub(crate) const REPO: &str = "alxhill/superline";
 pub(crate) const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -79,28 +83,103 @@ impl Source for UpdateLookup {
 /// The notice line to print above the prompt, when a newer release is cached
 /// and the notice has not been shown in the last day. Reading the cache also
 /// schedules the daily background check.
-pub fn notice<S: UpdateScheme>() -> Option<String> {
+///
+/// With `auto` on, the notice instead announces an upgrade that just
+/// finished, and gives way to the install when one can run.
+pub fn notice<S: UpdateScheme>(auto: bool) -> Option<String> {
+    if auto {
+        if let Some(notice) = upgraded_notice::<S>() {
+            return Some(notice);
+        }
+    }
+
     let cached = Cached::new(UpdateLookup);
     let release = cached.load().ready()?;
     if !is_newer(&release.version, CURRENT_VERSION) {
         return None;
+    }
+
+    let mut failure = None;
+    if auto && auto_upgrades() {
+        let upgrade = Cached::new(AutoUpgrade {
+            tag: release.version.clone(),
+        });
+        match auto_upgrade_state(upgrade.load()) {
+            AutoUpgradeState::Running => return None,
+            AutoUpgradeState::Failed(error) => failure = Some(error),
+            AutoUpgradeState::Unavailable => {}
+        }
     }
     if !claim_slot(&shown_marker(cached.path()?), NOTICE_INTERVAL) {
         return None;
     }
 
     let command = upgrade_command();
+    let failure = failure
+        .map(|error| format!(" (auto-upgrade failed: {error})"))
+        .unwrap_or_default();
     Some(format!(
-        "{bg}{fg} {icon} {reset} superline {link} available: {command}",
-        bg = BgColor::from(S::update_bg()),
-        fg = FgColor::from(S::update_fg()),
-        icon = S::update_icon(),
-        reset = Reset,
+        "{} superline {link} available: {command}{failure}",
+        icon::<S>(),
         link = Hyperlink {
             url: &release.url,
             label: &release.version,
         },
     ))
+}
+
+/// Announces, once, that this binary was just installed by an automatic
+/// upgrade. The entry is removed as it is shown, and only the prompt whose
+/// removal succeeds prints it, so concurrent prompts do not repeat it.
+fn upgraded_notice<S: UpdateScheme>() -> Option<String> {
+    let cached = Cached::new(AutoUpgrade {
+        tag: format!("v{CURRENT_VERSION}"),
+    });
+    let AutoUpgradeOutcome::Installed { from, url } = cached.read()?.value else {
+        return None;
+    };
+    std::fs::remove_file(cached.path()?).ok()?;
+    Some(format!(
+        "{} superline upgraded from v{from} to {link}",
+        icon::<S>(),
+        link = Hyperlink {
+            url: &url,
+            label: &format!("v{CURRENT_VERSION}"),
+        },
+    ))
+}
+
+/// The icon that opens every notice, followed by a reset so the text after
+/// it is in the terminal's default colours.
+fn icon<S: UpdateScheme>() -> String {
+    format!(
+        "{bg}{fg} {icon} {reset}",
+        bg = BgColor::from(S::update_bg()),
+        fg = FgColor::from(S::update_fg()),
+        icon = S::update_icon(),
+        reset = Reset,
+    )
+}
+
+#[derive(Debug, PartialEq)]
+enum AutoUpgradeState {
+    /// An install is in flight, or finished and this prompt is still the old
+    /// binary's; either way the next prompt knows more.
+    Running,
+    /// The last attempt failed in a way retrying soon will not fix.
+    Failed(String),
+    /// This installation cannot upgrade itself.
+    Unavailable,
+}
+
+fn auto_upgrade_state(lookup: Lookup<AutoUpgradeOutcome>) -> AutoUpgradeState {
+    match lookup {
+        Lookup::Loading | Lookup::Ready(AutoUpgradeOutcome::Installed { .. }) => {
+            AutoUpgradeState::Running
+        }
+        Lookup::Ready(AutoUpgradeOutcome::Failed { error }) => AutoUpgradeState::Failed(error),
+        Lookup::Unavailable => AutoUpgradeState::Unavailable,
+    }
 }
 
 /// Records when the notice was last shown, next to the cache entry so
@@ -273,6 +352,31 @@ mod tests {
         assert!(parse_release(br#"{"tag_name":"latest","html_url":"x"}"#).is_none());
         assert!(parse_release(br#"{"message":"Not Found"}"#).is_none());
         assert!(parse_release(b"<html>").is_none());
+    }
+
+    #[test]
+    fn a_running_or_finished_auto_upgrade_hides_the_notice() {
+        assert_eq!(
+            auto_upgrade_state(Lookup::Loading),
+            AutoUpgradeState::Running
+        );
+        assert_eq!(
+            auto_upgrade_state(Lookup::Ready(AutoUpgradeOutcome::Installed {
+                from: "0.20.2".into(),
+                url: "x".into(),
+            })),
+            AutoUpgradeState::Running
+        );
+        assert_eq!(
+            auto_upgrade_state(Lookup::Ready(AutoUpgradeOutcome::Failed {
+                error: "no space left".into(),
+            })),
+            AutoUpgradeState::Failed("no space left".into())
+        );
+        assert_eq!(
+            auto_upgrade_state(Lookup::Unavailable),
+            AutoUpgradeState::Unavailable
+        );
     }
 
     #[test]

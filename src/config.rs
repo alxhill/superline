@@ -33,6 +33,10 @@ pub struct UpdateConfig {
     /// Skip the check and never show the notice.
     #[serde(default)]
     pub disable: bool,
+    /// Install a newer release in the background instead of only announcing
+    /// it. Only prebuilt release binaries upgrade themselves.
+    #[serde(default)]
+    pub auto: bool,
 }
 
 impl UpdateConfig {
@@ -941,6 +945,13 @@ mod tests {
             serde_json::from_str(r#"{"theme":"rainbow","rows":[],"update":{"disable":true}}"#)
                 .expect("config with the update block should parse");
         assert!(config.update.disable);
+        assert!(!config.update.auto);
+
+        let config: Config =
+            serde_json::from_str(r#"{"theme":"rainbow","rows":[],"update":{"auto":true}}"#)
+                .expect("config with auto upgrades should parse");
+        assert!(config.update.auto);
+        assert!(!config.update.disable);
 
         let json = serde_json::to_string(&Config::default()).expect("default config serializes");
         assert!(!json.contains("update"), "{json}");

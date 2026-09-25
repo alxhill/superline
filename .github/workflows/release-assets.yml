@@ -73,6 +73,9 @@ jobs:
       # RUSTFLAGS takes precedence over the config file, so setting it here is
       # what disables that, and what sets the CPU baseline per target.
       RUSTFLAGS: ${{ matrix.rustflags }}
+      # Marks the binary as a prebuilt release, which lets `update.auto`
+      # replace it with newer releases. Builds from source never get it.
+      SUPERLINE_RELEASE_BUILD: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
