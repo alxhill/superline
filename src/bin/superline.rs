@@ -236,6 +236,7 @@ enum PowerlineArgs {
     /// update checks) so the next prompt starts from a cold cache.
     ClearCaches,
     /// Replace this binary with the latest release's prebuilt one.
+    #[command(visible_alias = "update")]
     Upgrade(UpgradeArgs),
     /// Internal: refresh one cached lookup (git status, PR, AI usage, sudo,
     /// ...).

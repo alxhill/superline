@@ -557,7 +557,7 @@ module name and property.
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
 | `superline config` | Open the config file in `$EDITOR`. |
 | `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
-| `superline upgrade [VERSION]` | Replace the binary with the latest (or given) release's prebuilt one. `--check` only reports whether one is available. |
+| `superline upgrade [VERSION]` | Replace the binary with the latest (or given) release's prebuilt one. `--check` only reports whether one is available. Also available as `superline update`. |
 
 ## Debugging a slow prompt
 
