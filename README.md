@@ -90,9 +90,6 @@ off, or `"update": {"auto": true}` to have superline install the new release in 
 prompt. Auto-upgrade applies to the prebuilt release binaries only: a binary built from source keeps showing the notice
 until `superline upgrade` replaces it with a prebuilt one.
 
-The update check and `superline upgrade` talk to GitHub directly and honour `HTTPS_PROXY`. GitHub allows 60 anonymous
-API requests an hour per IP address; if a shared address runs out, set `GH_TOKEN` (or `GITHUB_TOKEN`) and superline sends
-it with its API requests.
 
 ### 3. Hook it into your shell
 
