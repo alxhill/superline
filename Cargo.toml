@@ -39,6 +39,16 @@ unicode-width = "0.2"
 # Verifies `superline upgrade` downloads. 0.10 shares its `digest` with the
 # `sha1` that gix already pulls in.
 sha2 = "0.10"
+# HTTPS for the update check and `superline upgrade` (see `src/http.rs`).
+# rustls does TLS over ring's crypto: the pure-Rust providers are either alpha
+# (rustls-rustcrypto) or need AVX2 (graviola), which the musl build must not.
+ureq = { version = "3.4", default-features = false, features = [
+    "rustls",
+    "platform-verifier",
+] }
+# Unpack release archives. `zlib-rs` is the inflate backend gix already uses.
+flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
+tar = { version = "0.4.46", default-features = false }
 
 # Unix-only: the `users` crate wraps libc's passwd/uid APIs, and `libc::access`
 # powers the read-only check. Windows uses the env-var / std fallbacks in
