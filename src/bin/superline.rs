@@ -14,6 +14,7 @@ use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadat
 use superline::debug;
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
+use superline::upgrade::{self, Installation, UpgradeError};
 use superline::{update, Powerline};
 
 const FISH_CONF: &str = r#"
@@ -234,6 +235,8 @@ enum PowerlineArgs {
     /// Remove all cached data (git status, PR lookups, AI usage, sudo and
     /// update checks) so the next prompt starts from a cold cache.
     ClearCaches,
+    /// Replace this binary with the latest release's prebuilt one.
+    Upgrade(UpgradeArgs),
     /// Internal: refresh one cached lookup (git status, PR, AI usage, sudo,
     /// ...).
     /// Spawned in the background by `superline::cache` - not intended to be
@@ -300,6 +303,19 @@ struct RefreshArgs {
 }
 
 #[derive(Debug, Args)]
+struct UpgradeArgs {
+    /// Install this release instead of the latest, e.g. `0.20.1`. May be older
+    /// than the running version.
+    version: Option<String>,
+    /// Only report whether a newer release is available.
+    #[arg(long)]
+    check: bool,
+    /// Reinstall even when already on that version.
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(Debug, Args)]
 struct InstallArgs {
     #[arg(value_enum)]
     shell: ShellArg,
@@ -350,6 +366,12 @@ fn main() {
         PowerlineArgs::Install(args) => install(args),
         PowerlineArgs::Config => open_config(),
         PowerlineArgs::ClearCaches => clear_caches(),
+        PowerlineArgs::Upgrade(args) => {
+            if let Err(error) = upgrade_binary(args) {
+                eprintln!("superline upgrade: {error}");
+                std::process::exit(1);
+            }
+        }
         PowerlineArgs::Refresh(args) => {
             superline::modules::run_refresh(&args.kind, &args.source);
         }
@@ -372,6 +394,42 @@ fn clear_caches() {
             std::process::exit(1);
         }
     }
+}
+
+fn upgrade_binary(args: UpgradeArgs) -> Result<(), UpgradeError> {
+    let current = env!("CARGO_PKG_VERSION");
+    let explicit = args.version.is_some();
+    let release = upgrade::find_release(args.version.as_deref())?;
+    let version = release.version();
+    if !upgrade::should_install(&release, explicit, args.force) {
+        if explicit {
+            println!("superline {current} is already installed");
+        } else {
+            println!("superline {current} is up to date");
+        }
+        return Ok(());
+    }
+    if args.check {
+        println!("superline {version} is available (running {current})");
+        match Installation::current() {
+            Ok(_) => println!("Run `superline upgrade` to install it."),
+            Err(error) => println!("{error}"),
+        }
+        return Ok(());
+    }
+
+    let installation = Installation::current()?;
+    println!(
+        "Upgrading superline {current} -> {version} ({})",
+        installation.target()
+    );
+    installation.install(&release)?;
+    println!(
+        "Installed superline {version} to {}\nRelease notes: {}",
+        installation.exe().display(),
+        release.url
+    );
+    Ok(())
 }
 
 fn install(args: InstallArgs) {

@@ -82,6 +82,11 @@ Or build from source via crates.io (cargo's bin directory must be on your `$PATH
 cargo install superline
 ```
 
+To update a cargo or cargo-binstall install, run `superline upgrade`, which swaps in the latest release's prebuilt
+binary; Homebrew installs update with `brew upgrade superline`. Once a day superline checks for a new release
+and prints a notice above the prompt when there is one; set `"update": {"disable": true}` in the config to turn that
+off.
+
 ### 3. Hook it into your shell
 
 ```bash
@@ -552,6 +557,7 @@ module name and property.
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
 | `superline config` | Open the config file in `$EDITOR`. |
 | `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
+| `superline upgrade [VERSION]` | Replace the binary with the latest (or given) release's prebuilt one. `--check` only reports whether one is available. |
 
 ## Debugging a slow prompt
 

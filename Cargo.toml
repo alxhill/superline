@@ -36,6 +36,9 @@ fs2 = "0.4"
 portable-pty = "0.9.0"
 regex = "1"
 unicode-width = "0.2"
+# Verifies `superline upgrade` downloads. 0.10 shares its `digest` with the
+# `sha1` that gix already pulls in.
+sha2 = "0.10"
 
 # Unix-only: the `users` crate wraps libc's passwd/uid APIs, and `libc::access`
 # powers the read-only check. Windows uses the env-var / std fallbacks in

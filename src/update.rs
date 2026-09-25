@@ -18,9 +18,10 @@ use crate::colors::Color;
 use crate::platform::resolve_binary;
 use crate::terminal::{BgColor, FgColor, Hyperlink, Reset};
 use crate::themes::DefaultColors;
+use crate::upgrade::{is_homebrew, release_target};
 
-const REPO: &str = "alxhill/superline";
-const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const REPO: &str = "alxhill/superline";
+pub(crate) const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Once the notice has been shown it stays hidden for this long.
 const NOTICE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const FETCH_TIMEOUT_SECS: &str = "10";
@@ -110,7 +111,7 @@ fn shown_marker(cache_path: &Path) -> PathBuf {
 
 /// Whether `latest` is a higher version than `current`. Anything that does not
 /// parse as a version is never newer, so a malformed tag stays silent.
-fn is_newer(latest: &str, current: &str) -> bool {
+pub(crate) fn is_newer(latest: &str, current: &str) -> bool {
     match (parse_version(latest), parse_version(current)) {
         (Some(latest), Some(current)) => latest > current,
         _ => false,
@@ -118,11 +119,11 @@ fn is_newer(latest: &str, current: &str) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Version(u64, u64, u64);
+pub(crate) struct Version(u64, u64, u64);
 
 /// Parses `1.2.3`, `v1.2.3` or `1.2.3-rc.1`, ignoring any pre-release or
 /// build suffix. Missing minor and patch components count as zero.
-fn parse_version(text: &str) -> Option<Version> {
+pub(crate) fn parse_version(text: &str) -> Option<Version> {
     let core = text
         .trim()
         .trim_start_matches('v')
@@ -136,23 +137,27 @@ fn parse_version(text: &str) -> Option<Version> {
 }
 
 /// The command that upgrades this installation, inferred from where the
-/// binary lives: Homebrew keeps it under a `Cellar` directory, and otherwise it
-/// came from cargo, where `cargo binstall` is preferred when available since
-/// it downloads a prebuilt binary instead of compiling.
+/// binary lives: Homebrew keeps it under a `Cellar` directory, and anything
+/// else can replace itself with a release download when one is published for
+/// this platform. Failing that it came from cargo, where `cargo binstall` is
+/// preferred when available.
 fn upgrade_command() -> String {
     let exe = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.canonicalize().ok());
-    upgrade_command_for(exe.as_deref(), resolve_binary("cargo-binstall").is_some()).to_string()
+    upgrade_command_for(
+        exe.as_deref(),
+        release_target().is_some(),
+        resolve_binary("cargo-binstall").is_some(),
+    )
+    .to_string()
 }
 
-fn upgrade_command_for(exe: Option<&Path>, has_binstall: bool) -> &'static str {
-    let homebrew = exe.is_some_and(|exe| {
-        exe.components()
-            .any(|component| component.as_os_str() == "Cellar")
-    });
-    if homebrew {
+fn upgrade_command_for(exe: Option<&Path>, prebuilt: bool, has_binstall: bool) -> &'static str {
+    if exe.is_some_and(is_homebrew) {
         "brew upgrade superline"
+    } else if prebuilt {
+        "superline upgrade"
     } else if has_binstall {
         "cargo binstall superline"
     } else {
@@ -160,21 +165,25 @@ fn upgrade_command_for(exe: Option<&Path>, has_binstall: bool) -> &'static str {
     }
 }
 
-enum Fetcher {
+pub(crate) enum Fetcher {
     Curl(PathBuf),
     Gh(PathBuf),
 }
 
 /// `curl` ships with macOS, Windows 10+ and nearly every Linux; `gh` is the
 /// fallback for anyone who has the PR module working but no curl.
-fn fetcher() -> Option<Fetcher> {
+pub(crate) fn fetcher() -> Option<Fetcher> {
     resolve_binary("curl")
         .map(Fetcher::Curl)
         .or_else(|| resolve_binary("gh").map(Fetcher::Gh))
 }
 
 fn fetch_latest_release() -> Option<Release> {
-    let endpoint = format!("repos/{REPO}/releases/latest");
+    parse_release(&github_api(&format!("repos/{REPO}/releases/latest"))?)
+}
+
+/// The body of a GitHub REST API response, or `None` when the request fails.
+pub(crate) fn github_api(endpoint: &str) -> Option<Vec<u8>> {
     let mut command = match fetcher()? {
         Fetcher::Curl(curl) => {
             let mut command = Command::new(curl);
@@ -194,7 +203,7 @@ fn fetch_latest_release() -> Option<Release> {
         }
         Fetcher::Gh(gh) => {
             let mut command = Command::new(gh);
-            command.args(["api", &endpoint]);
+            command.args(["api", endpoint]);
             command
         }
     };
@@ -203,10 +212,7 @@ fn fetch_latest_release() -> Option<Release> {
         .stderr(Stdio::null())
         .output()
         .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    parse_release(&output.stdout)
+    output.status.success().then_some(output.stdout)
 }
 
 /// The fields of GitHub's release object the notice needs.
@@ -273,25 +279,33 @@ mod tests {
     fn upgrade_command_follows_the_install_location() {
         let brew = Path::new("/opt/homebrew/Cellar/superline/0.16.0/bin/superline");
         assert_eq!(
-            upgrade_command_for(Some(brew), true),
+            upgrade_command_for(Some(brew), true, true),
             "brew upgrade superline"
         );
         let linuxbrew =
             Path::new("/home/linuxbrew/.linuxbrew/Cellar/superline/0.16.0/bin/superline");
         assert_eq!(
-            upgrade_command_for(Some(linuxbrew), false),
+            upgrade_command_for(Some(linuxbrew), true, false),
             "brew upgrade superline"
         );
 
         let cargo = Path::new("/Users/me/.cargo/bin/superline");
         assert_eq!(
-            upgrade_command_for(Some(cargo), true),
+            upgrade_command_for(Some(cargo), true, true),
+            "superline upgrade"
+        );
+        assert_eq!(upgrade_command_for(None, true, false), "superline upgrade");
+        assert_eq!(
+            upgrade_command_for(Some(cargo), false, true),
             "cargo binstall superline"
         );
         assert_eq!(
-            upgrade_command_for(Some(cargo), false),
+            upgrade_command_for(Some(cargo), false, false),
             "cargo install superline"
         );
-        assert_eq!(upgrade_command_for(None, false), "cargo install superline");
+        assert_eq!(
+            upgrade_command_for(None, false, false),
+            "cargo install superline"
+        );
     }
 }
