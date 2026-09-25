@@ -14,9 +14,14 @@ use crate::{Powerline, Style};
 
 use super::Module;
 
+/// How long a prompt waits for a stale kubeconfig to be re-read before
+/// serving the cached context. A local kubeconfig parses well within this, so
+/// a `kubectl config use-context` shows on the very next prompt; a slow or
+/// remote-mounted one falls back to the cache and finishes in the background.
+const LOOKUP_TIMEOUT: Duration = Duration::from_millis(50);
+
 /// Shows the current Kubernetes context and namespace from the active
-/// kubeconfig. The config is read through [`KubernetesLookup`] so parsing a
-/// large or remote-mounted kubeconfig never runs on the prompt thread.
+/// kubeconfig, read through [`KubernetesLookup`].
 pub struct Kubernetes<S: KubernetesScheme> {
     scheme: PhantomData<S>,
 }
@@ -117,7 +122,9 @@ impl<S: KubernetesScheme> Module for Kubernetes<S> {
             return;
         }
 
-        let Lookup::Ready(Some(context)) = Cached::new(KubernetesLookup { paths }).load() else {
+        let Lookup::Ready(Some(context)) =
+            Cached::new(KubernetesLookup { paths }).load_with_timeout(LOOKUP_TIMEOUT)
+        else {
             return;
         };
 

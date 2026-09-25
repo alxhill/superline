@@ -346,9 +346,10 @@ keeping a prompt renderer from extending administrative access.
 #### kubernetes
 
 The active Kubernetes context and, when it is set in that context, its namespace. The module reads
-`$KUBECONFIG` (a platform-separated list of kubeconfig files) or `$HOME/.kube/config` and refreshes the
-lookup in the background so a large kubeconfig never blocks prompt rendering. It is hidden when there is no
-readable kubeconfig or no current context.
+`$KUBECONFIG` (a platform-separated list of kubeconfig files) or `$HOME/.kube/config`, so a
+`kubectl config use-context` shows on the next prompt. A kubeconfig that takes longer than 50ms to read is served
+from the cache and refreshed in the background. It is hidden when there is no readable kubeconfig or no current
+context.
 
 ```json
 "kubernetes"
