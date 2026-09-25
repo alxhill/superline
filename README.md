@@ -354,8 +354,8 @@ readable kubeconfig or no current context.
 "kubernetes"
 ```
 
-The default label is `☸ context` or `☸ context (namespace)`. Set `modules.kubernetes.icon` in a custom theme to
-change the marker or set it to an empty string to hide it.
+The default label is `󱃾 context` or `󱃾 context (namespace)`, using the Nerd Font `nf-md-kubernetes` glyph (U+F10FE).
+Set `modules.kubernetes.icon` in a custom theme to change the marker or set it to an empty string to hide it.
 
 #### time
 

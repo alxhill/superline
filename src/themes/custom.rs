@@ -409,7 +409,7 @@ impl KubernetesScheme for CustomTheme {
     fn kubernetes_icon() -> &'static str {
         Self::get_str("kubernetes", "icon")
             .map(|str| str.leak() as &'static str)
-            .unwrap_or("\u{2638}")
+            .unwrap_or("\u{f10fe}")
     }
 }
 

@@ -32,7 +32,7 @@ pub trait KubernetesScheme: DefaultColors {
     }
 
     fn kubernetes_icon() -> &'static str {
-        "\u{2638}" // ☸️, the Unicode Kubernetes logo
+        "\u{f10fe}" // nf-md-kubernetes
     }
 }
 

@@ -48,7 +48,7 @@
     "kubernetes": {
       "fg": "white",
       "bg": "blue",
-      "icon": "☸"
+      "icon": "󱃾"
     },
     "readonly": {
       "fg": 254,
