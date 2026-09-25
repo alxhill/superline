@@ -14,11 +14,16 @@ Set Theme { "name": "superline-e2e", "black": "#000000", "red": "#cd3131", "gree
 
 # Setup runs before recording starts. Wait for VHS's stock `> ` prompt so the
 # shell's line editor is ready, then load superline's init snippet, enter the
-# working directory, and clear the screen. The first non-blank screen line
-# starts with the stock prompt until `clear` has run and superline has drawn
-# something; nushell sometimes leaves a blank line above its first prompt.
+# working directory, and clear the screen. Git Bash under ConPTY sometimes
+# drops the first keystroke after its prompt appears, so a space goes first:
+# every shell ignores it, and losing it is harmless. The first non-blank
+# screen line starts with the stock prompt until `clear` has run and superline
+# has drawn something; nushell sometimes leaves a blank line above its first
+# prompt.
 Hide
 Wait+Line />/
+Type " "
+Sleep 200ms
 Type@5ms {{setup}}
 Enter
 Wait+Screen /\A\s*(?:[^>\s]|>\S)/
