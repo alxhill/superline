@@ -6,7 +6,8 @@
       "left": [
         "os",
         { "text": "hello 🌈" },
-        { "cwd": { "max_length": 40, "wanted_seg_num": 1 } }
+        { "cwd": { "max_length": 40, "wanted_seg_num": 1 } },
+        "kubernetes"
       ],
       "right": [
         { "separator": "round" },

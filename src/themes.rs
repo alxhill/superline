@@ -5,9 +5,9 @@ pub use simple::SimpleTheme;
 use crate::colors::Color;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
-    GitScheme, HostScheme, JavaScheme, JobsScheme, LastCmdDurationScheme, LocalIpScheme,
-    MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme,
-    SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
+    LocalIpScheme, MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme,
+    ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::update::UpdateScheme;
 
@@ -50,6 +50,7 @@ pub trait CompleteTheme:
     + SpacerScheme
     + HostScheme
     + JobsScheme
+    + KubernetesScheme
     + LocalIpScheme
     + OsScheme
     + MemoryUsageScheme

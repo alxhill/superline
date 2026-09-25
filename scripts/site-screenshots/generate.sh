@@ -37,6 +37,8 @@ export GIT_AUTHOR_NAME=superline GIT_AUTHOR_EMAIL=demo@example.com
 export GIT_COMMITTER_NAME=superline GIT_COMMITTER_EMAIL=demo@example.com
 export GIT_AUTHOR_DATE="2026-01-01T12:00:00Z" GIT_COMMITTER_DATE="2026-01-01T12:00:00Z"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+# Scenes read the kubeconfig from their fake home.
+unset KUBECONFIG
 
 git_repo() {
   local dir=$1

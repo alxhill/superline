@@ -10,6 +10,7 @@
         "username",
         "hostname",
         "local_ip",
+        "kubernetes",
         { "text": "all widgets" }
       ],
       "right": [
