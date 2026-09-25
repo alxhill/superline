@@ -169,8 +169,9 @@ each case, shell, and width it:
 5. pairs each `Screenshot` with the screen dump VHS recorded after it and
    saves that as the snapshot's text.
 
-The tape hides the setup, waits for the shell's stock prompt, types one line
-that exports the isolated home (`HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`,
+The tape hides the setup, waits for the shell's stock prompt, types a
+throwaway space (Git Bash under ConPTY sometimes drops the first keystroke
+after its prompt appears), then types one line that exports the isolated home (`HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`,
 `XDG_CACHE_HOME`) and the case's variables, sources the startup file, enters the
 working directory, and clears the screen, then shows the recording once
 superline has drawn something. Paths are typed with forward slashes, which
@@ -178,7 +179,9 @@ PowerShell, nushell, and Git Bash all accept on Windows. The home is exported
 inside the shell rather than on the VHS process because Chrome on Windows
 resolves its own app-data folders through `%USERPROFILE%` and exits when that
 points at the fixture. A `Wait` that never matches fails the capture after 30
-seconds instead of producing a misleading image.
+seconds instead of producing a misleading image. A run whose Chrome exits
+before VHS can connect to it, which happens to the first launches on a fresh
+Windows runner, is retried up to twice.
 
 ## CI artifacts
 

@@ -51,6 +51,9 @@ const DEFAULT_DIR: &str = "superline-e2e";
 /// The bash that macOS ships, which the `bash-3.2` variant runs.
 const SYSTEM_BASH: &str = "/bin/bash";
 const VHS_TIMEOUT: Duration = Duration::from_secs(240);
+/// What VHS logs when Chrome fails to start.
+const BROWSER_START_FAILURE: &str = "could not start browser";
+const BROWSER_START_ATTEMPTS: u32 = 3;
 /// VHS separates the screen dumps in its text output with this line.
 const FRAME_SEPARATOR: &str =
     "────────────────────────────────────────────────────────────────────────────────";
@@ -610,7 +613,31 @@ impl Rig {
         })
     }
 
+    /// Runs VHS, retrying when Chrome exits before VHS can connect to it,
+    /// which happens to the first launches on a fresh Windows runner. Nothing
+    /// has reached the shell at that point, so the retry starts clean.
     fn run_vhs(
+        &self,
+        tape: &Path,
+        log_path: &Path,
+        working_dir: &Path,
+        extra_bin_dirs: &[PathBuf],
+    ) -> Result<()> {
+        let mut attempt = 1;
+        loop {
+            let result = self.run_vhs_once(tape, log_path, working_dir, extra_bin_dirs);
+            let browser_failed = result.is_err()
+                && fs::read_to_string(log_path)
+                    .is_ok_and(|log| log.contains(BROWSER_START_FAILURE));
+            if !browser_failed || attempt == BROWSER_START_ATTEMPTS {
+                return result;
+            }
+            attempt += 1;
+            thread::sleep(Duration::from_secs(2));
+        }
+    }
+
+    fn run_vhs_once(
         &self,
         tape: &Path,
         log_path: &Path,
