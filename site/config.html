@@ -94,7 +94,7 @@
             <tr><td><code>theme</code></td><td>string</td><td><code>"rainbow"</code></td><td><code>"rainbow"</code>, <code>"simple"</code>, or a path to a <a href="#themes">theme file</a>.</td></tr>
             <tr><td><code>rows</code></td><td>array</td><td>required</td><td>The prompt's <a href="#rows">rows</a>, top to bottom.</td></tr>
             <tr><td><code>update.disable</code></td><td>boolean</td><td><code>false</code></td><td>Stop the once-a-day check for a newer release and the notice it prints above the prompt.</td></tr>
-            <tr><td><code>update.auto</code></td><td>boolean</td><td><code>false</code></td><td>Install a newer release in the background instead of only announcing it, then say so on the next prompt. Applies to prebuilt release binaries (not Homebrew, which updates with <code>brew upgrade</code>); a build from source keeps showing the notice until <code>superline upgrade</code> replaces it.</td></tr>
+            <tr><td><code>update.auto</code></td><td>boolean</td><td><code>true</code></td><td>Install a newer release in the background instead of only announcing it, then say so on the next prompt. Set to <code>false</code> to only be notified. Applies to prebuilt release binaries (not Homebrew, which updates with <code>brew upgrade</code>); a build from source keeps showing the notice until <code>superline upgrade</code> replaces it.</td></tr>
           </tbody>
         </table>
         <p>

@@ -184,7 +184,7 @@ fn the_notice_can_be_disabled() {
 
 #[test]
 fn a_finished_auto_upgrade_is_announced_once() {
-    let fixture = Fixture::new("upgraded", r#","update":{"auto":true}"#);
+    let fixture = Fixture::new("upgraded", "");
     fixture.cache_release(&format!("v{CURRENT_VERSION}"));
     let entry = fixture.cache_auto_upgrade("0.0.1");
 
@@ -204,7 +204,7 @@ fn a_finished_auto_upgrade_is_announced_once() {
 
 #[test]
 fn a_finished_auto_upgrade_is_not_announced_with_auto_off() {
-    let fixture = Fixture::new("upgraded-off", "");
+    let fixture = Fixture::new("upgraded-off", r#","update":{"auto":false}"#);
     fixture.cache_release(&format!("v{CURRENT_VERSION}"));
     let entry = fixture.cache_auto_upgrade("0.0.1");
 
@@ -218,7 +218,7 @@ fn a_source_build_with_auto_on_still_shows_the_notice() {
     if option_env!("SUPERLINE_RELEASE_BUILD").is_some() {
         return;
     }
-    let fixture = Fixture::new("auto-source", r#","update":{"auto":true}"#);
+    let fixture = Fixture::new("auto-source", "");
     fixture.cache_release("v99.0.0");
 
     let stdout = fixture.render();
