@@ -12,7 +12,6 @@
 //! announces the upgrade on its first prompt.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -28,7 +27,10 @@ pub(crate) const REPO: &str = "alxhill/superline";
 pub(crate) const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Once the notice has been shown it stays hidden for this long.
 const NOTICE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
-const FETCH_TIMEOUT_SECS: &str = "10";
+const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
+/// GitHub's release objects are a few kilobytes; this only guards against a
+/// runaway response.
+const API_RESPONSE_LIMIT: u64 = 1024 * 1024;
 
 /// Colours for the icon that opens the notice. The text after it is printed
 /// in the terminal's default colours.
@@ -69,10 +71,6 @@ impl Source for UpdateLookup {
 
     fn cache_id(&self) -> String {
         "latest".to_string()
-    }
-
-    fn fetchable(&self) -> bool {
-        fetcher().is_some()
     }
 
     fn fetch(&self) -> Option<Release> {
@@ -244,54 +242,32 @@ fn upgrade_command_for(exe: Option<&Path>, prebuilt: bool, has_binstall: bool) -
     }
 }
 
-pub(crate) enum Fetcher {
-    Curl(PathBuf),
-    Gh(PathBuf),
-}
-
-/// `curl` ships with macOS, Windows 10+ and nearly every Linux; `gh` is the
-/// fallback for anyone who has the PR module working but no curl.
-pub(crate) fn fetcher() -> Option<Fetcher> {
-    resolve_binary("curl")
-        .map(Fetcher::Curl)
-        .or_else(|| resolve_binary("gh").map(Fetcher::Gh))
-}
-
 fn fetch_latest_release() -> Option<Release> {
-    parse_release(&github_api(&format!("repos/{REPO}/releases/latest"))?)
+    parse_release(&github_api(&format!("repos/{REPO}/releases/latest")).ok()?)
 }
 
-/// The body of a GitHub REST API response, or `None` when the request fails.
-pub(crate) fn github_api(endpoint: &str) -> Option<Vec<u8>> {
-    let mut command = match fetcher()? {
-        Fetcher::Curl(curl) => {
-            let mut command = Command::new(curl);
-            command.args([
-                "--silent",
-                "--fail",
-                "--location",
-                "--max-time",
-                FETCH_TIMEOUT_SECS,
-                "--header",
-                "Accept: application/vnd.github+json",
-                "--header",
-                &format!("User-Agent: superline/{CURRENT_VERSION}"),
-                &format!("https://api.github.com/{endpoint}"),
-            ]);
-            command
-        }
-        Fetcher::Gh(gh) => {
-            let mut command = Command::new(gh);
-            command.args(["api", endpoint]);
-            command
-        }
-    };
-    let output = command
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    output.status.success().then_some(output.stdout)
+/// The body of a successful GitHub REST API response. Anonymous requests are
+/// limited to 60 an hour per IP address, so a `GH_TOKEN` or `GITHUB_TOKEN` in
+/// the environment is sent along when there is one, as `gh` would.
+pub(crate) fn github_api(endpoint: &str) -> Result<Vec<u8>, ureq::Error> {
+    let authorization = github_token().map(|token| format!("Bearer {token}"));
+    let mut headers = vec![("Accept", "application/vnd.github+json")];
+    if let Some(authorization) = &authorization {
+        headers.push(("Authorization", authorization));
+    }
+    crate::http::get(
+        &format!("https://api.github.com/{endpoint}"),
+        &headers,
+        FETCH_TIMEOUT,
+        API_RESPONSE_LIMIT,
+    )
+}
+
+fn github_token() -> Option<String> {
+    ["GH_TOKEN", "GITHUB_TOKEN"]
+        .into_iter()
+        .filter_map(|name| std::env::var(name).ok())
+        .find(|token| !token.trim().is_empty())
 }
 
 /// The fields of GitHub's release object the notice needs.

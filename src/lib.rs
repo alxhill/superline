@@ -11,6 +11,7 @@ pub mod themes;
 pub mod update;
 pub mod upgrade;
 
+pub(crate) mod http;
 pub(crate) mod utils;
 
 pub use crate::powerline::{Powerline, Style};

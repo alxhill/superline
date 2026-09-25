@@ -2,17 +2,17 @@
 //! attached to a GitHub release.
 //!
 //! The archives are the ones `release-assets.yml` builds for every release,
-//! the same files `cargo binstall` downloads. Each is fetched with `curl` (or
-//! `gh`), checked against the SHA-256 digest GitHub reports for it, unpacked
-//! with the system `tar`, run once to confirm it works on this machine, and
-//! only then moved over the running binary.
+//! the same files `cargo binstall` downloads. Each is downloaded in-process
+//! (see [`crate::http`]), checked against the SHA-256 digest GitHub reports for
+//! it, unpacked, run once to confirm it works on this machine, and only then
+//! moved over the running binary.
 //!
 //! With `update.auto` on, [`AutoUpgrade`] runs the same install from the
 //! detached refresh child once the daily check finds a newer release.
 
 use std::ffi::OsStr;
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -22,15 +22,16 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::cache::Source;
-
-use crate::update::{fetcher, github_api, is_newer, parse_version, Fetcher, CURRENT_VERSION, REPO};
+use crate::update::{github_api, is_newer, parse_version, CURRENT_VERSION, REPO};
 
 const BIN_NAME: &str = if cfg!(windows) {
     "superline.exe"
 } else {
     "superline"
 };
-const DOWNLOAD_TIMEOUT_SECS: &str = "300";
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
+/// The archives are around 3 MB; this only guards against a runaway response.
+const DOWNLOAD_LIMIT: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum UpgradeError {
@@ -42,10 +43,8 @@ pub enum UpgradeError {
     UnsupportedPlatform,
     #[error("could not locate the running superline binary: {0}")]
     CurrentExe(io::Error),
-    #[error("neither curl nor gh is on PATH, one is needed to download the release")]
-    NoDownloader,
-    #[error("could not look up {0} on GitHub")]
-    ReleaseLookup(String),
+    #[error("could not look up {what} on GitHub: {reason}")]
+    ReleaseLookup { what: String, reason: String },
     #[error(
         "release {tag} has no {asset} yet. Its binaries may still be uploading, try again in a few minutes"
     )]
@@ -70,8 +69,7 @@ impl UpgradeError {
     fn is_transient(&self) -> bool {
         matches!(
             self,
-            UpgradeError::NoDownloader
-                | UpgradeError::ReleaseLookup(_)
+            UpgradeError::ReleaseLookup { .. }
                 | UpgradeError::MissingAsset { .. }
                 | UpgradeError::Download(_)
         )
@@ -119,12 +117,20 @@ pub fn find_release(version: Option<&str>) -> Result<Release, UpgradeError> {
             "the latest release".to_string(),
         ),
     };
-    if fetcher().is_none() {
-        return Err(UpgradeError::NoDownloader);
-    }
-    github_api(&endpoint)
-        .and_then(|json| parse_release(&json))
-        .ok_or(UpgradeError::ReleaseLookup(description))
+    let lookup_error = |reason: String| UpgradeError::ReleaseLookup {
+        what: description.clone(),
+        reason,
+    };
+    let json = github_api(&endpoint).map_err(|error| {
+        lookup_error(match error {
+            ureq::Error::StatusCode(404) => "it does not exist".to_string(),
+            ureq::Error::StatusCode(403 | 429) => "GitHub's API rate limit was hit, try again in \
+                 an hour or set GH_TOKEN"
+                .to_string(),
+            error => error.to_string(),
+        })
+    })?;
+    parse_release(&json).ok_or_else(|| lookup_error("unexpected response".to_string()))
 }
 
 #[derive(Deserialize)]
@@ -204,11 +210,15 @@ impl Installation {
             })?;
 
         check_writable(&self.exe)?;
-        let staging = Staging::create()?;
-        let archive = staging.path().join(&asset.name);
-        download(release, asset, staging.path())?;
+        let archive = crate::http::get(
+            &asset.browser_download_url,
+            &[],
+            DOWNLOAD_TIMEOUT,
+            DOWNLOAD_LIMIT,
+        )
+        .map_err(|error| UpgradeError::Download(error.to_string()))?;
         if let Some(expected) = asset.digest.as_deref().and_then(sha256_hex) {
-            let actual = hex(&Sha256::digest(fs::read(&archive)?));
+            let actual = hex(&Sha256::digest(&archive));
             if actual != expected {
                 return Err(UpgradeError::Checksum {
                     expected: expected.to_string(),
@@ -216,8 +226,9 @@ impl Installation {
                 });
             }
         }
-        extract(staging.path(), &asset.name)?;
+        let staging = Staging::create()?;
         let binary = staging.path().join(BIN_NAME);
+        extract_binary(&archive[..], &binary)?;
         check_runs(&binary, release.version())?;
         replace(&self.exe, &binary)
     }
@@ -269,7 +280,7 @@ impl Source for AutoUpgrade {
     }
 
     fn fetchable(&self) -> bool {
-        fetcher().is_some() && Installation::current().is_ok()
+        Installation::current().is_ok()
     }
 
     fn fetch(&self) -> Option<AutoUpgradeOutcome> {
@@ -353,53 +364,21 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn download(release: &Release, asset: &Asset, dir: &Path) -> Result<(), UpgradeError> {
-    let mut command = match fetcher().ok_or(UpgradeError::NoDownloader)? {
-        Fetcher::Curl(curl) => {
-            let mut command = Command::new(curl);
-            command
-                .args([
-                    "--silent",
-                    "--show-error",
-                    "--fail",
-                    "--location",
-                    "--connect-timeout",
-                    "10",
-                    "--max-time",
-                    DOWNLOAD_TIMEOUT_SECS,
-                    "--header",
-                    &format!("User-Agent: superline/{CURRENT_VERSION}"),
-                    "--output",
-                ])
-                .arg(dir.join(&asset.name))
-                .arg(&asset.browser_download_url);
-            command
+/// Writes the archive's `superline` binary to `dest`. `release-assets.yml`
+/// packs it alone at the archive root; nothing else is unpacked.
+fn extract_binary(archive: impl Read, dest: &Path) -> Result<(), UpgradeError> {
+    let extract_error = |error: io::Error| UpgradeError::Extract(error.to_string());
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    for entry in archive.entries().map_err(extract_error)? {
+        let mut entry = entry.map_err(extract_error)?;
+        if entry.path().map_err(extract_error)?.as_os_str() == BIN_NAME {
+            entry.unpack(dest).map_err(extract_error)?;
+            return Ok(());
         }
-        Fetcher::Gh(gh) => {
-            let mut command = Command::new(gh);
-            command
-                .args(["release", "download", &release.tag, "--repo", REPO])
-                .args(["--pattern", &asset.name, "--dir"])
-                .arg(dir);
-            command
-        }
-    };
-    run(&mut command).map_err(UpgradeError::Download)
-}
-
-/// Runs `tar` from inside `dir` on the archive's bare name: GNU tar, which Git
-/// for Windows puts on `PATH`, reads the `C:` of an absolute Windows path as a
-/// remote host.
-fn extract(dir: &Path, archive: &str) -> Result<(), UpgradeError> {
-    run(Command::new("tar").current_dir(dir).args(["-xzf", archive]))
-        .map_err(UpgradeError::Extract)?;
-    if dir.join(BIN_NAME).is_file() {
-        Ok(())
-    } else {
-        Err(UpgradeError::Extract(format!(
-            "the archive has no {BIN_NAME}"
-        )))
     }
+    Err(UpgradeError::Extract(format!(
+        "the archive has no {BIN_NAME}"
+    )))
 }
 
 /// Runs the new binary once, which catches a build this CPU or libc cannot
@@ -431,24 +410,6 @@ fn check_runs(binary: &Path, version: &str) -> Result<(), UpgradeError> {
             reported.trim()
         )))
     }
-}
-
-/// Runs `command`, turning a failure into its stderr for the error message.
-fn run(command: &mut Command) -> Result<(), String> {
-    let output = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| error.to_string())?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    Err(match stderr.trim() {
-        "" => format!("exited with {}", output.status),
-        stderr => stderr.to_string(),
-    })
 }
 
 /// Where the new binary is staged next to `exe`, so the final step is a
@@ -628,7 +589,11 @@ mod tests {
         }
         .is_transient());
         assert!(UpgradeError::Download("timed out".into()).is_transient());
-        assert!(UpgradeError::ReleaseLookup("release v0.21.0".into()).is_transient());
+        assert!(UpgradeError::ReleaseLookup {
+            what: "release v0.21.0".into(),
+            reason: "timed out".into(),
+        }
+        .is_transient());
         assert!(!UpgradeError::Homebrew.is_transient());
         assert!(!UpgradeError::BrokenBinary("SIGILL".into()).is_transient());
         assert!(!UpgradeError::Checksum {
@@ -660,6 +625,43 @@ mod tests {
             .cache_id(),
             "v0.21.0"
         );
+    }
+
+    fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut builder = tar::Builder::new(encoder);
+        for (path, contents) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder.append_data(&mut header, path, *contents).unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[test]
+    fn only_the_binary_is_unpacked_from_the_archive() {
+        let dir =
+            std::env::temp_dir().join(format!("superline-extract-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("unpacked");
+
+        let release = archive(&[("README", b"hello"), (BIN_NAME, b"binary")]);
+        extract_binary(&release[..], &dest).expect("the binary should unpack");
+        assert_eq!(fs::read(&dest).unwrap(), b"binary");
+        assert!(!dir.join("README").exists());
+
+        let empty = archive(&[("README", b"hello")]);
+        assert!(matches!(
+            extract_binary(&empty[..], &dir.join("missing")),
+            Err(UpgradeError::Extract(_))
+        ));
+        assert!(matches!(
+            extract_binary(&b"not a gzip"[..], &dir.join("garbage")),
+            Err(UpgradeError::Extract(_))
+        ));
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
