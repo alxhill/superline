@@ -58,12 +58,23 @@ Rust toolchain:
 cargo binstall superline
 ```
 
-Prebuilt binaries are published for macOS (Apple Silicon), Linux (x86-64 and arm64) and Windows (x86-64).
+Prebuilt binaries are published for macOS (Apple Silicon), Linux (x86-64, arm64 and 32-bit ARM) and Windows (x86-64).
 
 The x86-64 Linux and Windows builds need a CPU with AVX2 (Haswell or newer). For older CPUs, NASes such as Synology, or
 musl distros like Alpine, download the static `x86_64-unknown-linux-musl` build from the
 [releases page](https://github.com/alxhill/superline/releases), or run
 `cargo binstall superline --targets x86_64-unknown-linux-musl`.
+
+On a Raspberry Pi, or any ARM board whose distro predates glibc 2.34, use one of the static ARM builds:
+
+| Board and OS | Target |
+|--------------|--------|
+| Pi 3, 4, 5 or Zero 2 W, 64-bit OS | `aarch64-unknown-linux-musl` |
+| Pi 2, 3, 4, 5 or Zero 2 W, 32-bit OS | `armv7-unknown-linux-musleabihf` |
+| Pi 1, Zero or Zero W | `arm-unknown-linux-musleabihf` |
+
+Install with `cargo binstall superline --targets <target>`, or download the archive from the releases page and put `superline` on
+your `$PATH`.
 
 Or build from source via crates.io (cargo's bin directory must be on your `$PATH`):
 

@@ -51,6 +51,19 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04-arm
             rustflags: ""
+          # Static ARM builds for older 32bit  Raspberry Pis and older distros
+          # 64-bit OS on a Pi 3, 4, 5 or Zero 2 W.
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            rustflags: -Clinker=rust-lld
+          # 32-bit OS on a Pi 2, 3, 4, 5 or Zero 2 W.
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-latest
+            rustflags: -Clinker=rust-lld
+          # ARMv6 with hard float: the Pi 1, Zero and Zero W.
+          - target: arm-unknown-linux-musleabihf
+            os: ubuntu-latest
+            rustflags: -Clinker=rust-lld
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             rustflags: -Ctarget-cpu=x86-64-v3
