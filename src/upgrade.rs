@@ -6,17 +6,22 @@
 //! `gh`), checked against the SHA-256 digest GitHub reports for it, unpacked
 //! with the system `tar`, run once to confirm it works on this machine, and
 //! only then moved over the running binary.
+//!
+//! With `update.auto` on, [`AutoUpgrade`] runs the same install from the
+//! detached refresh child once the daily check finds a newer release.
 
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+use crate::cache::Source;
 
 use crate::update::{fetcher, github_api, is_newer, parse_version, Fetcher, CURRENT_VERSION, REPO};
 
@@ -57,6 +62,20 @@ pub enum UpgradeError {
     Replace { path: PathBuf, source: io::Error },
     #[error(transparent)]
     Io(#[from] io::Error),
+}
+
+impl UpgradeError {
+    /// Failures worth retrying soon: the network, or a release whose binaries
+    /// are still being uploaded.
+    fn is_transient(&self) -> bool {
+        matches!(
+            self,
+            UpgradeError::NoDownloader
+                | UpgradeError::ReleaseLookup(_)
+                | UpgradeError::MissingAsset { .. }
+                | UpgradeError::Download(_)
+        )
+    }
 }
 
 /// A published release and its downloadable archives.
@@ -201,6 +220,73 @@ impl Installation {
         let binary = staging.path().join(BIN_NAME);
         check_runs(&binary, release.version())?;
         replace(&self.exe, &binary)
+    }
+}
+
+/// Whether this binary installs new releases itself when `update.auto` is on.
+/// Only the prebuilt release binaries do, so a build from source, such as a
+/// `cargo install --path .` under development, is never swapped out from
+/// under its developer; it keeps showing the notice until `superline upgrade`
+/// replaces it with a prebuilt one.
+pub fn auto_upgrades() -> bool {
+    option_env!("SUPERLINE_RELEASE_BUILD").is_some()
+}
+
+/// Installs the release tagged `tag` from the detached refresh child. There
+/// is one cache entry per release, so the binary it installs can find the
+/// entry for its own version and announce the upgrade.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AutoUpgrade {
+    pub tag: String,
+}
+
+/// How an automatic upgrade went.
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoUpgradeOutcome {
+    Installed {
+        /// The version that was replaced.
+        from: String,
+        /// The new release's web page.
+        url: String,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+impl Source for AutoUpgrade {
+    type Value = AutoUpgradeOutcome;
+    const KIND: &'static str = "auto-upgrade";
+    /// A failed upgrade is tried again the next day.
+    const TTL: Duration = Duration::from_secs(24 * 60 * 60);
+    /// A transient failure, or an install that never finished, is retried
+    /// after an hour.
+    const REFRESH_INTERVAL: Duration = Duration::from_secs(60 * 60);
+
+    fn cache_id(&self) -> String {
+        self.tag.clone()
+    }
+
+    fn fetchable(&self) -> bool {
+        fetcher().is_some() && Installation::current().is_ok()
+    }
+
+    fn fetch(&self) -> Option<AutoUpgradeOutcome> {
+        let result = find_release(Some(&self.tag)).and_then(|release| {
+            Installation::current()?.install(&release)?;
+            Ok(release.url)
+        });
+        match result {
+            Ok(url) => Some(AutoUpgradeOutcome::Installed {
+                from: CURRENT_VERSION.to_string(),
+                url,
+            }),
+            Err(error) if error.is_transient() => None,
+            Err(error) => Some(AutoUpgradeOutcome::Failed {
+                error: error.to_string(),
+            }),
+        }
     }
 }
 
@@ -532,6 +618,48 @@ mod tests {
         );
         assert_eq!(hex(&[0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
         assert_eq!(sha256_hex("sha512:abc"), None);
+    }
+
+    #[test]
+    fn only_lasting_failures_are_cached() {
+        assert!(UpgradeError::MissingAsset {
+            tag: "v0.21.0".into(),
+            asset: "superline-0.21.0-aarch64-apple-darwin.tar.gz".into(),
+        }
+        .is_transient());
+        assert!(UpgradeError::Download("timed out".into()).is_transient());
+        assert!(UpgradeError::ReleaseLookup("release v0.21.0".into()).is_transient());
+        assert!(!UpgradeError::Homebrew.is_transient());
+        assert!(!UpgradeError::BrokenBinary("SIGILL".into()).is_transient());
+        assert!(!UpgradeError::Checksum {
+            expected: "a".into(),
+            actual: "b".into(),
+        }
+        .is_transient());
+    }
+
+    #[test]
+    fn auto_upgrade_outcomes_round_trip_through_the_cache() {
+        let installed = AutoUpgradeOutcome::Installed {
+            from: "0.20.2".into(),
+            url: "https://github.com/alxhill/superline/releases/tag/v0.21.0".into(),
+        };
+        let json = serde_json::to_string(&installed).unwrap();
+        assert_eq!(
+            json,
+            r#"{"installed":{"from":"0.20.2","url":"https://github.com/alxhill/superline/releases/tag/v0.21.0"}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<AutoUpgradeOutcome>(&json).unwrap(),
+            installed
+        );
+        assert_eq!(
+            AutoUpgrade {
+                tag: "v0.21.0".into()
+            }
+            .cache_id(),
+            "v0.21.0"
+        );
     }
 
     #[test]

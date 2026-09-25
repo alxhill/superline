@@ -702,9 +702,9 @@ fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
     if !conf.update.disable {
         let span = debug::span("update notice");
         let notice = match theme {
-            LoadedTheme::Rainbow => update::notice::<RainbowTheme>(),
-            LoadedTheme::Simple => update::notice::<SimpleTheme>(),
-            LoadedTheme::Custom => update::notice::<CustomTheme>(),
+            LoadedTheme::Rainbow => update::notice::<RainbowTheme>(conf.update.auto),
+            LoadedTheme::Simple => update::notice::<SimpleTheme>(conf.update.auto),
+            LoadedTheme::Custom => update::notice::<CustomTheme>(conf.update.auto),
         };
         span.finish();
         if let Some(notice) = notice {

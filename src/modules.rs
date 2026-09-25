@@ -1,6 +1,7 @@
 use crate::cache::{refresh_from_json, Source};
 use crate::powerline::Powerline;
 use crate::update::UpdateLookup;
+use crate::upgrade::AutoUpgrade;
 
 mod battery;
 mod cmd;
@@ -73,6 +74,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
         SudoLookup::KIND => refresh_from_json::<SudoLookup>(source),
         UpdateLookup::KIND => refresh_from_json::<UpdateLookup>(source),
+        AutoUpgrade::KIND => refresh_from_json::<AutoUpgrade>(source),
         _ => false,
     }
 }
