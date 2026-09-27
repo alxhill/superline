@@ -234,7 +234,8 @@ The name of the running shell (`fish`, `zsh`, ...).
 #### hostname and username
 
 The hostname and the current username. The username uses the root colour when
-the prompt is running as root.
+the prompt is running as root. On macOS the hostname is shortened to the part
+before the first dot, like `hostname -s`.
 
 ```json
 "hostname"
