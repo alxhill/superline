@@ -5,7 +5,8 @@
   it lands: release-plz's release PR is then queued to merge once CI is green.
   Without the label the release PR stays open until merged by hand.
 - When adding a new widget, add it to `Config::default()` in `src/config.rs` so
-  a fresh install shows it.
+  a fresh install shows it, and describe it and its options in `WIDGETS` in
+  `src/editor/schema.rs` so `superline config` can add and edit it.
 - When a widget needs a slow lookup (network, big directory walk), implement
   `cache::Source` in `src/cache.rs` for it, render through `Cached::load` (or
   `load_with_timeout`), and register the type in `modules::run_refresh`. Do not

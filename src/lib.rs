@@ -2,6 +2,7 @@ pub mod cache;
 pub mod colors;
 pub mod config;
 pub mod debug;
+pub mod editor;
 pub mod mise;
 pub mod modules;
 pub mod platform;

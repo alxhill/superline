@@ -231,7 +231,8 @@ enum PowerlineArgs {
     Show(ShowArgs),
     ShowRight(ShowArgs),
     Install(InstallArgs),
-    Config,
+    /// Edit the config in an interactive editor with a live prompt preview.
+    Config(ConfigArgs),
     /// Remove all cached data (git status, PR lookups, AI usage, sudo and
     /// update checks) so the next prompt starts from a cold cache.
     ClearCaches,
@@ -244,6 +245,10 @@ enum PowerlineArgs {
     /// called by hand.
     #[command(hide = true)]
     Refresh(RefreshArgs),
+    /// Internal: print every row in full, left and right, for the
+    /// `superline config` preview. Errors go to stderr instead of the prompt.
+    #[command(hide = true)]
+    Preview(ShowArgs),
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -291,6 +296,13 @@ struct ShowArgs {
     /// Number of background jobs reported by the shell.
     #[arg(long, default_value_t = 0)]
     jobs: usize,
+    #[arg(long)]
+    config: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct ConfigArgs {
+    /// Edit this file instead of `~/.config/superline/config.json`.
     #[arg(long)]
     config: Option<PathBuf>,
 }
@@ -355,7 +367,10 @@ fn main() {
     // safe while the process is still single-threaded.
     if matches!(
         args,
-        PowerlineArgs::Show(_) | PowerlineArgs::ShowRight(_) | PowerlineArgs::Refresh(_)
+        PowerlineArgs::Show(_)
+            | PowerlineArgs::ShowRight(_)
+            | PowerlineArgs::Refresh(_)
+            | PowerlineArgs::Preview(_)
     ) {
         superline::modules::preresolve_system_gitconfig();
     }
@@ -365,7 +380,8 @@ fn main() {
         PowerlineArgs::Show(args) => show(args, false),
         PowerlineArgs::ShowRight(args) => show(args, true),
         PowerlineArgs::Install(args) => install(args),
-        PowerlineArgs::Config => open_config(),
+        PowerlineArgs::Config(args) => edit_config(args),
+        PowerlineArgs::Preview(args) => preview(args),
         PowerlineArgs::ClearCaches => clear_caches(),
         PowerlineArgs::Upgrade(args) => {
             if let Err(error) = upgrade_binary(args) {
@@ -589,15 +605,52 @@ fn append_conf(conf_path: &Path, conf_contents: &str) {
         .expect("failed to append to config");
 }
 
-fn open_config() {
-    let conf = get_or_create_conf_file().unwrap();
+fn edit_config(args: ConfigArgs) {
+    use std::io::IsTerminal;
 
-    let editor = env::var("EDITOR").unwrap_or("vim".to_string());
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        eprintln!("superline config: needs an interactive terminal");
+        std::process::exit(1);
+    }
+    let path = match args.config {
+        Some(path) => path,
+        None => match get_or_create_conf_file() {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("superline config: {error}");
+                std::process::exit(1);
+            }
+        },
+    };
+    if let Err(error) = superline::editor::run(&path) {
+        eprintln!("superline config: {error}");
+        std::process::exit(1);
+    }
+}
 
-    Command::new(editor)
-        .arg(conf)
-        .status()
-        .expect("Failed to get editor exit status");
+fn preview(args: ShowArgs) {
+    SHELL.set(Shell::Bare).expect("failed to set shell");
+    let result = load_config(args.config.clone()).and_then(|(conf, conf_root)| {
+        let theme = load_theme(&conf, &conf_root)?;
+        Ok((conf, theme))
+    });
+    let (conf, theme) = match result {
+        Ok(loaded) => loaded,
+        Err(error) => {
+            match &error {
+                PowerlineError::InvalidConfig(inner) => eprintln!("{error}: {inner}"),
+                _ => eprintln!("{error}"),
+            }
+            std::process::exit(1);
+        }
+    };
+    for prompt in &conf.rows {
+        let mut powerline = powerline_from_conf(prompt, &args, theme);
+        powerline.print_left();
+        powerline.print_padding(args.columns);
+        powerline.print_right();
+        println!();
+    }
 }
 
 fn print_shell_conf(shell: ShellSubcommand) {

@@ -28,7 +28,9 @@ gix = { version = "0.84", default-features = false, features = [
     "max-performance-safe",
 ] }
 serde = { version = "1.0.203", features = ["derive"] }
-serde_json = "1.0.117"
+# `preserve_order` keeps a config's keys in place when `superline config`
+# rewrites it.
+serde_json = { version = "1.0.117", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
 thiserror = "1.0.61"
 clap = { version = "4.5.7", features = ["derive"] }
@@ -50,6 +52,12 @@ ureq = { version = "3.4", default-features = false, features = [
 # Unpack release archives. `zlib-rs` is the inflate backend gix already uses.
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
 tar = { version = "0.4.46", default-features = false }
+# The `superline config` editor. Its crossterm backend is re-exported as
+# `ratatui::crossterm`.
+ratatui = { version = "0.30", default-features = false, features = [
+    "crossterm",
+    "layout-cache",
+] }
 
 # Unix-only: the `users` crate wraps libc's passwd/uid APIs, and `libc::access`
 # powers the read-only check. Windows uses the env-var / std fallbacks in
