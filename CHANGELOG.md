@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.2](https://github.com/alxhill/superline/compare/v0.22.1...v0.22.2) - 2026-09-27
+
+### Fixed
+
+- use the theme's shell fg colour ([#161](https://github.com/alxhill/superline/pull/161))
+
+### Other
+
+- deflake the Kubernetes context switch and nushell rendering tests ([#162](https://github.com/alxhill/superline/pull/162))
+- show module examples without the row wrapper in the config reference ([#158](https://github.com/alxhill/superline/pull/158))
+
 ## [0.22.1](https://github.com/alxhill/superline/compare/v0.22.0...v0.22.1) - 2026-09-27
 
 ### Added
