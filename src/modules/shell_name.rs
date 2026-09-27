@@ -30,9 +30,46 @@ impl<S: ShellScheme> ShellName<S> {
 
 impl<S: ShellScheme> Module for ShellName<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_short_segment(
-            &self.name,
-            Style::simple(S::default_fg(), S::shellname_bg()),
-        );
+        powerline.add_short_segment(&self.name, style::<S>());
+    }
+}
+
+fn style<S: ShellScheme>() -> Style {
+    Style::simple(S::shellname_fg(), S::shellname_bg())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::colors::{black, green, red, white};
+    use crate::terminal::{BgColor, FgColor};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            green()
+        }
+    }
+
+    impl ShellScheme for TestTheme {
+        fn shellname_fg() -> Color {
+            white()
+        }
+
+        fn shellname_bg() -> Color {
+            red()
+        }
+    }
+
+    #[test]
+    fn uses_the_themes_shell_colours() {
+        let style = style::<TestTheme>();
+        assert!(style.fg == FgColor::from(white()));
+        assert!(style.bg == BgColor::from(red()));
     }
 }
