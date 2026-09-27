@@ -1,6 +1,7 @@
 """Fill the example placeholders in site/config.html from components.json, the
-theme option tables from theme-options.json, and sync every screenshot's
-width/height attributes on the site's pages.
+theme option tables from theme-options.json, the color tables from
+src/colors.rs, and sync every screenshot's width/height attributes on the
+site's pages.
 
 A placeholder is `<div class="example" data-example="<component>/<variant>">`
 up to the next `<!-- /example -->`. Its contents are rewritten with the
@@ -16,7 +17,8 @@ from pathlib import Path
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
-SITE = HERE.parent.parent / "site"
+ROOT = HERE.parent.parent
+SITE = ROOT / "site"
 WIDTH = 66
 
 # Examples that are not a single prompt row, keyed like the manifest's.
@@ -78,14 +80,26 @@ def highlight(source):
     return "".join(out)
 
 
-def shown_json(variant):
-    """What a reader copies: a whole config, a single segment, or a row."""
+# Components that shape a whole row, shown as a complete config.json so their
+# effect on the segments around them is clear.
+LAYOUT = {"rows", "separator", "spacers", "padding"}
+
+
+def segment_name(segment):
+    return segment if isinstance(segment, str) else next(iter(segment))
+
+
+def shown_json(component, variant):
+    """What a reader copies: a whole config for layout, otherwise the segment itself."""
     if "config" in variant:
         return variant["config"]
     row = variant["row"]
-    if list(row) == ["left"] and len(row["left"]) == 1:
-        return row["left"][0]
-    return row
+    if component in LAYOUT:
+        return {"rows": [row]}
+    segments = [s for side in row.values() for s in side if segment_name(s) == component]
+    if len(segments) != 1:
+        raise SystemExit(f"{component}/{variant['name']} must use {component} exactly once")
+    return segments[0]
 
 
 def image_tag(src, alt):
@@ -102,7 +116,7 @@ def examples():
         for variant in spec["variants"]:
             yield f"{component}/{variant['name']}", {
                 "label": variant["label"],
-                "json": shown_json(variant),
+                "json": shown_json(component, variant),
                 "image": f"img/config/{component}-{variant['name']}.png",
             }
     yield from EXTRA.items()
@@ -169,6 +183,74 @@ def fill_theme_options(text):
     return text
 
 
+# xterm's default palette for the 16 system colors.
+SYSTEM_COLORS = [
+    "000000", "cd0000", "00cd00", "cdcd00", "0000ee", "cd00cd", "00cdcd", "e5e5e5",
+    "7f7f7f", "ff0000", "00ff00", "ffff00", "5c5cff", "ff00ff", "00ffff", "ffffff",
+]
+
+
+def xterm_hex(code):
+    if code < 16:
+        return SYSTEM_COLORS[code]
+    if code < 232:
+        steps = [0, 95, 135, 175, 215, 255]
+        code -= 16
+        return "".join(f"{steps[c]:02x}" for c in (code // 36, code // 6 % 6, code % 6))
+    return f"{8 + 10 * (code - 232):02x}" * 3
+
+
+def ink(code):
+    r, g, b = (int(xterm_hex(code)[i:i + 2], 16) for i in (0, 2, 4))
+    return "#000" if 0.299 * r + 0.587 * g + 0.114 * b > 128 else "#fff"
+
+
+def swatch(code, cls="swatch"):
+    return f'<span class="{cls}" style="background:#{xterm_hex(code)};color:{ink(code)}">{code}</span>'
+
+
+def color_codes():
+    """The 256-color palette in the layout of `ansi --color-codes`."""
+
+    def block(codes, cols, labels=(), cls=""):
+        cells = "".join(swatch(c, "cell") for c in codes)
+        grid = f'<span class="palette-grid{cls}" style="--cols:{cols}">{cells}</span>'
+        if not labels:
+            return grid
+        names = "".join(f"<span>{label}</span>" for label in labels)
+        return f'<div class="palette-row"><span class="palette-labels">{names}</span>{grid}</div>'
+
+    def cube(band, half):
+        start = 16 + 6 * band + 18 * half
+        return block([start + 36 * r + c for r in range(6) for c in range(6)], 6)
+
+    parts = [block(range(16), 8, ("Standard:", "Intense:"))]
+    parts += [f'<div class="palette-cubes">{cube(b, 0)}{cube(b, 1)}</div>' for b in range(3)]
+    parts.append(block(range(232, 256), 12, ("Grays:",), " palette-grays"))
+    return '\n    <div class="palette">\n      ' + "\n      ".join(parts) + "\n    </div>\n  "
+
+
+def color_names():
+    """Every name accepted by `Color::from_name`, read from src/colors.rs."""
+    source = (ROOT / "src/colors.rs").read_text()
+    block = re.search(r"define_colors! \{(.*?)\n\}", source, re.S)[1]
+    names = re.findall(r"(\w+) => (\d+)", block)
+    items = "".join(
+        f'\n      <li>{swatch(int(code))}<code>"{name}"</code></li>' for name, code in names
+    )
+    return f'\n    <ul class="color-names">{items}\n    </ul>\n  '
+
+
+def fill_colors(text):
+    tables = {"codes": color_codes, "names": color_names}
+    return re.sub(
+        r'<div class="colors" data-colors="([^"]+)">.*?</div><!-- /colors -->',
+        lambda m: f'<div class="colors" data-colors="{m[1]}">{tables[m[1]]()}</div><!-- /colors -->',
+        text,
+        flags=re.S,
+    )
+
+
 def main():
     rendered = dict(examples())
     config_page = SITE / "config.html"
@@ -189,6 +271,7 @@ def main():
         flags=re.S,
     )
     text = fill_theme_options(text)
+    text = fill_colors(text)
     config_page.write_text(text)
     if missing:
         print("examples not placed in config.html:", ", ".join(sorted(missing)))

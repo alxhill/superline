@@ -233,7 +233,7 @@ The name of the running shell (`fish`, `zsh`, ...).
 
 #### hostname and username
 
-The hostname and the current username. The username uses the root colour when
+The hostname and the current username. The username uses the root color when
 the prompt is running as root. On macOS the hostname is shortened to the part
 before the first dot, like `hostname -s`.
 
@@ -283,10 +283,10 @@ operating system cannot provide a memory reading.
 #### os
 
 Shows a compact Nerd Font icon for the current operating-system family. It
-recognises Linux, macOS, Windows, Android and the common BSD/Unix targets
+recognizes Linux, macOS, Windows, Android and the common BSD/Unix targets
 without reading distro files or spawning a command, so it adds no prompt
 latency. The built-in themes use the Linux, Apple and Windows icons; custom
-themes may override the colours and symbol in their os module.
+themes may override the colors and symbol in their os module.
 
 ```json
 "os"
@@ -305,7 +305,7 @@ leave the icon on the prompt for good.
 
 #### text
 
-Adds literal text to the prompt using the theme's default colours. Text is required and is supplied as a JSON string;
+Adds literal text to the prompt using the theme's default colors. Text is required and is supplied as a JSON string;
 printable Unicode and punctuation are preserved. Terminal control characters and line separators are shown as visible
 escape sequences so a value in the config cannot reset the prompt or inject another prompt line. Shell prompt syntax
 such as Bash command substitutions and zsh percent escapes is quoted before the value is returned.
@@ -401,8 +401,8 @@ Status is produced by one of two backends, chosen with `backend`:
 
 #### pr
 
-A clickable link to the GitHub pull request for the current branch, looked up via the `gh` CLI. The segment colour
-reflects the PR state (draft, open, merged, closed). With `status` on (the default) a coloured dot follows the PR
+A clickable link to the GitHub pull request for the current branch, looked up via the `gh` CLI. The segment color
+reflects the PR state (draft, open, merged, closed). With `status` on (the default) a colored dot follows the PR
 number showing CI check status: green for success, red for failure, yellow for pending.
 
 The lookup runs in the background and is cached, so it never blocks the prompt - the link appears on a later prompt
@@ -449,7 +449,7 @@ providers, or the same provider with different windows and styles. Provider labe
 ```
 
 **Threshold.** `threshold` is a percent-used warning level. When any visible lane crosses it, the whole widget
-background switches to the theme's `modules.ai_usage.threshold_bg` colour.
+background switches to the theme's `modules.ai_usage.threshold_bg` color.
 
 ```json
 { "ai_usage": { "provider": "claude", "display": "sparkline", "threshold": 80 } }
@@ -478,7 +478,7 @@ If the CLI is installed but not logged in it shows a logged-out user icon (``) u
 
 ### Language modules
 
-`python`, `node`, `java` and `cargo` share one behaviour and differ only in how they detect a project and
+`python`, `node`, `java` and `cargo` share one behavior and differ only in how they detect a project and
 which files can pin a version. Each shows its language icon when the current directory belongs to a project, and
 adds the version when one is pinned. Every one takes a `version` option; it defaults to `true`, and setting it to
 `false` leaves just the icon. `python` and `node` were previously called `python_env` and `nvm`; the old names
@@ -556,7 +556,7 @@ A theme file has two keys, `defaults` and `modules`:
 ```
 
 - **defaults** - the `fg` and `bg` used for anything a module doesn't set.
-- **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colours (`git` has
+- **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colors (`git` has
   `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`,
   `kubernetes.icon`, and `mise_icon` on the language modules - set a marker to `""` to hide it). Anything omitted falls back to
   `defaults`.
@@ -564,7 +564,7 @@ A theme file has two keys, `defaults` and `modules`:
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
 old theme keys, `nvm` and `py`.
 
-Colours are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-colour code from
+Colors are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-color code from
 `0` to `255`. [`example_theme.json`](example_theme.json) covers every module, and `src/themes/custom.rs` lists every
 module name and property.
 

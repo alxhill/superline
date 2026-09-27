@@ -76,7 +76,7 @@ Run the **functional checklist** below in each configuration.
 > crate, `libc::access`, and direct `$HOME` reads) have been ported behind the
 > cross-platform helpers in `src/platform.rs`, and both `x86_64-pc-windows-gnu`
 > and `x86_64-pc-windows-msvc` pass `cargo check`. The remaining unknown is the
-> runtime behaviour on a real Windows box (configs 2–5), which still needs
+> runtime behavior on a real Windows box (configs 2–5), which still needs
 > hands-on verification — that's what this checklist is for.
 >
 > **Building on Windows:** the default `libgit` feature builds `libgit2` from C
@@ -178,7 +178,7 @@ exercise **both** the Unix and Windows branches regardless of host.
 ## Known limitations & follow-ups
 
 - **Elevation detection on Windows.** `is_root()` always reports non-elevated on
-  Windows, so the prompt never shows the root symbol / root-user colour there.
+  Windows, so the prompt never shows the root symbol / root-user color there.
   Detecting an elevated ("Run as administrator") session needs Win32 token APIs
   and is left as a future enhancement.
 - **Read-only detection on Windows is best-effort** — it reports the directory's
