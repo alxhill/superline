@@ -1,5 +1,5 @@
 """Fill the example placeholders in site/config.html from components.json, the
-theme option tables from theme-options.json, the colour tables from
+theme option tables from theme-options.json, the color tables from
 src/colors.rs, and sync every screenshot's width/height attributes on the
 site's pages.
 
@@ -183,7 +183,7 @@ def fill_theme_options(text):
     return text
 
 
-# xterm's default palette for the 16 system colours.
+# xterm's default palette for the 16 system colors.
 SYSTEM_COLORS = [
     "000000", "cd0000", "00cd00", "cdcd00", "0000ee", "cd00cd", "00cdcd", "e5e5e5",
     "7f7f7f", "ff0000", "00ff00", "ffff00", "5c5cff", "ff00ff", "00ffff", "ffffff",
@@ -200,35 +200,34 @@ def xterm_hex(code):
     return f"{8 + 10 * (code - 232):02x}" * 3
 
 
-def swatch(code, label=None):
-    rgb = [int(xterm_hex(code)[i:i + 2], 16) for i in (0, 2, 4)]
-    ink = "#000" if 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] > 128 else "#fff"
-    return (
-        f'<span class="swatch" style="background:#{xterm_hex(code)};color:{ink}">'
-        f"{code if label is None else label}</span>"
-    )
+def ink(code):
+    r, g, b = (int(xterm_hex(code)[i:i + 2], 16) for i in (0, 2, 4))
+    return "#000" if 0.299 * r + 0.587 * g + 0.114 * b > 128 else "#fff"
+
+
+def swatch(code, cls="swatch"):
+    return f'<span class="{cls}" style="background:#{xterm_hex(code)};color:{ink(code)}">{code}</span>'
 
 
 def color_codes():
-    """The 256-colour palette in the layout of `ansi --color-codes`."""
+    """The 256-color palette in the layout of `ansi --color-codes`."""
 
-    def row(label, codes):
-        return (
-            f'<div class="palette-row"><span class="palette-label">{label}</span>'
-            f'<span class="palette-cells">{"".join(swatch(c) for c in codes)}</span></div>'
-        )
+    def block(codes, cols, labels=(), cls=""):
+        cells = "".join(swatch(c, "cell") for c in codes)
+        grid = f'<span class="palette-grid{cls}" style="--cols:{cols}">{cells}</span>'
+        if not labels:
+            return grid
+        names = "".join(f"<span>{label}</span>" for label in labels)
+        return f'<div class="palette-row"><span class="palette-labels">{names}</span>{grid}</div>'
 
-    parts = [row("Standard", range(0, 8)), row("Intense", range(8, 16))]
-    for band in range(3):
-        groups = []
-        for half in range(2):
-            start = 16 + 6 * band + 18 * half
-            cells = "".join(swatch(start + 36 * r + c) for r in range(6) for c in range(6))
-            groups.append(f'<span class="palette-cube">{cells}</span>')
-        parts.append(f'<div class="palette-band">{"".join(groups)}</div>')
-    parts.append(row("Grays", range(232, 244)))
-    parts.append(row("", range(244, 256)))
-    return "\n    " + "\n    ".join(parts) + "\n  "
+    def cube(band, half):
+        start = 16 + 6 * band + 18 * half
+        return block([start + 36 * r + c for r in range(6) for c in range(6)], 6)
+
+    parts = [block(range(16), 8, ("Standard:", "Intense:"))]
+    parts += [f'<div class="palette-cubes">{cube(b, 0)}{cube(b, 1)}</div>' for b in range(3)]
+    parts.append(block(range(232, 256), 12, ("Grays:",), " palette-grays"))
+    return '\n    <div class="palette">\n      ' + "\n      ".join(parts) + "\n    </div>\n  "
 
 
 def color_names():

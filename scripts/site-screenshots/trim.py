@@ -1,6 +1,6 @@
 """Crop the unused terminal rows (and columns) off a VHS screenshot, keeping
 the tape's padding as a uniform margin, open a gap between terminal rows so
-stacked prompts do not run together, and reduce it to a 256-colour palette,
+stacked prompts do not run together, and reduce it to a 256-color palette,
 which a flat terminal render survives without visible loss."""
 
 import sys
@@ -19,7 +19,7 @@ PITCHES = [p / 20 for p in range(39 * 20, 43 * 20)]
 EDGE = 5
 EDGE_RUN = 48
 # Scaling and the video encoder blur each row's edge a pixel or two into its
-# neighbour, which would show up as a thin line beside every gap. Those pixel
+# neighbor, which would show up as a thin line beside every gap. Those pixel
 # rows are repainted from the row's own content just inside them.
 SMEAR = 2
 
