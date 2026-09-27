@@ -32,7 +32,7 @@ impl<S: ShellScheme> Module for ShellName<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
         powerline.add_short_segment(
             &self.name,
-            Style::simple(S::default_fg(), S::shellname_bg()),
+            Style::simple(S::shellname_fg(), S::shellname_bg()),
         );
     }
 }
