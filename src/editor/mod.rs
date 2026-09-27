@@ -2,6 +2,7 @@
 //! with a live preview of the prompt it produces.
 
 mod ansi;
+mod glyphs;
 mod json;
 mod model;
 mod picker;
@@ -99,6 +100,10 @@ enum Mode {
         code: u8,
         /// Write the pick as a colour name when it has one.
         prefer_name: bool,
+    },
+    IconBrowser {
+        query: String,
+        selected: usize,
     },
     ConfirmQuit,
     Help,
@@ -568,6 +573,11 @@ impl App {
                     self.mode = mode;
                 }
             }
+            Mode::IconBrowser { query, selected } => {
+                if let Some(mode) = self.on_icon_browser_key(key, query, selected) {
+                    self.mode = mode;
+                }
+            }
             Mode::Input {
                 mut buffer,
                 mut cursor,
@@ -793,6 +803,9 @@ impl App {
         match &self.mode {
             Mode::Picker { filter, selected } => draw_picker(frame, area, filter, *selected),
             Mode::ColorPicker { code, .. } => self.draw_color_picker(frame, area, *code),
+            Mode::IconBrowser { query, selected } => {
+                self.draw_icon_browser(frame, area, query, *selected)
+            }
             Mode::ConfirmQuit => draw_confirm(frame, area),
             Mode::Help => draw_help(frame, area),
             _ => {}
@@ -1066,6 +1079,12 @@ impl App {
                     Page::Theme => self.theme_focus(),
                 };
                 let hints: &[(&str, &str)] = match (&self.mode, focus) {
+                    (Mode::IconBrowser { .. }, _) => &[
+                        ("type", "search"),
+                        ("↑↓", "choose"),
+                        ("⏎", "use"),
+                        ("esc", "cancel"),
+                    ],
                     (Mode::ColorPicker { .. }, _) => &[
                         ("←↑↓→", "choose"),
                         ("⏎", "pick"),
@@ -1291,7 +1310,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("Theme", ""),
         (
             "⏎",
-            "edit a module's colours; ⏎ on a colour opens the picker",
+            "edit a module; ⏎ opens the colour picker or icon browser",
         ),
         ("← →", "step a colour by one code"),
         ("i", "type a colour name, a 0-255 code, or text"),

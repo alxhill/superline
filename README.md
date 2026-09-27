@@ -128,7 +128,8 @@ prompt as you change them, and saves back to the same file:
   choices, and `x` resets an option to its default.
 - `2` (or `t`) switches to the Theme page, which edits the custom theme file the config names. Pick a module to see
   each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
-  picker that previews as you move, `←`/`→` step a colour by one code, `i` types a name or code, and `x` resets a
+  picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
+  (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
   property. On a built-in theme, `n` creates a new theme file from the example theme and points the config at it.
   `1` returns to the layout.
 - `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits

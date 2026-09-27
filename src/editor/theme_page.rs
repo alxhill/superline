@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
@@ -13,12 +13,15 @@ use ratatui::Frame;
 use serde_json::Value;
 
 use super::model::Target;
-use super::picker;
 use super::theme::{
     color_names, color_value, edit_text, parse_color, parse_color_list, PropKind, PropSpec,
     ThemeDoc, ThemeEntry,
 };
+use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
+
+/// Rows PageUp/PageDown move in the icon browser.
+const ICON_PAGE: usize = 10;
 
 /// A theme file the config has pointed at during this session.
 pub(super) enum Slot {
@@ -138,11 +141,16 @@ impl App {
     /// applied.
     pub(super) fn preview_theme(&self) -> Option<Value> {
         let doc = self.theme_doc()?;
-        if let Mode::ColorPicker { code, .. } = self.mode {
-            if let Some((entry, spec, _)) = self.theme_prop() {
-                if let Ok(theme) = doc.with(&entry, &spec.key, Some(Value::from(code))) {
-                    return Some(theme);
-                }
+        let pending = match &self.mode {
+            Mode::ColorPicker { code, .. } => Some(Value::from(*code)),
+            Mode::IconBrowser { query, selected } => glyphs::search(query)
+                .get(*selected)
+                .map(|glyph| Value::from(glyph.ch.to_string())),
+            _ => None,
+        };
+        if let (Some(value), Some((entry, spec, _))) = (pending, self.theme_prop()) {
+            if let Ok(theme) = doc.with(&entry, &spec.key, Some(value)) {
+                return Some(theme);
             }
         }
         Some(doc.root().clone())
@@ -363,6 +371,20 @@ impl App {
                         };
                         self.preview_stale = true;
                     }
+                    KeyCode::Enter | KeyCode::Char(' ') if spec.kind == PropKind::Str => {
+                        let current = value
+                            .as_ref()
+                            .map(edit_text)
+                            .or_else(|| glyphs::fallback_text(&spec.fallback))
+                            .and_then(|text| text.chars().next());
+                        let selected = current
+                            .and_then(|ch| glyphs::all().iter().position(|g| g.ch == ch))
+                            .unwrap_or(0);
+                        self.mode = Mode::IconBrowser {
+                            query: String::new(),
+                            selected,
+                        };
+                    }
                     KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('i') => {
                         let text = value.as_ref().map(edit_text).unwrap_or_default();
                         self.open_theme_input(InputPurpose::ThemeProperty, text);
@@ -432,7 +454,130 @@ impl App {
         })
     }
 
+    /// Returns the browser's new state, or `None` once it closes.
+    pub(super) fn on_icon_browser_key(
+        &mut self,
+        key: KeyEvent,
+        mut query: String,
+        mut selected: usize,
+    ) -> Option<Mode> {
+        let count = glyphs::search(&query).len();
+        let last = count.saturating_sub(1);
+        match key.code {
+            KeyCode::Esc => {
+                self.preview_stale = true;
+                return None;
+            }
+            KeyCode::Enter => {
+                if let Some(glyph) = glyphs::search(&query).get(selected) {
+                    self.set_theme_prop(Some(Value::from(glyph.ch.to_string())));
+                }
+                return None;
+            }
+            KeyCode::Up => selected = selected.saturating_sub(1),
+            KeyCode::Down => selected = (selected + 1).min(last),
+            KeyCode::PageUp => selected = selected.saturating_sub(ICON_PAGE),
+            KeyCode::PageDown => selected = (selected + ICON_PAGE).min(last),
+            KeyCode::Home => selected = 0,
+            KeyCode::End => selected = last,
+            KeyCode::Backspace => {
+                query.pop();
+                selected = 0;
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                query.clear();
+                selected = 0;
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                query.push(c);
+                selected = 0;
+            }
+            _ => {}
+        }
+        self.preview_stale = true;
+        Some(Mode::IconBrowser { query, selected })
+    }
+
     // ---- drawing ----
+
+    pub(super) fn draw_icon_browser(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        query: &str,
+        selected: usize,
+    ) {
+        let title = match self.theme_prop() {
+            Some((entry, spec, _)) => format!(" Nerd Font icons · {}.{} ", entry.label(), spec.key),
+            None => " Nerd Font icons ".to_string(),
+        };
+        let popup = super::centered(area, 70, area.height.saturating_sub(4).max(12));
+        frame.render_widget(Clear, popup);
+        let block = panel(&title, true);
+        let inner = block.inner(popup);
+        frame.render_widget(block, popup);
+        let [input, list_area, hints] = Layout::vertical([
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .areas(inner);
+
+        let matches = glyphs::search(query);
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::raw("search: ").dark_gray(),
+                Span::raw(query.to_string()),
+                Span::raw(format!("   {} icons", matches.len())).dark_gray(),
+            ])),
+            input,
+        );
+        frame.set_cursor_position((
+            input.x + 8 + unicode_width::UnicodeWidthStr::width(query) as u16,
+            input.y,
+        ));
+
+        // Only the rows on screen are built: the full list is ~11k glyphs.
+        let height = list_area.height as usize;
+        let offset = selected.saturating_sub(height.saturating_sub(1));
+        let items: Vec<ListItem> = matches
+            .iter()
+            .skip(offset)
+            .take(height)
+            .map(|glyph| {
+                ListItem::new(Line::from(vec![
+                    Span::raw(format!(" {}  ", glyph.ch)).bold(),
+                    Span::raw(format!("{:<44}", glyph.name)),
+                    Span::raw(format!("U+{:04X}", glyph.ch as u32)).dark_gray(),
+                ]))
+            })
+            .collect();
+        let mut state = ListState::default().with_selected(Some(selected - offset.min(selected)));
+        frame.render_stateful_widget(
+            List::new(items).highlight_style(Style::new().bg(Color::Blue).fg(Color::White)),
+            list_area,
+            &mut state,
+        );
+        if matches.is_empty() {
+            frame.render_widget(
+                Paragraph::new(Line::from("no matching icon").dark_gray()),
+                list_area,
+            );
+        }
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::raw("type").bold(),
+                Span::raw(" search names or codes  ").dark_gray(),
+                Span::raw("↑↓").bold(),
+                Span::raw(" choose  ").dark_gray(),
+                Span::raw("⏎").bold(),
+                Span::raw(" use  ").dark_gray(),
+                Span::raw("esc").bold(),
+                Span::raw(" cancel").dark_gray(),
+            ])),
+            hints,
+        );
+    }
 
     pub(super) fn theme_focus(&self) -> &Focus {
         &self.theme.focus
@@ -664,6 +809,24 @@ impl App {
     }
 }
 
+/// An icon or symbol value: the text itself, then its code points and glyph
+/// name, the same way for a set value and a default.
+fn icon_spans(text: &str, default: bool) -> Vec<Span<'static>> {
+    let shown = Span::raw(glyphs::visible(text));
+    let mut detail = format!("  {}", glyphs::describe(text));
+    if default {
+        detail.push_str(" (default)");
+    }
+    vec![
+        if default {
+            shown.dark_gray()
+        } else {
+            shown.yellow()
+        },
+        Span::raw(detail).dark_gray(),
+    ]
+}
+
 fn prop_value_spans(
     doc: &ThemeDoc,
     entry: &ThemeEntry,
@@ -683,15 +846,12 @@ fn prop_value_spans(
             spans.push(Span::raw(format!(" {}", edit_text(value.unwrap()))).yellow());
             spans
         }
-        (PropKind::Str, Some(value)) => vec![Span::raw(format!("{:?}", edit_text(value))).yellow()],
-        (PropKind::Str, None) => {
-            let fallback = if spec.fallback.is_empty() {
-                "unset".to_string()
-            } else {
-                spec.fallback.clone()
-            };
-            vec![Span::raw(fallback).dark_gray()]
-        }
+        (PropKind::Str, Some(value)) => icon_spans(&edit_text(value), false),
+        (PropKind::Str, None) => match glyphs::fallback_text(&spec.fallback) {
+            Some(text) => icon_spans(&text, true),
+            None if spec.fallback.is_empty() => vec![Span::raw("unset").dark_gray()],
+            None => vec![Span::raw(format!("default: {}", spec.fallback)).dark_gray()],
+        },
         (_, Some(value)) => vec![
             swatch(doc.resolve(entry, spec, Some(value))),
             Span::raw(format!(" {}", edit_text(value))).yellow(),
