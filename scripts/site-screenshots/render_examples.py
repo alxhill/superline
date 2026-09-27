@@ -1,6 +1,7 @@
 """Fill the example placeholders in site/config.html from components.json, the
-theme option tables from theme-options.json, and sync every screenshot's
-width/height attributes on the site's pages.
+theme option tables from theme-options.json, the colour tables from
+src/colors.rs, and sync every screenshot's width/height attributes on the
+site's pages.
 
 A placeholder is `<div class="example" data-example="<component>/<variant>">`
 up to the next `<!-- /example -->`. Its contents are rewritten with the
@@ -16,7 +17,8 @@ from pathlib import Path
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
-SITE = HERE.parent.parent / "site"
+ROOT = HERE.parent.parent
+SITE = ROOT / "site"
 WIDTH = 66
 
 # Examples that are not a single prompt row, keyed like the manifest's.
@@ -181,6 +183,75 @@ def fill_theme_options(text):
     return text
 
 
+# xterm's default palette for the 16 system colours.
+SYSTEM_COLORS = [
+    "000000", "cd0000", "00cd00", "cdcd00", "0000ee", "cd00cd", "00cdcd", "e5e5e5",
+    "7f7f7f", "ff0000", "00ff00", "ffff00", "5c5cff", "ff00ff", "00ffff", "ffffff",
+]
+
+
+def xterm_hex(code):
+    if code < 16:
+        return SYSTEM_COLORS[code]
+    if code < 232:
+        steps = [0, 95, 135, 175, 215, 255]
+        code -= 16
+        return "".join(f"{steps[c]:02x}" for c in (code // 36, code // 6 % 6, code % 6))
+    return f"{8 + 10 * (code - 232):02x}" * 3
+
+
+def swatch(code, label=None):
+    rgb = [int(xterm_hex(code)[i:i + 2], 16) for i in (0, 2, 4)]
+    ink = "#000" if 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] > 128 else "#fff"
+    return (
+        f'<span class="swatch" style="background:#{xterm_hex(code)};color:{ink}">'
+        f"{code if label is None else label}</span>"
+    )
+
+
+def color_codes():
+    """The 256-colour palette in the layout of `ansi --color-codes`."""
+
+    def row(label, codes):
+        return (
+            f'<div class="palette-row"><span class="palette-label">{label}</span>'
+            f'<span class="palette-cells">{"".join(swatch(c) for c in codes)}</span></div>'
+        )
+
+    parts = [row("Standard", range(0, 8)), row("Intense", range(8, 16))]
+    for band in range(3):
+        groups = []
+        for half in range(2):
+            start = 16 + 6 * band + 18 * half
+            cells = "".join(swatch(start + 36 * r + c) for r in range(6) for c in range(6))
+            groups.append(f'<span class="palette-cube">{cells}</span>')
+        parts.append(f'<div class="palette-band">{"".join(groups)}</div>')
+    parts.append(row("Grays", range(232, 244)))
+    parts.append(row("", range(244, 256)))
+    return "\n    " + "\n    ".join(parts) + "\n  "
+
+
+def color_names():
+    """Every name accepted by `Color::from_name`, read from src/colors.rs."""
+    source = (ROOT / "src/colors.rs").read_text()
+    block = re.search(r"define_colors! \{(.*?)\n\}", source, re.S)[1]
+    names = re.findall(r"(\w+) => (\d+)", block)
+    items = "".join(
+        f'\n      <li>{swatch(int(code))}<code>"{name}"</code></li>' for name, code in names
+    )
+    return f'\n    <ul class="color-names">{items}\n    </ul>\n  '
+
+
+def fill_colors(text):
+    tables = {"codes": color_codes, "names": color_names}
+    return re.sub(
+        r'<div class="colors" data-colors="([^"]+)">.*?</div><!-- /colors -->',
+        lambda m: f'<div class="colors" data-colors="{m[1]}">{tables[m[1]]()}</div><!-- /colors -->',
+        text,
+        flags=re.S,
+    )
+
+
 def main():
     rendered = dict(examples())
     config_page = SITE / "config.html"
@@ -201,6 +272,7 @@ def main():
         flags=re.S,
     )
     text = fill_theme_options(text)
+    text = fill_colors(text)
     config_page.write_text(text)
     if missing:
         print("examples not placed in config.html:", ", ".join(sorted(missing)))

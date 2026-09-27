@@ -438,3 +438,28 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
   .configure { grid-template-columns: 1fr; gap: 24px; padding: 64px 0; }
   .term-bar em { display: none; }
 }
+
+.colors { margin-top: 16px; }
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 34px;
+  padding: 3px 0;
+  border-radius: 3px;
+  font: 500 11px/1.2 var(--mono);
+  text-align: center;
+}
+.palette-row, .palette-band { display: flex; flex-wrap: wrap; gap: 3px 16px; margin-bottom: 3px; }
+.palette-band { gap: 8px 16px; margin: 16px 0; }
+.palette-label { width: 64px; color: var(--muted); font-size: 13px; line-height: 21px; }
+.palette-cells { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; max-width: calc(12 * 34px + 11 * 3px); }
+.palette-cube { display: grid; grid-template-columns: repeat(6, 34px); gap: 3px; }
+.color-names {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.color-names li { display: flex; align-items: center; gap: 10px; }
