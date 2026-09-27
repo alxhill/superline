@@ -64,6 +64,28 @@ fn current_hostname() -> Option<String> {
 }
 
 fn hostname_text(host: std::ffi::OsString) -> Option<String> {
-    let host = host.to_string_lossy().into_owned();
-    (!host.is_empty()).then_some(host)
+    let host = host.to_string_lossy();
+    let host = if cfg!(target_os = "macos") {
+        short_hostname(&host)
+    } else {
+        &host
+    };
+    (!host.is_empty()).then(|| host.to_owned())
+}
+
+/// Matches `hostname -s`: everything before the first dot.
+fn short_hostname(host: &str) -> &str {
+    host.split('.').next().unwrap_or(host)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_hostname_drops_domain() {
+        assert_eq!(short_hostname("mac.local"), "mac");
+        assert_eq!(short_hostname("mac.corp.example.com"), "mac");
+        assert_eq!(short_hostname("mac"), "mac");
+    }
 }
