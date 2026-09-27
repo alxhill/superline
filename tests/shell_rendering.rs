@@ -30,11 +30,16 @@ fn scratch_home(label: &str) -> PathBuf {
 /// Render the default prompt for `shell` against the given `$HOME`, returning
 /// the raw stdout (escape sequences and all).
 fn render_in(home: &PathBuf, shell: &str) -> String {
+    // Run outside the repo with a private cache so async segments (git status,
+    // lookups cached by other tests) cannot change between two renders.
     let output = Command::new(BIN)
         .args(["show", shell, "-s", "0", "-c", "80"])
+        .current_dir(home)
         // Home lookup keys off $HOME on Unix and %USERPROFILE% on Windows.
         .env("HOME", home)
         .env("USERPROFILE", home)
+        .env("XDG_CACHE_HOME", home.join("cache"))
+        .env("LOCALAPPDATA", home.join("cache"))
         .output()
         .expect("failed to run the superline binary");
     assert!(
