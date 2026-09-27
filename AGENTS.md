@@ -24,7 +24,8 @@
   `scripts/site-screenshots/components.json` and the screenshots regenerated with
   `scripts/site-screenshots/generate.sh`. A change to the theme properties a
   module reads (`src/themes/custom.rs`) needs the matching entry in
-  `scripts/site-screenshots/theme-options.json`.
+  `scripts/site-screenshots/theme-options.json`, which is also compiled into
+  the Theme page of `superline config`.
 - When a change adds a new feature or option, also update the user's live
   superline config (`~/.config/superline/config.json`, or the file it points at)
   to use it so it can be tried immediately. If that config lives in a git repo,

@@ -470,14 +470,26 @@ impl UsageScheme for CustomTheme {
     color_from_json!(usage_threshold_bg, ai_usage, threshold_bg, alert_bg);
 }
 
+/// Checks a theme file's contents the way [`CustomTheme::load`] does.
+pub(crate) fn validate_theme(value: &Value) -> Result<(), String> {
+    let theme: CustomThemeImpl =
+        serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+    theme.validate()
+}
+
+/// The colour code a theme colour value (a name or a number) stands for.
+pub(crate) fn color_code(value: &Value) -> Option<u8> {
+    color_from_value(value).map(Color::to_u8)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ThemePropertyKind {
+pub(crate) enum ThemePropertyKind {
     Color,
     ColorList,
     String,
 }
 
-fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
+pub(crate) fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
     if property == "bg_colors" || property.ends_with("_colors") {
         Some(ThemePropertyKind::ColorList)
     } else if property == "icon"

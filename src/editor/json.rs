@@ -1,23 +1,34 @@
-//! Writes a config back out the way people tend to write one by hand: every
-//! array element on its own line, and short objects such as a segment's
-//! options kept on one line.
+//! Writes a config or theme back out the way people tend to write one by
+//! hand: short objects such as a segment's options kept on one line, and a
+//! config's segment lists one element per line.
 
 use serde_json::Value;
 
 const MAX_WIDTH: usize = 100;
 const INDENT: usize = 2;
 
+/// Every array element on its own line, as a config's rows and segments are.
 pub fn to_pretty(value: &Value) -> String {
+    format(value, false)
+}
+
+/// Like [`to_pretty`], but short arrays of plain values (a theme's colour
+/// lists) stay on one line.
+pub fn to_pretty_theme(value: &Value) -> String {
+    format(value, true)
+}
+
+fn format(value: &Value, inline_arrays: bool) -> String {
     let mut out = String::new();
-    write_value(value, 0, 0, &mut out);
+    write_value(value, 0, 0, inline_arrays, &mut out);
     out.push('\n');
     out
 }
 
 /// `prefix` is the width already used on the current line (indent plus key).
-fn write_value(value: &Value, indent: usize, prefix: usize, out: &mut String) {
+fn write_value(value: &Value, indent: usize, prefix: usize, inline_arrays: bool, out: &mut String) {
     if indent > 0 {
-        if let Some(inline) = inline(value) {
+        if let Some(inline) = inline(value, inline_arrays) {
             if prefix + inline.len() < MAX_WIDTH {
                 out.push_str(&inline);
                 return;
@@ -29,7 +40,7 @@ fn write_value(value: &Value, indent: usize, prefix: usize, out: &mut String) {
             out.push_str("[\n");
             for (i, item) in items.iter().enumerate() {
                 push_indent(indent + INDENT, out);
-                write_value(item, indent + INDENT, indent + INDENT, out);
+                write_value(item, indent + INDENT, indent + INDENT, inline_arrays, out);
                 out.push_str(if i + 1 < items.len() { ",\n" } else { "\n" });
             }
             push_indent(indent, out);
@@ -41,7 +52,13 @@ fn write_value(value: &Value, indent: usize, prefix: usize, out: &mut String) {
                 push_indent(indent + INDENT, out);
                 let key = format!("{}: ", Value::String(key.clone()));
                 out.push_str(&key);
-                write_value(item, indent + INDENT, indent + INDENT + key.len(), out);
+                write_value(
+                    item,
+                    indent + INDENT,
+                    indent + INDENT + key.len(),
+                    inline_arrays,
+                    out,
+                );
                 out.push_str(if i + 1 < map.len() { ",\n" } else { "\n" });
             }
             push_indent(indent, out);
@@ -51,17 +68,31 @@ fn write_value(value: &Value, indent: usize, prefix: usize, out: &mut String) {
     }
 }
 
-/// The one-line form of a value, unless it contains a non-empty array.
-fn inline(value: &Value) -> Option<String> {
+/// The one-line form of a value. Non-empty arrays only have one when
+/// `inline_arrays` is set and they hold plain values.
+fn inline(value: &Value, inline_arrays: bool) -> Option<String> {
     match value {
         Value::Array(items) if items.is_empty() => Some("[]".into()),
+        Value::Array(items)
+            if inline_arrays
+                && items
+                    .iter()
+                    .all(|item| !item.is_array() && !item.is_object()) =>
+        {
+            let items: Vec<String> = items.iter().map(Value::to_string).collect();
+            Some(format!("[{}]", items.join(", ")))
+        }
         Value::Array(_) => None,
         Value::Object(map) if map.is_empty() => Some("{}".into()),
         Value::Object(map) => {
             let fields = map
                 .iter()
                 .map(|(key, item)| {
-                    Some(format!("{}: {}", Value::String(key.clone()), inline(item)?))
+                    Some(format!(
+                        "{}: {}",
+                        Value::String(key.clone()),
+                        inline(item, inline_arrays)?
+                    ))
                 })
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("{{ {} }}", fields.join(", ")))
@@ -110,6 +141,16 @@ mod tests {
         let config = json!({ "rows": [{ "left": [{ "text": long }] }] });
         let text = to_pretty(&config);
         assert!(text.contains("{\n          \"text\": \""), "{text}");
+    }
+
+    #[test]
+    fn theme_colour_lists_stay_on_one_line() {
+        let theme = json!({ "modules": { "cwd": { "bg_colors": [166, "red"] } } });
+        let text = to_pretty_theme(&theme);
+        assert!(
+            text.contains(r#""cwd": { "bg_colors": [166, "red"] }"#),
+            "{text}"
+        );
     }
 
     #[test]

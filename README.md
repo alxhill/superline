@@ -126,9 +126,15 @@ prompt as you change them, and saves back to the same file:
   they move the whole row. `n` adds a row.
 - `Enter` opens a widget's options: `Enter` or `space` toggles and cycles values or types a new one, `←`/`→` cycle
   choices, and `x` resets an option to its default.
-- `u` undoes, `U` redoes, `s` saves, `e` opens the file in `$EDITOR`, `q` quits and `?` lists every key.
+- `2` (or `t`) switches to the Theme page, which edits the custom theme file the config names. Pick a module to see
+  each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
+  picker that previews as you move, `←`/`→` step a colour by one code, `i` types a name or code, and `x` resets a
+  property. On a built-in theme, `n` creates a new theme file from the example theme and points the config at it.
+  `1` returns to the layout.
+- `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
+  and `?` lists every key.
 
-Widgets superline doesn't recognise, and options the editor doesn't know, are kept as written.
+Widgets superline doesn't recognise, and options or theme properties the editor doesn't know, are kept as written.
 
 A config has a `theme` and a list of `rows`:
 
@@ -552,7 +558,7 @@ one is pinned.
 
 `theme` is `"rainbow"`, `"simple"`, or a path to a theme JSON file. Paths starting with `/` are absolute; anything
 else is resolved relative to the config directory (`$HOME/.config/superline/`). If a custom theme fails to load,
-superline falls back to `rainbow`.
+superline falls back to `rainbow`. The Theme page of `superline config` edits a custom theme with a live preview.
 
 A theme file has two keys, `defaults` and `modules`:
 

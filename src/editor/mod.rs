@@ -6,6 +6,8 @@ mod json;
 mod model;
 mod preview;
 mod schema;
+mod theme;
+mod theme_page;
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -24,6 +26,7 @@ use unicode_width::UnicodeWidthStr;
 use model::{describe, show_value, widget_spec, Document, Entry, SegPos, Side, Target};
 use preview::{Preview, Request};
 use schema::{Kind, OptionSpec, WidgetSpec, WIDGETS};
+use theme_page::ThemePage;
 
 /// Cached widgets (git, PR, AI usage) fill in after a background refresh, so
 /// the preview is redrawn this often even when nothing was edited.
@@ -65,10 +68,37 @@ enum Focus {
     Options,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Page {
+    Layout,
+    Theme,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum InputPurpose {
+    /// A widget option or setting on the Layout page.
+    Option,
+    ThemeProperty,
+    /// The file name of a new custom theme.
+    NewTheme,
+}
+
 enum Mode {
     Normal,
-    Picker { filter: String, selected: usize },
-    Input { buffer: String, cursor: usize },
+    Picker {
+        filter: String,
+        selected: usize,
+    },
+    Input {
+        buffer: String,
+        cursor: usize,
+        purpose: InputPurpose,
+    },
+    ColorPicker {
+        code: u8,
+        /// Write the pick as a colour name when it has one.
+        prefer_name: bool,
+    },
     ConfirmQuit,
     Help,
 }
@@ -79,8 +109,10 @@ struct Status {
 }
 
 struct App {
+    page: Page,
     doc: Document,
     path: PathBuf,
+    theme: ThemePage,
     entries: Vec<Entry>,
     cursor: usize,
     list: ListState,
@@ -106,6 +138,8 @@ impl App {
         let entries = doc.entries();
         let theme_choices = theme_choices(&path);
         App {
+            page: Page::Layout,
+            theme: ThemePage::new(),
             preview: Preview::spawn(&path),
             doc,
             path,
@@ -147,9 +181,11 @@ impl App {
                 self.preview_stale = true;
             }
             let due = !self.preview_in_flight && self.preview_requested.elapsed() > PREVIEW_REFRESH;
+            self.load_theme_slot();
             if self.preview_stale || due {
                 self.preview.request(Request {
                     config: self.doc.root().clone(),
+                    theme: self.preview_theme(),
                     columns,
                 });
                 self.preview_stale = false;
@@ -272,19 +308,41 @@ impl App {
 
     // ---- actions ----
 
+    fn is_dirty(&self) -> bool {
+        self.doc.is_dirty() || self.theme.is_dirty()
+    }
+
     fn save(&mut self) {
-        let text = json::to_pretty(self.doc.root());
-        match write_atomic(&self.path, &text) {
-            Ok(()) => {
-                self.doc.mark_saved();
-                self.set_status(format!("Saved {}", self.path.display()), false);
+        let mut written = Vec::new();
+        if self.doc.is_dirty() {
+            let text = json::to_pretty(self.doc.root());
+            if let Err(error) = write_atomic(&self.path, &text) {
+                return self.set_status(format!("Save failed: {error}"), true);
             }
-            Err(error) => self.set_status(format!("Save failed: {error}"), true),
+            self.doc.mark_saved();
+            written.push(self.path.clone());
+        }
+        match self.theme.save() {
+            Ok(themes) => written.extend(themes),
+            Err(error) => return self.set_status(format!("Save failed: {error}"), true),
+        }
+        let names: Vec<String> = written
+            .iter()
+            .map(|path| {
+                path.file_name().map_or_else(
+                    || display_path(path),
+                    |name| name.to_string_lossy().into_owned(),
+                )
+            })
+            .collect();
+        match names.as_slice() {
+            [] => self.set_status("Nothing to save", false),
+            names => self.set_status(format!("Saved {}", names.join(" and ")), false),
         }
     }
 
     fn request_quit(&mut self) {
-        if self.doc.is_dirty() {
+        if self.is_dirty() {
             self.mode = Mode::ConfirmQuit;
         } else {
             self.exit = Some(Exit::Quit);
@@ -433,6 +491,7 @@ impl App {
             self.mode = Mode::Input {
                 cursor: buffer.chars().count(),
                 buffer,
+                purpose: InputPurpose::Option,
             };
         } else {
             self.cycle(true);
@@ -469,7 +528,7 @@ impl App {
             Mode::ConfirmQuit => match key.code {
                 KeyCode::Char('y') | KeyCode::Char('s') => {
                     self.save();
-                    if !self.doc.is_dirty() {
+                    if !self.is_dirty() {
                         self.exit = Some(Exit::Quit);
                     }
                 }
@@ -503,9 +562,15 @@ impl App {
                 }
                 self.mode = Mode::Picker { filter, selected };
             }
+            Mode::ColorPicker { code, prefer_name } => {
+                if let Some(mode) = self.on_color_picker_key(key, code, prefer_name) {
+                    self.mode = mode;
+                }
+            }
             Mode::Input {
                 mut buffer,
                 mut cursor,
+                purpose,
             } => {
                 let byte = |buffer: &str, cursor: usize| {
                     buffer
@@ -515,6 +580,11 @@ impl App {
                 };
                 match key.code {
                     KeyCode::Esc => return,
+                    KeyCode::Enter if purpose != InputPurpose::Option => {
+                        if self.submit_theme_input(purpose, &buffer) {
+                            return;
+                        }
+                    }
                     KeyCode::Enter => {
                         if let Some((target, spec, _)) = self.current_option() {
                             match spec.parse(&buffer) {
@@ -548,7 +618,11 @@ impl App {
                     }
                     _ => {}
                 }
-                self.mode = Mode::Input { buffer, cursor };
+                self.mode = Mode::Input {
+                    buffer,
+                    cursor,
+                    purpose,
+                };
             }
         }
     }
@@ -560,6 +634,18 @@ impl App {
         match key.code {
             KeyCode::Char('q') => return self.request_quit(),
             KeyCode::Char('s') => return self.save(),
+            KeyCode::Char('1') => return self.page = Page::Layout,
+            KeyCode::Char('2') => return self.page = Page::Theme,
+            KeyCode::Char('t') => {
+                self.page = match self.page {
+                    Page::Layout => Page::Theme,
+                    Page::Theme => Page::Layout,
+                };
+                return;
+            }
+            KeyCode::Char('u') if self.page == Page::Theme => return self.theme_undo(false),
+            KeyCode::Char('U') if self.page == Page::Theme => return self.theme_undo(true),
+            KeyCode::Char('r') if ctrl && self.page == Page::Theme => return self.theme_undo(true),
             KeyCode::Char('u') => {
                 if self.doc.undo() {
                     self.changed();
@@ -587,7 +673,7 @@ impl App {
                 return;
             }
             KeyCode::Char('e') => {
-                if self.doc.is_dirty() {
+                if self.is_dirty() {
                     self.set_status("Save (s) or undo (u) before opening $EDITOR", true);
                 } else {
                     self.exit = Some(Exit::ExternalEditor);
@@ -595,6 +681,10 @@ impl App {
                 return;
             }
             _ => {}
+        }
+
+        if self.page == Page::Theme {
+            return self.on_theme_key(key);
         }
 
         match self.focus {
@@ -677,41 +767,65 @@ impl App {
             None => self.preview_lines.len().max(1),
         } as u16;
         let preview_height = (preview_rows + 2).min(area.height / 3).max(3);
-        let [top, middle, bottom] = Layout::vertical([
+        let [top, tabs, middle, bottom] = Layout::vertical([
             Constraint::Length(preview_height),
+            Constraint::Length(1),
             Constraint::Min(6),
             Constraint::Length(1),
         ])
         .areas(area);
-        let [left, right] =
-            Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)])
-                .areas(middle);
 
         self.draw_preview(frame, top);
-        self.draw_layout(frame, left);
-        self.draw_options(frame, right);
+        self.draw_tabs(frame, tabs);
+        match self.page {
+            Page::Layout => {
+                let [left, right] =
+                    Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)])
+                        .areas(middle);
+                self.draw_layout(frame, left);
+                self.draw_options(frame, right);
+            }
+            Page::Theme => self.draw_theme(frame, middle),
+        }
         self.draw_footer(frame, bottom);
 
         match &self.mode {
             Mode::Picker { filter, selected } => draw_picker(frame, area, filter, *selected),
+            Mode::ColorPicker { code, .. } => self.draw_color_picker(frame, area, *code),
             Mode::ConfirmQuit => draw_confirm(frame, area),
             Mode::Help => draw_help(frame, area),
             _ => {}
         }
     }
 
-    fn draw_preview(&self, frame: &mut Frame, area: Rect) {
-        let suffix = if self.doc.is_dirty() {
-            " ● modified"
-        } else {
-            ""
+    fn draw_tabs(&self, frame: &mut Frame, area: Rect) {
+        let tab = |page: Page, key: &str, name: &str, dirty: bool| {
+            let label = format!(" {key} {name}{} ", if dirty { " ●" } else { "" });
+            if self.page == page {
+                Span::raw(label).bold().fg(Color::White).bg(Color::Blue)
+            } else {
+                Span::raw(label).dark_gray()
+            }
         };
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                tab(Page::Layout, "1", "Layout", self.doc.is_dirty()),
+                Span::raw(" "),
+                tab(Page::Theme, "2", "Theme", self.theme.is_dirty()),
+                Span::raw("   t switches").dark_gray(),
+            ])),
+            area,
+        );
+    }
+
+    fn draw_preview(&self, frame: &mut Frame, area: Rect) {
+        let suffix = if self.is_dirty() { " ● modified" } else { "" };
         let room = (area.width as usize).saturating_sub(16 + suffix.len());
         let text = format!(
             " {}{suffix} ",
             truncate_start(&display_path(&self.path), room)
         );
-        let path = if self.doc.is_dirty() {
+        let path = if self.is_dirty() {
             Span::raw(text).yellow()
         } else {
             Span::raw(text).dark_gray()
@@ -891,7 +1005,7 @@ impl App {
                 Span::styled(format!("{:key_width$}  ", spec.key), key_style),
             ];
             match (&self.mode, selected) {
-                (Mode::Input { buffer, cursor }, true) => {
+                (Mode::Input { buffer, cursor, .. }, true) => {
                     let before: String = buffer.chars().take(*cursor).collect();
                     let x = inner.x + (2 + key_width + 2 + before.width()) as u16;
                     cursor_position = Some((x, (first_option_line + i) as u16));
@@ -946,7 +1060,17 @@ impl App {
             Some(Status { text, error: true }) => Line::from(format!(" {text}")).red(),
             Some(Status { text, error: false }) => Line::from(format!(" {text}")).green(),
             None => {
-                let hints: &[(&str, &str)] = match (&self.mode, &self.focus) {
+                let focus = match self.page {
+                    Page::Layout => &self.focus,
+                    Page::Theme => self.theme_focus(),
+                };
+                let hints: &[(&str, &str)] = match (&self.mode, focus) {
+                    (Mode::ColorPicker { .. }, _) => &[
+                        ("←↑↓→", "choose"),
+                        ("⏎", "pick"),
+                        ("i", "type"),
+                        ("esc", "cancel"),
+                    ],
                     (Mode::Input { .. }, _) => {
                         &[("⏎", "apply"), ("esc", "cancel"), ("^U", "clear")]
                     }
@@ -955,6 +1079,24 @@ impl App {
                         ("↑↓", "choose"),
                         ("⏎", "add"),
                         ("esc", "cancel"),
+                    ],
+                    (_, Focus::Layout) if self.page == Page::Theme => &[
+                        ("↑↓", "move"),
+                        ("⏎", "edit"),
+                        ("n", "new theme"),
+                        ("u", "undo"),
+                        ("s", "save"),
+                        ("q", "quit"),
+                        ("?", "help"),
+                    ],
+                    (_, Focus::Options) if self.page == Page::Theme => &[
+                        ("↑↓", "select"),
+                        ("⏎", "change"),
+                        ("←→", "step colour"),
+                        ("i", "type"),
+                        ("x", "reset"),
+                        ("esc", "back"),
+                        ("s", "save"),
                     ],
                     (_, Focus::Layout) => &[
                         ("↑↓", "move"),
@@ -1145,7 +1287,18 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("x  del", "reset the option to its default"),
         ("esc  tab", "back to the layout"),
         ("", ""),
+        ("Theme", ""),
+        (
+            "⏎",
+            "edit a module's colours; ⏎ on a colour opens the picker",
+        ),
+        ("← →", "step a colour by one code"),
+        ("i", "type a colour name, a 0-255 code, or text"),
+        ("x", "reset the property to its fallback"),
+        ("n", "create a new custom theme file"),
+        ("", ""),
         ("Anywhere", ""),
+        ("1  2  t", "Layout page / Theme page / switch"),
         ("u  /  U  ^R", "undo / redo"),
         ("s", "save to the config file"),
         ("e", "open the file in $EDITOR"),

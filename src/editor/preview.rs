@@ -12,6 +12,8 @@ use serde_json::Value;
 
 pub struct Request {
     pub config: Value,
+    /// The theme being edited, drawn instead of the file the config names.
+    pub theme: Option<Value>,
     pub columns: u16,
 }
 
@@ -35,6 +37,10 @@ impl Preview {
             "superline-config-preview-{}.json",
             std::process::id()
         ));
+        let temp_theme = temp.with_file_name(format!(
+            "superline-theme-preview-{}.json",
+            std::process::id()
+        ));
 
         thread::spawn(move || {
             while let Ok(mut request) = request_rx.recv() {
@@ -45,16 +51,18 @@ impl Preview {
                         Err(TryRecvError::Empty) => break,
                         Err(TryRecvError::Disconnected) => {
                             let _ = std::fs::remove_file(&temp);
+                            let _ = std::fs::remove_file(&temp_theme);
                             return;
                         }
                     }
                 }
-                let rendered = render(&request, &config_dir, &temp);
+                let rendered = render(&request, &config_dir, &temp, &temp_theme);
                 if result_tx.send(rendered).is_err() {
                     break;
                 }
             }
             let _ = std::fs::remove_file(&temp);
+            let _ = std::fs::remove_file(&temp_theme);
         });
 
         Preview { requests, results }
@@ -70,11 +78,16 @@ impl Preview {
     }
 }
 
-fn render(request: &Request, config_dir: &Path, temp: &Path) -> Rendered {
+fn render(request: &Request, config_dir: &Path, temp: &Path, temp_theme: &Path) -> Rendered {
     let mut config = request.config.clone();
-    // The copy lives elsewhere, so point a relative theme path back at the
-    // real config directory.
-    if let Some(theme) = config.get_mut("theme") {
+    if let Some(theme) = &request.theme {
+        let text = serde_json::to_string(theme).map_err(|e| e.to_string())?;
+        std::fs::write(temp_theme, text)
+            .map_err(|e| format!("could not write preview theme: {e}"))?;
+        config["theme"] = Value::from(temp_theme.to_string_lossy().into_owned());
+    } else if let Some(theme) = config.get_mut("theme") {
+        // The copy lives elsewhere, so point a relative theme path back at the
+        // real config directory.
         if let Some(name) = theme.as_str() {
             if name != "rainbow" && name != "simple" {
                 *theme = Value::from(config_dir.join(name).to_string_lossy().into_owned());
