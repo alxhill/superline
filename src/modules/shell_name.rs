@@ -30,13 +30,9 @@ impl<S: ShellScheme> ShellName<S> {
 
 impl<S: ShellScheme> Module for ShellName<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_short_segment(&self.name, style::<S>());
-    }
-}
-
-fn style<S: ShellScheme>() -> Style {
-    Style::simple(S::shellname_fg(), S::shellname_bg())
-}
-
+        powerline.add_short_segment(
+            &self.name,
+            Style::simple(S::shellname_fg(), S::shellname_bg()),
+        );
     }
 }
