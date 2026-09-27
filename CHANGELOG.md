@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.1](https://github.com/alxhill/superline/compare/v0.22.0...v0.22.1) - 2026-09-27
+
+### Added
+
+- show short hostname on macOS ([#156](https://github.com/alxhill/superline/pull/156))
+
 ## [0.22.0](https://github.com/alxhill/superline/compare/v0.21.0...v0.22.0) - 2026-09-25
 
 ### Added
