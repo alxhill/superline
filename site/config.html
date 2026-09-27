@@ -102,6 +102,11 @@
           Every module can be written as a bare string or as an object with options, so <code>"git"</code> and
           <code>{ "git": {} }</code> mean the same thing. Modules with required options must use the object form.
         </p>
+        <p>
+          The examples for each module show just that module's entry, to go in a row's <code>left</code> or
+          <code>right</code> array; the screenshots include neighbouring segments for context. Layout examples
+          show a whole config, since they change how every segment around them is drawn.
+        </p>
       </section>
 
       <section id="rows" class="component">
@@ -166,11 +171,15 @@
   <div class="ex-label">chevron (default)</div>
   <figure class="term shot"><img src="img/config/separator-chevron.png" width="325" height="49" loading="lazy" alt="The separator example: chevron (default)."></figure>
   <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    { <span class="k">"separator"</span>: <span class="s">"chevron"</span> },
-    <span class="s">"os"</span>,
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
-    <span class="s">"shell"</span>
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"chevron"</span> },
+        <span class="s">"os"</span>,
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+        <span class="s">"shell"</span>
+      ]
+    }
   ]
 }</code></pre>
 </div><!-- /example -->
@@ -178,11 +187,15 @@
   <div class="ex-label">round</div>
   <figure class="term shot"><img src="img/config/separator-round.png" width="325" height="49" loading="lazy" alt="The separator example: round."></figure>
   <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    { <span class="k">"separator"</span>: <span class="s">"round"</span> },
-    <span class="s">"os"</span>,
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
-    <span class="s">"shell"</span>
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+        <span class="s">"os"</span>,
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+        <span class="s">"shell"</span>
+      ]
+    }
   ]
 }</code></pre>
 </div><!-- /example -->
@@ -190,11 +203,15 @@
   <div class="ex-label">none</div>
   <figure class="term shot"><img src="img/config/separator-none.png" width="274" height="49" loading="lazy" alt="The separator example: none."></figure>
   <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    { <span class="k">"separator"</span>: <span class="s">"none"</span> },
-    <span class="s">"os"</span>,
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
-    <span class="s">"shell"</span>
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"none"</span> },
+        <span class="s">"os"</span>,
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+        <span class="s">"shell"</span>
+      ]
+    }
   ]
 }</code></pre>
 </div><!-- /example -->
@@ -202,12 +219,16 @@
   <div class="ex-label">Changing style mid-row</div>
   <figure class="term shot"><img src="img/config/separator-mixed.png" width="325" height="49" loading="lazy" alt="The separator example: Changing style mid-row."></figure>
   <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    <span class="s">"os"</span>,
-    { <span class="k">"separator"</span>: <span class="s">"round"</span> },
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
-    { <span class="k">"separator"</span>: <span class="s">"chevron"</span> },
-    <span class="s">"shell"</span>
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        <span class="s">"os"</span>,
+        { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">3</span> } },
+        { <span class="k">"separator"</span>: <span class="s">"chevron"</span> },
+        <span class="s">"shell"</span>
+      ]
+    }
   ]
 }</code></pre>
 </div><!-- /example -->
@@ -226,10 +247,14 @@
   <div class="ex-label">small_spacer</div>
   <figure class="term shot"><img src="img/config/spacers-small.png" width="304" height="49" loading="lazy" alt="The spacers example: small_spacer."></figure>
   <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
-    <span class="s">"small_spacer"</span>,
-    <span class="s">"shell"</span>
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
+        <span class="s">"small_spacer"</span>,
+        <span class="s">"shell"</span>
+      ]
+    }
   ]
 }</code></pre>
 </div><!-- /example -->
@@ -237,10 +262,14 @@
   <div class="ex-label">large_spacer</div>
   <figure class="term shot"><img src="img/config/spacers-large.png" width="325" height="49" loading="lazy" alt="The spacers example: large_spacer."></figure>
   <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
-    <span class="s">"large_spacer"</span>,
-    <span class="s">"shell"</span>
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
+        <span class="s">"large_spacer"</span>,
+        <span class="s">"shell"</span>
+      ]
+    }
   ]
 }</code></pre>
 </div><!-- /example -->
@@ -264,14 +293,18 @@
   <div class="ex-label">Splitting a row into blocks</div>
   <figure class="term shot"><img src="img/config/padding-blocks.png" width="386" height="49" loading="lazy" alt="The padding example: Splitting a row into blocks."></figure>
   <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    { <span class="k">"separator"</span>: <span class="s">"round"</span> },
-    { <span class="k">"padding"</span>: <span class="n">1</span> },
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
-    { <span class="k">"padding"</span>: <span class="n">3</span> },
-    <span class="s">"os"</span>,
-    <span class="s">"shell"</span>,
-    { <span class="k">"padding"</span>: <span class="n">0</span> }
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+        { <span class="k">"padding"</span>: <span class="n">1</span> },
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } },
+        { <span class="k">"padding"</span>: <span class="n">3</span> },
+        <span class="s">"os"</span>,
+        <span class="s">"shell"</span>,
+        { <span class="k">"padding"</span>: <span class="n">0</span> }
+      ]
+    }
   ]
 }</code></pre>
 </div><!-- /example -->
@@ -331,12 +364,7 @@
           <div class="example" data-example="read_only/default">
   <div class="ex-label">In a read-only directory</div>
   <figure class="term shot"><img src="img/config/read_only-default.png" width="304" height="49" loading="lazy" alt="The read_only example: In a read-only directory."></figure>
-  <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    <span class="s">"read_only"</span>,
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">2</span> } }
-  ]
-}</code></pre>
+  <pre class="json"><code><span class="s">"read_only"</span></code></pre>
 </div><!-- /example -->
         </div>
       </section>
@@ -377,12 +405,7 @@
           <div class="example" data-example="last_cmd_duration/default">
   <div class="ex-label">min_run_time: 500</div>
   <figure class="term shot"><img src="img/config/last_cmd_duration-default.png" width="138" height="96" loading="lazy" alt="The last_cmd_duration example: min_run_time: 500."></figure>
-  <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    { <span class="k">"last_cmd_duration"</span>: { <span class="k">"min_run_time"</span>: <span class="n">500</span> } },
-    <span class="s">"cmd"</span>
-  ]
-}</code></pre>
+  <pre class="json"><code>{ <span class="k">"last_cmd_duration"</span>: { <span class="k">"min_run_time"</span>: <span class="n">500</span> } }</code></pre>
 </div><!-- /example -->
         </div>
       </section>
@@ -417,7 +440,7 @@
           <div class="example" data-example="jobs/default">
   <div class="ex-label">With two background jobs</div>
   <figure class="term shot"><img src="img/config/jobs-default.png" width="211" height="96" loading="lazy" alt="The jobs example: With two background jobs."></figure>
-  <pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"jobs"</span>, <span class="s">"cmd"</span>] }</code></pre>
+  <pre class="json"><code><span class="s">"jobs"</span></code></pre>
 </div><!-- /example -->
         </div>
       </section>
@@ -487,12 +510,12 @@
           <div class="example" data-example="pr/minimal">
   <div class="ex-label">Minimal: open PR, checks passing</div>
   <figure class="term shot"><img src="img/config/pr-minimal.png" width="458" height="48" loading="lazy" alt="The pr example: Minimal: open PR, checks passing."></figure>
-  <pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"git"</span>, <span class="s">"pr"</span>] }</code></pre>
+  <pre class="json"><code><span class="s">"pr"</span></code></pre>
 </div><!-- /example -->
           <div class="example" data-example="pr/full">
   <div class="ex-label">All options: CI dot hidden</div>
   <figure class="term shot"><img src="img/config/pr-full.png" width="437" height="48" loading="lazy" alt="The pr example: All options: CI dot hidden."></figure>
-  <pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"git"</span>, { <span class="k">"pr"</span>: { <span class="k">"status"</span>: <span class="n">false</span> } }] }</code></pre>
+  <pre class="json"><code>{ <span class="k">"pr"</span>: { <span class="k">"status"</span>: <span class="n">false</span> } }</code></pre>
 </div><!-- /example -->
         </div>
       </section>
@@ -833,12 +856,7 @@
           <div class="example" data-example="text/default">
   <div class="ex-label">Default</div>
   <figure class="term shot"><img src="img/config/text-default.png" width="344" height="49" loading="lazy" alt="The text example: Default."></figure>
-  <pre class="json"><code>{
-  <span class="k">"left"</span>: [
-    { <span class="k">"text"</span>: <span class="s">"hello 🌈"</span> },
-    { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">1</span> } }
-  ]
-}</code></pre>
+  <pre class="json"><code>{ <span class="k">"text"</span>: <span class="s">"hello 🌈"</span> }</code></pre>
 </div><!-- /example -->
         </div>
       </section>
@@ -863,7 +881,7 @@
     <summary>Theme options <code>modules.local_ip</code></summary>
     <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The address.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
   </details><!-- /theme -->
-<pre class="json"><code>{ <span class="k">"left"</span>: [<span class="s">"username"</span>, <span class="s">"hostname"</span>, <span class="s">"local_ip"</span>] }</code></pre>
+<pre class="json"><code><span class="s">"username"</span>, <span class="s">"hostname"</span>, <span class="s">"local_ip"</span></code></pre>
       </section>
 
       <section id="battery" class="component">

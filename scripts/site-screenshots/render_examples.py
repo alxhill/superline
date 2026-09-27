@@ -78,14 +78,26 @@ def highlight(source):
     return "".join(out)
 
 
-def shown_json(variant):
-    """What a reader copies: a whole config, a single segment, or a row."""
+# Components that shape a whole row, shown as a complete config.json so their
+# effect on the segments around them is clear.
+LAYOUT = {"rows", "separator", "spacers", "padding"}
+
+
+def segment_name(segment):
+    return segment if isinstance(segment, str) else next(iter(segment))
+
+
+def shown_json(component, variant):
+    """What a reader copies: a whole config for layout, otherwise the segment itself."""
     if "config" in variant:
         return variant["config"]
     row = variant["row"]
-    if list(row) == ["left"] and len(row["left"]) == 1:
-        return row["left"][0]
-    return row
+    if component in LAYOUT:
+        return {"rows": [row]}
+    segments = [s for side in row.values() for s in side if segment_name(s) == component]
+    if len(segments) != 1:
+        raise SystemExit(f"{component}/{variant['name']} must use {component} exactly once")
+    return segments[0]
 
 
 def image_tag(src, alt):
@@ -102,7 +114,7 @@ def examples():
         for variant in spec["variants"]:
             yield f"{component}/{variant['name']}", {
                 "label": variant["label"],
-                "json": shown_json(variant),
+                "json": shown_json(component, variant),
                 "image": f"img/config/{component}-{variant['name']}.png",
             }
     yield from EXTRA.items()
