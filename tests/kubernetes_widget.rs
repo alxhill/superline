@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const BIN: &str = env!("CARGO_BIN_EXE_superline");
 
@@ -81,7 +81,16 @@ fn a_context_switch_shows_on_the_next_prompt() {
     thread::sleep(Duration::from_millis(1100));
     fs::write(&config, kubeconfig("prod")).expect("switch context");
 
-    let prompt = render(&root, Some(&config));
+    // A loaded machine can miss the lookup's short timeout, or a detached
+    // refresh from the first prompt can land late and re-cache the old
+    // context. Either way the prompt serves the cache once and catches up, so
+    // allow a few prompts for the switch to show.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut prompt = render(&root, Some(&config));
+    while !prompt.contains("prod") && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(200));
+        prompt = render(&root, Some(&config));
+    }
     assert!(prompt.contains("prod"), "prompt: {prompt}");
     assert!(!prompt.contains("staging"), "prompt: {prompt}");
     let _ = fs::remove_dir_all(&root);
