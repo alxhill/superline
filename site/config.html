@@ -980,8 +980,16 @@
         </div>
         <p class="note">Used with <code>{ "theme": "theme.json", ... }</code> next to <code>config.json</code>.</p>
         <p>
-          Each component above lists the properties it reads under <em>Theme options</em>. A few theme keys style
-          segments that aren't configured directly:
+          Each component above lists the properties it reads under <em>Theme options</em>.
+        </p>
+      </section>
+
+      <section id="theme-other" class="component">
+        <h3>Other theme keys</h3>
+        <p>
+          These style segments superline adds itself rather than ones you configure: <code>update</code> for the
+          new-release notice, <code>error</code> for problems such as a config that fails to parse, and
+          <code>unknown</code> for a module name superline doesn't recognise.
         </p>
         <details class="theme-opts" data-theme="update">
     <summary>Theme options <code>modules.update</code></summary>
