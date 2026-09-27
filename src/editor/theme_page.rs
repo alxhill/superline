@@ -13,6 +13,7 @@ use ratatui::Frame;
 use serde_json::Value;
 
 use super::model::Target;
+use super::picker;
 use super::theme::{
     color_names, color_value, edit_text, parse_color, parse_color_list, PropKind, PropSpec,
     ThemeDoc, ThemeEntry,
@@ -414,10 +415,10 @@ impl App {
                     purpose: InputPurpose::ThemeProperty,
                 });
             }
-            KeyCode::Left | KeyCode::Char('h') => code.wrapping_sub(1),
-            KeyCode::Right | KeyCode::Char('l') => code.wrapping_add(1),
-            KeyCode::Up | KeyCode::Char('k') => code.wrapping_sub(16),
-            KeyCode::Down | KeyCode::Char('j') => code.wrapping_add(16),
+            KeyCode::Left | KeyCode::Char('h') => picker::step(code, picker::Direction::Left),
+            KeyCode::Right | KeyCode::Char('l') => picker::step(code, picker::Direction::Right),
+            KeyCode::Up | KeyCode::Char('k') => picker::step(code, picker::Direction::Up),
+            KeyCode::Down | KeyCode::Char('j') => picker::step(code, picker::Direction::Down),
             KeyCode::Home => 0,
             KeyCode::End => 255,
             _ => code,
@@ -616,30 +617,29 @@ impl App {
             Some((entry, spec, _)) => format!(" {}.{} ", entry.label(), spec.key),
             None => " Colour ".to_string(),
         };
-        let popup = super::centered(area, 52, 22);
+        // Grid, a blank line, the selection and the key hints, inside a border
+        // with a line of padding on each side.
+        let footer = 3;
+        let spaced = area.height >= picker::height(true) + footer + 2;
+        let popup = super::centered(area, picker::WIDTH + 4, picker::height(spaced) + footer + 2);
         frame.render_widget(Clear, popup);
         let block = panel(&title, true);
         let inner = block.inner(popup);
         frame.render_widget(block, popup);
+        let inner = Rect {
+            x: inner.x + 1,
+            width: inner.width.saturating_sub(2),
+            ..inner
+        };
+        let [grid, info] = Layout::vertical([
+            Constraint::Length(picker::height(spaced)),
+            Constraint::Length(footer),
+        ])
+        .areas(inner);
+        picker::render(frame.buffer_mut(), grid, code);
 
-        let mut lines: Vec<Line> = (0..16u16)
-            .map(|row| {
-                Line::from(
-                    (0..16u16)
-                        .map(|col| {
-                            let cell = (row * 16 + col) as u8;
-                            let text = if cell == code { "[]" } else { "  " };
-                            Span::styled(
-                                format!("{text} "),
-                                Style::new().bg(Color::Indexed(cell)).fg(contrast(cell)),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect();
         let names = color_names(code);
-        lines.push(Line::default());
+        let mut lines = vec![Line::default()];
         lines.push(Line::from(vec![
             Span::styled("      ", Style::new().bg(Color::Indexed(code))),
             Span::raw(format!(" {code}")).bold(),
@@ -660,7 +660,7 @@ impl App {
             Span::raw("esc").bold(),
             Span::raw(" cancel").dark_gray(),
         ]));
-        frame.render_widget(Paragraph::new(lines), inner);
+        frame.render_widget(Paragraph::new(lines), info);
     }
 }
 
@@ -709,24 +709,5 @@ fn prop_value_spans(
             }
             spans
         }
-    }
-}
-
-/// Black or white, whichever reads better on the colour.
-fn contrast(code: u8) -> Color {
-    let light = match code {
-        7 | 10 | 11 | 14 | 15 => true,
-        0..=15 => false,
-        16..=231 => {
-            let n = code - 16;
-            let (r, g, b) = (n / 36, (n / 6) % 6, n % 6);
-            r as u16 * 3 + g as u16 * 6 + b as u16 > 15
-        }
-        _ => code > 243,
-    };
-    if light {
-        Color::Black
-    } else {
-        Color::White
     }
 }

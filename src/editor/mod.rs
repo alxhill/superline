@@ -4,6 +4,7 @@
 mod ansi;
 mod json;
 mod model;
+mod picker;
 mod preview;
 mod schema;
 mod theme;
