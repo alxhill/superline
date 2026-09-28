@@ -321,6 +321,12 @@ impl GitScheme for CustomTheme {
     color_from_json!(git_repo_clean_fg, git, clean_fg, default_fg);
     color_from_json!(git_repo_dirty_bg, git, dirty_bg, default_bg);
     color_from_json!(git_repo_dirty_fg, git, dirty_fg, default_fg);
+
+    fn git_worktree_icon() -> &'static str {
+        Self::get_str("git", "worktree_icon")
+            .map(|str| str.leak() as &'static str)
+            .unwrap_or(Self::DEFAULT_WORKTREE_ICON)
+    }
 }
 
 impl PrScheme for CustomTheme {

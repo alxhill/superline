@@ -83,6 +83,10 @@ pub enum LineSegment {
         /// `gitoxide` pin one backend.
         #[serde(default)]
         backend: GitBackend,
+        /// Show how many linked worktrees the repository has next to the
+        /// branch. On by default; nothing shows when there are none.
+        #[serde(default = "default_true")]
+        worktrees: bool,
     },
     Pr {
         /// Append a coloured dot reflecting the PR's CI check status. On by
@@ -217,6 +221,8 @@ enum KnownLineSegment {
         status_timeout_ms: u64,
         #[serde(default)]
         backend: GitBackend,
+        #[serde(default = "default_true")]
+        worktrees: bool,
     },
     Pr {
         #[serde(default = "default_true")]
@@ -326,9 +332,11 @@ impl From<KnownLineSegment> for LineSegment {
             KnownLineSegment::Git {
                 status_timeout_ms,
                 backend,
+                worktrees,
             } => LineSegment::Git {
                 status_timeout_ms,
                 backend,
+                worktrees,
             },
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
@@ -554,6 +562,7 @@ impl Default for Config {
                         LineSegment::Git {
                             status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                             backend: GitBackend::Auto,
+                            worktrees: true,
                         },
                         LineSegment::Pr { status: true },
                         LineSegment::Padding(2),
@@ -657,6 +666,7 @@ mod tests {
             LineSegment::Git {
                 status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                 backend: GitBackend::Auto,
+                worktrees: true,
             }
         );
     }
@@ -671,6 +681,7 @@ mod tests {
             LineSegment::Git {
                 status_timeout_ms: 250,
                 backend: GitBackend::Auto,
+                worktrees: true,
             }
         );
     }
@@ -691,9 +702,25 @@ mod tests {
                 LineSegment::Git {
                     status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                     backend: expected,
+                    worktrees: true,
                 }
             );
         }
+    }
+
+    #[test]
+    fn git_worktree_count_can_be_turned_off() {
+        let parsed: LineSegment = serde_json::from_str(r#"{"git":{"worktrees":false}}"#)
+            .expect("git module without worktrees should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Git {
+                status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                backend: GitBackend::Auto,
+                worktrees: false,
+            }
+        );
     }
 
     #[test]

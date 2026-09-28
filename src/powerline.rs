@@ -363,9 +363,11 @@ impl Powerline {
                 LineSegment::Git {
                     status_timeout_ms,
                     backend,
+                    worktrees,
                 } => self.add_module(Git::<T>::with_config(
                     Duration::from_millis(*status_timeout_ms),
                     *backend,
+                    *worktrees,
                 )),
                 LineSegment::Pr { status } => self.add_module(Pr::<T>::new(*status)),
                 LineSegment::Separator(style) => self.set_separator(style.into()),

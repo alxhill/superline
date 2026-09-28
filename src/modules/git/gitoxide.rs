@@ -96,6 +96,7 @@ pub fn run_git(path: &Path) -> GitStats {
         remote,
         remote_url,
         branch_name,
+        worktrees: super::linked_worktree_count(path),
     }
 }
 

@@ -215,6 +215,13 @@ component_fixture() {
       git_repo_with_upstream "$home/$FIXTURE_DIR" 0 0 main
       git -C "$home/$FIXTURE_DIR" checkout --quiet --detach main
       ;;
+    git-worktrees)
+      FIXTURE_DIR=code/superline
+      dir="$home/$FIXTURE_DIR"
+      git_repo_with_upstream "$dir" 0 0 main
+      git -C "$dir" worktree add --quiet -b feat/themes "$home/code/superline-themes"
+      git -C "$dir" worktree add --quiet -b fix/flaky-test "$home/code/superline-flaky-test"
+      ;;
     pr)
       FIXTURE_DIR=code/superline
       git_repo "$home/$FIXTURE_DIR"

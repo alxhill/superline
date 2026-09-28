@@ -279,6 +279,11 @@ const GIT: &[OptionSpec] = &[
         },
         "cli shells out to git, gitoxide is in-process, auto picks by repo size.",
     ),
+    boolean(
+        "worktrees",
+        true,
+        "Show how many linked worktrees the repo has next to the branch.",
+    ),
 ];
 
 const PR: &[OptionSpec] = &[boolean(
@@ -637,6 +642,6 @@ mod tests {
     fn value_widgets_expose_their_option() {
         assert_eq!(find("padding").unwrap().options()[0].key, "width");
         assert_eq!(find("battery").unwrap().options().len(), 0);
-        assert_eq!(find("git").unwrap().options().len(), 2);
+        assert_eq!(find("git").unwrap().options().len(), 3);
     }
 }

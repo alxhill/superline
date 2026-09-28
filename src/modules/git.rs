@@ -32,6 +32,7 @@ mod process;
 pub struct Git<S> {
     status_timeout: Duration,
     backend: GitBackend,
+    worktrees: bool,
     scheme: PhantomData<S>,
 }
 
@@ -83,6 +84,12 @@ pub trait GitScheme: DefaultColors {
     const STAGED_SYMBOL: &'static str = "+";
     const UNTRACKED_SYMBOL: &'static str = "?";
     const CONFLICTED_SYMBOL: &'static str = FANCY_STAR;
+
+    const DEFAULT_WORKTREE_ICON: &'static str = "\u{f1897}"; // nf-md-forest
+    /// Shown before the linked-worktree count. Empty shows the bare count.
+    fn git_worktree_icon() -> &'static str {
+        Self::DEFAULT_WORKTREE_ICON
+    }
 }
 
 impl<S: GitScheme> Default for Git<S> {
@@ -96,13 +103,16 @@ impl<S: GitScheme> Git<S> {
         Self::with_config(
             Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS),
             GitBackend::default(),
+            true,
         )
     }
 
-    pub fn with_config(status_timeout: Duration, backend: GitBackend) -> Git<S> {
+    /// `worktrees` shows the linked-worktree count next to the branch.
+    pub fn with_config(status_timeout: Duration, backend: GitBackend, worktrees: bool) -> Git<S> {
         Git {
             status_timeout,
             backend,
+            worktrees,
             scheme: PhantomData,
         }
     }
@@ -126,6 +136,9 @@ pub struct GitStats {
     #[serde(default)]
     pub remote_url: Option<String>,
     pub branch_name: String,
+    /// Linked worktrees of the repository, from [`linked_worktree_count`].
+    #[serde(default)]
+    pub worktrees: u32,
 }
 
 impl GitStats {
@@ -262,6 +275,60 @@ fn resolve_git_dir(worktree: &Path) -> Option<PathBuf> {
     } else {
         worktree.join(target)
     })
+}
+
+/// How many linked worktrees the repository checked out at `worktree` (its
+/// main checkout or any linked one) has: the entries in the common git
+/// directory's `worktrees/` that `git worktree prune` would keep. Costs a
+/// directory listing rather than a `git worktree list` spawn.
+pub(super) fn linked_worktree_count(worktree: &Path) -> u32 {
+    let Some(git_dir) = resolve_git_dir(worktree) else {
+        return 0;
+    };
+    let Ok(entries) = fs::read_dir(common_git_dir(&git_dir).join("worktrees")) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter(|entry| is_live_worktree(&entry.path()))
+        .count() as u32
+}
+
+/// The git directory every worktree of a repository shares. A linked
+/// worktree's git directory names it in a `commondir` file, usually `../..`;
+/// any other git directory, a submodule's under the superproject's
+/// `.git/modules/` included, is its own common directory.
+fn common_git_dir(git_dir: &Path) -> PathBuf {
+    match fs::read_to_string(git_dir.join("commondir")) {
+        Ok(common) => git_dir.join(common.trim()),
+        Err(_) => git_dir.to_path_buf(),
+    }
+}
+
+/// Whether `admin`, an entry under the common git directory's `worktrees/`,
+/// is a worktree `git worktree prune` would keep: a locked one, or one whose
+/// `gitdir` file points at a checkout that still exists.
+fn is_live_worktree(admin: &Path) -> bool {
+    if !admin.is_dir() {
+        return false;
+    }
+    if admin.join("locked").exists() {
+        return true;
+    }
+    fs::read_to_string(admin.join("gitdir")).is_ok_and(|target| {
+        let target = target.trim();
+        !target.is_empty() && admin.join(target).exists()
+    })
+}
+
+/// The worktree count appended to the branch label, after `icon` unless it is
+/// empty.
+fn worktree_label(icon: &str, count: u32) -> String {
+    if icon.is_empty() {
+        count.to_string()
+    } else {
+        format!("{icon} {count}")
+    }
 }
 
 /// Repos at or above this many index entries favour the CLI backend: measured
@@ -536,10 +603,12 @@ impl<S: GitScheme> Module for Git<S> {
             (S::git_repo_clean_fg(), S::git_repo_clean_bg())
         };
 
-        powerline.add_segment(
-            format!("{} {}", icon, stats.branch_name),
-            Style::simple(branch_fg, branch_bg),
-        );
+        let mut branch = format!("{} {}", icon, stats.branch_name);
+        if self.worktrees && stats.worktrees > 0 {
+            let label = worktree_label(S::git_worktree_icon(), stats.worktrees);
+            let _ = write!(branch, " {label}");
+        }
+        powerline.add_segment(branch, Style::simple(branch_fg, branch_bg));
 
         let add_elem = |powerline: &mut Powerline, count: u32, symbol, fg, bg| match count.cmp(&1) {
             Ordering::Equal | Ordering::Greater => {
@@ -608,9 +677,10 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::{
-        choose_backend, detached_label, index_entry_count, install_prefix_of, parse_head,
-        preferred_branch, preferred_remote, prefers_cli_for_index_count, remote_web_url, Choice,
-        GitBackend, Reason, AUTO_CLI_ENTRY_THRESHOLD,
+        choose_backend, detached_label, index_entry_count, install_prefix_of,
+        linked_worktree_count, parse_head, preferred_branch, preferred_remote,
+        prefers_cli_for_index_count, remote_web_url, worktree_label, Choice, GitBackend, Reason,
+        AUTO_CLI_ENTRY_THRESHOLD,
     };
 
     fn names(list: &[&str]) -> Vec<String> {
@@ -865,5 +935,166 @@ mod tests {
             parse_head("ref: refs/remotes/origin/main\n").as_deref(),
             Some("refs/remotes/origin/main")
         );
+    }
+
+    fn scratch_dir() -> std::path::PathBuf {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("superline-worktrees-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "`git {}` failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    }
+
+    fn init_repo(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "test@example.com"]);
+        git(dir, &["config", "user.name", "test"]);
+        git(dir, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    }
+
+    fn add_worktree(repo: &Path, path: &Path, branch: &str) {
+        git(
+            repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                branch,
+                path.to_str().unwrap(),
+            ],
+        );
+    }
+
+    /// The count git itself gives: `git worktree list` entries after the main
+    /// one that it does not mark prunable.
+    fn listed_by_git(checkout: &Path) -> u32 {
+        let listing = git(checkout, &["worktree", "list", "--porcelain"]);
+        let live = listing
+            .split("\n\n")
+            .filter(|entry| entry.starts_with("worktree "))
+            .filter(|entry| !entry.lines().any(|line| line.starts_with("prunable")))
+            .count() as u32;
+        live - 1
+    }
+
+    /// Asserts both backends, and git, report `expected` from `checkout`.
+    fn assert_worktrees(checkout: &Path, expected: u32) {
+        assert_eq!(listed_by_git(checkout), expected, "git from {checkout:?}");
+        assert_eq!(linked_worktree_count(checkout), expected, "{checkout:?}");
+        assert_eq!(
+            super::process::run_git(checkout).worktrees,
+            expected,
+            "cli backend from {checkout:?}"
+        );
+        assert_eq!(
+            super::gitoxide::run_git(checkout).worktrees,
+            expected,
+            "gitoxide backend from {checkout:?}"
+        );
+    }
+
+    #[test]
+    fn linked_worktrees_are_counted_from_every_checkout() {
+        let root = scratch_dir();
+        let main = root.join("main");
+        init_repo(&main);
+        assert_worktrees(&main, 0);
+
+        let one = root.join("one");
+        add_worktree(&main, &one, "one");
+        assert_worktrees(&main, 1);
+        assert_worktrees(&one, 1);
+
+        let two = root.join("two");
+        add_worktree(&main, &two, "two");
+        for checkout in [&main, &one, &two] {
+            assert_worktrees(checkout, 2);
+        }
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn deleted_worktrees_are_not_counted_unless_locked() {
+        let root = scratch_dir();
+        let main = root.join("main");
+        init_repo(&main);
+        let (gone, locked, kept) = (root.join("gone"), root.join("locked"), root.join("kept"));
+        add_worktree(&main, &gone, "gone");
+        add_worktree(&main, &locked, "locked");
+        add_worktree(&main, &kept, "kept");
+        git(&main, &["worktree", "lock", locked.to_str().unwrap()]);
+
+        std::fs::remove_dir_all(&gone).unwrap();
+        std::fs::remove_dir_all(&locked).unwrap();
+        assert_worktrees(&main, 2);
+        assert_worktrees(&kept, 2);
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_submodule_counts_its_own_worktrees() {
+        let root = scratch_dir();
+        let (superproject, library) = (root.join("super"), root.join("library"));
+        init_repo(&superproject);
+        init_repo(&library);
+        add_worktree(&superproject, &root.join("super-wt"), "super-wt");
+        // Without a remote, a relative URL resolves against the superproject.
+        git(
+            &superproject,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                "../library",
+                "lib",
+            ],
+        );
+        let submodule = superproject.join("lib");
+        assert!(submodule.join(".git").is_file());
+        assert_worktrees(&submodule, 0);
+
+        let submodule_wt = root.join("lib-wt");
+        add_worktree(&submodule, &submodule_wt, "lib-wt");
+        assert_worktrees(&submodule, 1);
+        assert_worktrees(&submodule_wt, 1);
+        assert_worktrees(&superproject, 1);
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn outside_a_repository_there_are_no_worktrees() {
+        let root = scratch_dir();
+        assert_eq!(linked_worktree_count(&root), 0);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn an_empty_worktree_icon_leaves_the_bare_count() {
+        assert_eq!(worktree_label("\u{f1897}", 2), "\u{f1897} 2");
+        assert_eq!(worktree_label("", 2), "2");
     }
 }
