@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 use std::time::Duration;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::modules::Module;
-use crate::powerline::Padding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -44,7 +44,7 @@ impl<S: LastCmdDurationScheme> Module for LastCmdDuration<S> {
                 powerline.add_padded_segment(
                     format!("{}{}", nice_duration(cmd_dur), S::time_icon()),
                     Style::simple(S::time_fg(), S::time_bg()),
-                    Padding { left: 1, right: 0 },
+                    SegmentPadding::Left,
                 );
             }
         }

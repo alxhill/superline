@@ -174,10 +174,12 @@ Every module can be written either as a bare string or as an object with options
 are equivalent. Modules with required options (`cwd`, `last_cmd_duration`, `ai_usage`, `padding`, `separator`, `text`) must
 use the object form.
 
-Every module except `text`, `separator` and `padding` also takes a `padding` option: the number of spaces on each side
-of the text in each segment it draws, as in `{ "git": { "padding": 0 } }`. It overrides the theme's `padding` for that
-module, which overrides the module's own spacing: one space on each side for most modules, none for `cmd` and
-`shell`. The [configuration reference](https://alxhill.github.io/superline/config.html) lists each module's.
+Every module except `text`, `separator` and `padding` also takes a `padding` option: where each segment it draws gets a
+space beside its text. `"small"` adds none, `"large"` one on each side, and `"left"` or `"right"` one on that side only,
+as in `{ "git": { "padding": "small" } }`. It overrides the theme's `padding` for that module, which overrides the
+module's own spacing: `large` for most modules, `small` for `cmd` and `shell`, and `left` for `cwd` and
+`last_cmd_duration`. The [configuration reference](https://alxhill.github.io/superline/config.html) lists each
+module's.
 
 ### Layout
 
@@ -583,7 +585,8 @@ A theme file has two keys, `defaults` and `modules`:
 - **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colors (`git` has
   `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`,
   `kubernetes.icon`, and `mise_icon` on the language modules - set a marker to `""` to hide it). Anything omitted falls back to
-  `defaults`. Every module, `text` included, also takes `padding`, the number of spaces on each side of its text.
+  `defaults`. Every module, `text` included, also takes `padding`: `small`, `large`, `left` or `right`, as for the
+  module option above.
 
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
 old theme keys, `nvm` and `py`.

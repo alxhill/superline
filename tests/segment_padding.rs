@@ -3,7 +3,7 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_superline");
 
@@ -13,9 +13,9 @@ const COLUMNS: usize = 100;
 const THEME: &str = r#"{
     "defaults": { "fg": 15, "bg": 0 },
     "modules": {
-        "text": { "padding": 3 },
-        "shell": { "padding": 2 },
-        "nvm": { "padding": 0 }
+        "text": { "padding": "small" },
+        "shell": { "padding": "right" },
+        "nvm": { "padding": "left" }
     }
 }"#;
 
@@ -27,13 +27,13 @@ fn scratch_dir(label: &str) -> PathBuf {
     dir
 }
 
-/// The visible text of the preview of a one-row config.
-fn preview(label: &str, left: &str, right: &str) -> String {
+/// Previews a one-row config using `theme`.
+fn run(label: &str, theme: &str, left: &str, right: &str) -> Output {
     let home = scratch_dir(label);
     let project = home.join("project");
     fs::create_dir_all(&project).expect("create project dir");
     fs::write(project.join(".nvmrc"), "20.1.0\n").expect("write .nvmrc");
-    fs::write(home.join("theme.json"), THEME).expect("write theme");
+    fs::write(home.join("theme.json"), theme).expect("write theme");
     let config = home.join("config.json");
     fs::write(
         &config,
@@ -59,6 +59,12 @@ fn preview(label: &str, left: &str, right: &str) -> String {
         .output()
         .expect("run superline");
     let _ = fs::remove_dir_all(&home);
+    output
+}
+
+/// The visible text of the preview of a one-row config.
+fn preview(label: &str, left: &str, right: &str) -> String {
+    let output = run(label, THEME, left, right);
     assert!(
         output.status.success(),
         "preview failed:\n{}",
@@ -85,20 +91,55 @@ fn visible(prompt: &str) -> String {
 fn config_padding_wins_over_the_theme_which_wins_over_the_default() {
     let widgets = r#"
         { "text": "themed" },
-        { "shell": { "padding": 1 } },
+        { "shell": { "padding": "left" } },
+        "shell",
         "cmd",
-        { "cmd": { "padding": 2 } },
-        "node"
+        { "cmd": { "padding": "large" } },
+        { "cmd": { "padding": "right" } },
+        "node",
+        { "node": { "padding": "small" } }
     "#;
     let line = preview("precedence", widgets, widgets);
 
-    // text: theme 3. shell: config 1 over theme 2. cmd: its own 0, then
-    // config 2. node: theme 0, read from the old `nvm` key.
-    let left = "   themed   \u{e0b0} fish \u{e0b0}$\u{e0b0}  $  \u{e0b0}\u{ed0d} 20.1.0\u{e0b0}";
-    let right = "\u{e0b2}   themed   \u{e0b2} fish \u{e0b2}$\u{e0b2}  $  \u{e0b2}\u{ed0d} 20.1.0";
-    assert!(line.starts_with(left), "{line:?}");
-    assert!(line.ends_with(right), "{line:?}");
+    let segments = [
+        // text: the theme's small, where its own is large.
+        "themed",
+        // shell: the config's left over the theme's right, then the theme's.
+        " fish",
+        "fish ",
+        // cmd: its own small, then the config's large and right.
+        "$",
+        " $ ",
+        "$ ",
+        // node: the theme's left, read from the old `nvm` key, then the
+        // config's small.
+        " \u{ed0d} 20.1.0",
+        "\u{ed0d} 20.1.0",
+    ];
+    let left: String = segments.iter().map(|s| format!("{s}\u{e0b0}")).collect();
+    let right: String = segments.iter().map(|s| format!("\u{e0b2}{s}")).collect();
+    assert!(line.starts_with(&left), "{line:?}");
+    assert!(line.ends_with(&right), "{line:?}");
     // The right side is pushed flush against the last column but one, so the
     // padded segments were counted at their drawn width.
     assert_eq!(line.chars().count(), COLUMNS - 1, "{line:?}");
+}
+
+#[test]
+fn an_invalid_padding_is_reported_with_the_choices() {
+    let config = run("bad-config", THEME, r#"{ "git": { "padding": 1 } }"#, "");
+    let theme = run(
+        "bad-theme",
+        r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": { "git": { "padding": "wide" } } }"#,
+        r#""git""#,
+        "",
+    );
+    for output in [config, theme] {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "{stderr}");
+        assert!(
+            stderr.contains("expected one of small, large, left, right"),
+            "{stderr}"
+        );
+    }
 }

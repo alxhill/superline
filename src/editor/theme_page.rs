@@ -14,8 +14,8 @@ use serde_json::Value;
 
 use super::model::Target;
 use super::theme::{
-    color_names, color_value, edit_text, parse_color, parse_color_list, parse_int, PropKind,
-    PropSpec, ThemeDoc, ThemeEntry,
+    color_names, color_value, edit_text, parse_choice, parse_color, parse_color_list, step_choice,
+    PropKind, PropSpec, ThemeDoc, ThemeEntry,
 };
 use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
@@ -266,7 +266,7 @@ impl App {
                     PropKind::Color => parse_color(text),
                     PropKind::ColorList => parse_color_list(text),
                     PropKind::Str => Ok(Value::from(text)),
-                    PropKind::Int => parse_int(text),
+                    PropKind::Choice(variants) => parse_choice(text, variants),
                 };
                 match parsed {
                     Ok(value) => self.set_theme_prop(Some(value)),
@@ -360,6 +360,19 @@ impl App {
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         self.theme.prop_cursor = (self.theme.prop_cursor + 1).min(props - 1)
+                    }
+                    KeyCode::Enter
+                    | KeyCode::Char(' ')
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Char('h')
+                    | KeyCode::Char('l')
+                        if matches!(spec.kind, PropKind::Choice(_)) =>
+                    {
+                        let forward = !matches!(key.code, KeyCode::Left | KeyCode::Char('h'));
+                        if let Some(next) = step_choice(&spec, value.as_ref(), forward) {
+                            self.set_theme_prop(Some(Value::from(next)));
+                        }
                     }
                     KeyCode::Enter | KeyCode::Char(' ') if spec.kind == PropKind::Color => {
                         let code = self
@@ -848,9 +861,11 @@ fn prop_value_spans(
             spans
         }
         (PropKind::Str, Some(value)) => icon_spans(&edit_text(value), false),
-        (PropKind::Int, Some(value)) => vec![Span::raw(edit_text(value)).yellow()],
-        (PropKind::Int, None) if spec.fallback.is_empty() => vec![Span::raw("unset").dark_gray()],
-        (PropKind::Int, None) => {
+        (PropKind::Choice(_), Some(value)) => vec![Span::raw(edit_text(value)).yellow()],
+        (PropKind::Choice(_), None) if spec.fallback.is_empty() => {
+            vec![Span::raw("unset").dark_gray()]
+        }
+        (PropKind::Choice(_), None) => {
             vec![Span::raw(format!("{} (default)", spec.fallback)).dark_gray()]
         }
         (PropKind::Str, None) => match glyphs::fallback_text(&spec.fallback) {
@@ -875,5 +890,101 @@ fn prop_value_spans(
             }
             spans
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::crossterm::event::KeyModifiers;
+    use serde_json::json;
+
+    use super::super::model::{Document, Entry, SegPos, Side};
+    use super::*;
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn scratch_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "superline-editor-padding-{label}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn theme_padding_cycles_through_its_choices() {
+        let dir = scratch_dir("theme");
+        std::fs::write(
+            dir.join("theme.json"),
+            r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": {} }"#,
+        )
+        .unwrap();
+        let config = json!({ "theme": "theme.json", "rows": [{ "left": ["git"] }] });
+        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        app.load_theme_slot();
+        press(&mut app, KeyCode::Char('2'));
+        let git = ThemeEntry::Module("git".into());
+        let doc = app.theme_doc().unwrap();
+        let git_row = doc.entries().iter().position(|e| *e == git).unwrap();
+        let props = doc.props(&git);
+        let padding_row = props.iter().position(|(s, _)| s.key == "padding").unwrap();
+        app.theme.cursor = git_row;
+        press(&mut app, KeyCode::Enter);
+        app.theme.prop_cursor = padding_row;
+        let padding =
+            |app: &App| app.theme_doc().unwrap().root()["modules"]["git"]["padding"].clone();
+
+        // Unset, it steps on from git's own padding, large.
+        for (key, expected) in [
+            (KeyCode::Right, "left"),
+            (KeyCode::Char(' '), "right"),
+            (KeyCode::Enter, "small"),
+            (KeyCode::Char('l'), "large"),
+            (KeyCode::Left, "small"),
+            (KeyCode::Char('h'), "right"),
+        ] {
+            press(&mut app, key);
+            assert_eq!(padding(&app), json!(expected), "{key:?}");
+        }
+        assert!(matches!(app.mode, Mode::Normal));
+
+        press(&mut app, KeyCode::Char('x'));
+        assert_eq!(app.theme_doc().unwrap().root()["modules"], json!({}));
+        press(&mut app, KeyCode::Left);
+        assert_eq!(padding(&app), json!("small"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn widget_padding_cycles_through_its_choices_and_unset() {
+        let dir = scratch_dir("widget");
+        let config = json!({ "theme": "rainbow", "rows": [{ "left": ["battery"] }] });
+        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        let battery = SegPos {
+            row: 0,
+            side: Side::Left,
+            index: 0,
+        };
+        app.select(Entry::Segment(battery));
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.current_option().unwrap().1.key, "padding");
+
+        for (key, expected) in [
+            (KeyCode::Right, json!({ "battery": { "padding": "small" } })),
+            (KeyCode::Enter, json!({ "battery": { "padding": "large" } })),
+            (KeyCode::Right, json!({ "battery": { "padding": "left" } })),
+            (KeyCode::Right, json!({ "battery": { "padding": "right" } })),
+            (KeyCode::Right, json!("battery")),
+            (KeyCode::Left, json!({ "battery": { "padding": "right" } })),
+        ] {
+            press(&mut app, key);
+            assert_eq!(app.doc.segment(battery), &expected, "{key:?}");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

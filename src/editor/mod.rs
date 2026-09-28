@@ -1308,6 +1308,10 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("← →", "step a colour by one code"),
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
+        (
+            "⏎  ← →",
+            "cycle a padding through small, large, left and right",
+        ),
         ("n", "create a new custom theme file"),
         ("", ""),
         ("Anywhere", ""),

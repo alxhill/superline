@@ -4,6 +4,7 @@ pub use rainbow::RainbowTheme;
 pub use simple::SimpleTheme;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
@@ -67,8 +68,8 @@ pub trait CompleteTheme:
     + UnknownScheme
     + UpdateScheme
 {
-    /// Spaces on each side of a module's segments, when the theme sets them.
-    fn padding(_module: &str) -> Option<usize> {
+    /// The padding of a module's segments, when the theme sets it.
+    fn padding(_module: &str) -> Option<SegmentPadding> {
         None
     }
 }

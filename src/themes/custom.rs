@@ -9,6 +9,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
@@ -79,7 +80,9 @@ impl CustomThemeImpl {
                     Some(ThemePropertyKind::Color) => validate_color_value(&path, value)?,
                     Some(ThemePropertyKind::ColorList) => validate_color_list(&path, value)?,
                     Some(ThemePropertyKind::String) => validate_string(&path, value)?,
-                    Some(ThemePropertyKind::Integer) => validate_integer(&path, value)?,
+                    Some(ThemePropertyKind::Choice(variants)) => {
+                        validate_choice(&path, value, variants)?
+                    }
                     None => {}
                 }
             }
@@ -147,12 +150,12 @@ impl CustomTheme {
             .map(|s| s.to_string())
     }
 
-    pub fn get_int(module: &str, property: &str) -> Option<usize> {
+    pub fn get_padding(module: &str, property: &str) -> Option<SegmentPadding> {
         let theme = THEME.get().expect("custom theme not set");
         theme
             .get_property(module, property)
-            .and_then(Value::as_u64)
-            .and_then(|n| usize::try_from(n).ok())
+            .and_then(Value::as_str)
+            .and_then(SegmentPadding::from_name)
     }
 }
 
@@ -169,7 +172,7 @@ impl DefaultColors for CustomTheme {
 }
 
 impl CompleteTheme for CustomTheme {
-    fn padding(module: &str) -> Option<usize> {
+    fn padding(module: &str) -> Option<SegmentPadding> {
         // Also read from the key a renamed module used to be themed under.
         let old_module = match module {
             "java" => Some("sdkman"),
@@ -177,7 +180,7 @@ impl CompleteTheme for CustomTheme {
             "python" => Some("py"),
             _ => None,
         };
-        Self::get_int(module, "padding").or_else(|| Self::get_int(old_module?, "padding"))
+        Self::get_padding(module, "padding").or_else(|| Self::get_padding(old_module?, "padding"))
     }
 }
 
@@ -507,12 +510,13 @@ pub(crate) enum ThemePropertyKind {
     Color,
     ColorList,
     String,
-    Integer,
+    /// One of a fixed set of strings.
+    Choice(&'static [&'static str]),
 }
 
 pub(crate) fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
     if property == "padding" {
-        Some(ThemePropertyKind::Integer)
+        Some(ThemePropertyKind::Choice(SegmentPadding::NAMES))
     } else if property == "bg_colors" || property.ends_with("_colors") {
         Some(ThemePropertyKind::ColorList)
     } else if property == "icon"
@@ -570,11 +574,14 @@ fn validate_string(path: &str, value: &Value) -> Result<(), String> {
         .ok_or_else(|| format!("expected string at {path}"))
 }
 
-fn validate_integer(path: &str, value: &Value) -> Result<(), String> {
-    value
-        .as_u64()
-        .map(|_| ())
-        .ok_or_else(|| format!("expected a whole number of 0 or more at {path}"))
+fn validate_choice(path: &str, value: &Value, variants: &[&str]) -> Result<(), String> {
+    match value.as_str() {
+        Some(choice) if variants.contains(&choice) => Ok(()),
+        _ => Err(format!(
+            "expected one of {} at {path}, got {value}",
+            variants.join(", ")
+        )),
+    }
 }
 
 fn color_from_value(value: &Value) -> Option<Color> {
@@ -619,10 +626,12 @@ mod tests {
     }
 
     #[test]
-    fn padding_is_a_non_negative_whole_number() {
+    fn padding_is_one_of_the_four_choices() {
         assert_eq!(
             infer_theme_property_kind("padding"),
-            Some(ThemePropertyKind::Integer)
+            Some(ThemePropertyKind::Choice(&[
+                "small", "large", "left", "right"
+            ]))
         );
         let theme = |padding: Value| {
             serde_json::json!({
@@ -630,11 +639,21 @@ mod tests {
                 "modules": { "git": { "padding": padding } }
             })
         };
-        assert!(validate_theme(&theme(0.into())).is_ok());
-        assert!(validate_theme(&theme(3.into())).is_ok());
-        for bad in [Value::from(-1), Value::from(1.5), Value::from("1")] {
+        for good in ["small", "large", "left", "right"] {
+            assert!(validate_theme(&theme(good.into())).is_ok(), "{good}");
+        }
+        for bad in [
+            Value::from(0),
+            Value::from(1),
+            Value::from("wide"),
+            Value::from("Small"),
+            Value::Null,
+        ] {
             let err = validate_theme(&theme(bad.clone())).unwrap_err();
-            assert!(err.contains("modules.git.padding"), "{bad}: {err}");
+            assert!(
+                err.contains("expected one of small, large, left, right at modules.git.padding"),
+                "{bad}: {err}"
+            );
         }
     }
 }

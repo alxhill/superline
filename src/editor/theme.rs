@@ -20,7 +20,8 @@ pub enum PropKind {
     Color,
     ColorList,
     Str,
-    Int,
+    /// One of a fixed set of strings, cycled through rather than typed.
+    Choice(&'static [&'static str]),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,7 +69,9 @@ pub fn module_specs() -> &'static [ModuleSpec] {
                         kind: match row[1].as_str() {
                             Some("color") => PropKind::Color,
                             Some("color list") => PropKind::ColorList,
-                            Some("integer") => PropKind::Int,
+                            Some(kind) if kind.starts_with("choice") => {
+                                inferred_kind(row[0].as_str().unwrap_or_default())
+                            }
                             _ => PropKind::Str,
                         },
                         help: row[2].as_str().unwrap_or_default().to_string(),
@@ -99,16 +102,21 @@ fn defaults_props() -> Vec<PropSpec> {
         .collect()
 }
 
+/// A property's kind as the theme loader validates it.
+fn inferred_kind(key: &str) -> PropKind {
+    match infer_theme_property_kind(key) {
+        Some(ThemePropertyKind::ColorList) => PropKind::ColorList,
+        Some(ThemePropertyKind::Color) => PropKind::Color,
+        Some(ThemePropertyKind::Choice(variants)) => PropKind::Choice(variants),
+        _ => PropKind::Str,
+    }
+}
+
 /// A property the file sets that the editor has no description for.
 fn inferred_prop(key: &str) -> PropSpec {
     PropSpec {
         key: key.to_string(),
-        kind: match infer_theme_property_kind(key) {
-            Some(ThemePropertyKind::ColorList) => PropKind::ColorList,
-            Some(ThemePropertyKind::Color) => PropKind::Color,
-            Some(ThemePropertyKind::Integer) => PropKind::Int,
-            _ => PropKind::Str,
-        },
+        kind: inferred_kind(key),
         help: String::new(),
         fallback: String::new(),
     }
@@ -342,7 +350,7 @@ impl ThemeDoc {
         spec: &PropSpec,
         value: Option<&Value>,
     ) -> Option<u8> {
-        if spec.kind == PropKind::Int {
+        if matches!(spec.kind, PropKind::Choice(_)) {
             return None;
         }
         if let Some(value) = value {
@@ -410,12 +418,34 @@ pub fn parse_color_list(text: &str) -> Result<Value, String> {
     Ok(Value::Array(colors))
 }
 
-/// Parses a whole number of 0 or more, such as a padding.
-pub fn parse_int(text: &str) -> Result<Value, String> {
+/// Parses a typed choice, such as a padding.
+pub fn parse_choice(text: &str, variants: &[&str]) -> Result<Value, String> {
     let text = text.trim();
-    text.parse::<u64>()
-        .map(Value::from)
-        .map_err(|_| format!("{text:?} is not a whole number of 0 or more"))
+    if variants.contains(&text) {
+        Ok(Value::from(text))
+    } else {
+        Err(format!("{text:?} is not one of {}", variants.join(", ")))
+    }
+}
+
+/// The choice after (or before) a choice property's value. An unset property
+/// steps from its fallback. `None` when the property is not a choice.
+pub fn step_choice(spec: &PropSpec, value: Option<&Value>, forward: bool) -> Option<&'static str> {
+    let PropKind::Choice(variants) = spec.kind else {
+        return None;
+    };
+    let current = match value {
+        Some(value) => variants.iter().position(|v| value.as_str() == Some(v)),
+        None => variants.iter().position(|v| spec.fallback.starts_with(v)),
+    };
+    let count = variants.len();
+    let next = match current {
+        Some(i) if forward => (i + 1) % count,
+        Some(i) => (i + count - 1) % count,
+        None if forward => 0,
+        None => count - 1,
+    };
+    variants.get(next).copied()
 }
 
 /// How a colour value is written back: as a name when the value it replaces
@@ -548,17 +578,79 @@ mod tests {
     }
 
     #[test]
-    fn padding_is_edited_as_a_whole_number() {
+    fn documented_choices_list_the_variants_the_loader_accepts() {
+        let options: Value = serde_json::from_str(THEME_OPTIONS).unwrap();
+        let mut choices = 0;
+        for (module, spec) in options.as_object().unwrap() {
+            for row in spec["properties"].as_array().into_iter().flatten() {
+                let (key, kind) = (row[0].as_str().unwrap(), row[1].as_str().unwrap());
+                let Some(listed) = kind.strip_prefix("choice: ") else {
+                    continue;
+                };
+                let listed: Vec<&str> = listed.split(", ").collect();
+                let PropKind::Choice(variants) = inferred_kind(key) else {
+                    panic!("{module}.{key} is documented as a choice");
+                };
+                assert_eq!(variants, listed, "{module}.{key}");
+                let fallback = row[3].as_str().unwrap();
+                assert!(
+                    listed.iter().any(|v| fallback.starts_with(v)),
+                    "{module}.{key} falls back to {fallback:?}"
+                );
+                choices += 1;
+            }
+        }
+        assert!(choices > 20, "every module documents its padding");
+    }
+
+    #[test]
+    fn padding_is_one_of_four_choices() {
         let mut doc = doc();
         let git = ThemeEntry::Module("git".into());
-        doc.set(&git, "padding", Some(json!(0))).unwrap();
-        assert_eq!(doc.root()["modules"]["git"], json!({ "padding": 0 }));
+        doc.set(&git, "padding", Some(json!("left"))).unwrap();
+        assert_eq!(doc.root()["modules"]["git"], json!({ "padding": "left" }));
         let props = doc.props(&git);
         let (spec, value) = props.iter().find(|(s, _)| s.key == "padding").unwrap();
-        assert_eq!(spec.kind, PropKind::Int);
-        // 0 is also a colour code, but a padding has no colour.
+        assert_eq!(
+            spec.kind,
+            PropKind::Choice(&["small", "large", "left", "right"])
+        );
+        assert_eq!(spec.fallback, "large");
         assert_eq!(doc.resolve(&git, spec, value.as_ref()), None);
-        assert!(doc.set(&git, "padding", Some(json!(-1))).is_err());
+        for bad in [json!(1), json!("wide")] {
+            assert!(doc.set(&git, "padding", Some(bad)).is_err());
+        }
+        assert_eq!(doc.root()["modules"]["git"], json!({ "padding": "left" }));
+    }
+
+    #[test]
+    fn choices_step_from_the_value_or_the_fallback() {
+        let spec = |fallback: &str| PropSpec {
+            key: "padding".into(),
+            kind: PropKind::Choice(&["small", "large", "left", "right"]),
+            help: String::new(),
+            fallback: fallback.into(),
+        };
+        let step = |fallback, value: Option<Value>, forward| {
+            step_choice(&spec(fallback), value.as_ref(), forward)
+        };
+        assert_eq!(step("large", Some(json!("small")), true), Some("large"));
+        assert_eq!(step("large", Some(json!("right")), true), Some("small"));
+        assert_eq!(step("large", Some(json!("small")), false), Some("right"));
+        assert_eq!(step("large", None, true), Some("left"));
+        assert_eq!(step("left", None, false), Some("large"));
+        assert_eq!(
+            step("large; right for the venv label", None, true),
+            Some("left")
+        );
+        assert_eq!(step("", None, true), Some("small"));
+        assert_eq!(step("", None, false), Some("right"));
+        assert_eq!(step("", Some(json!(2)), true), Some("small"));
+        let colour = PropSpec {
+            kind: PropKind::Color,
+            ..spec("")
+        };
+        assert_eq!(step_choice(&colour, None, true), None);
     }
 
     #[test]
@@ -583,9 +675,10 @@ mod tests {
             json!(["red", 166, 72])
         );
         assert!(parse_color_list(" , ").is_err());
-        assert_eq!(parse_int(" 2 ").unwrap(), json!(2));
-        assert!(parse_int("-1").is_err());
-        assert!(parse_int("wide").is_err());
+        let paddings = &["small", "large", "left", "right"];
+        assert_eq!(parse_choice(" left ", paddings).unwrap(), json!("left"));
+        assert!(parse_choice("wide", paddings).is_err());
+        assert!(parse_choice("1", paddings).is_err());
         assert_eq!(color_value(4, true), json!("blue"));
         assert_eq!(color_value(4, false), json!(4));
         assert_eq!(color_value(99, true), json!(99));

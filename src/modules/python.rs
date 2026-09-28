@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::mise;
-use crate::powerline::Padding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -204,7 +204,7 @@ impl<S: PythonScheme> Module for Python<S> {
             powerline.add_padded_segment(
                 label,
                 Style::simple(S::pyenv_fg(), S::pyenv_bg()),
-                Padding { left: 0, right: 1 },
+                SegmentPadding::Right,
             );
 
             if self.show_version {

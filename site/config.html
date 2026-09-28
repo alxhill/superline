@@ -105,10 +105,11 @@
         </p>
         <p>
           Besides its own options, every module except <code>text</code>, <code>separator</code> and
-          <code>padding</code> takes <code>padding</code>: the number of spaces on each side of the text in each
-          segment it draws, as in <code>{ "git": { "padding": 0 } }</code>. It overrides the theme's
-          <code>padding</code> for that module, which overrides the module's own spacing, listed under its
-          <em>Theme options</em>.
+          <code>padding</code> takes <code>padding</code>: where each segment it draws gets a space beside its
+          text. <code>"small"</code> adds none, <code>"large"</code> one on each side, and <code>"left"</code> or
+          <code>"right"</code> one on that side only, as in <code>{ "git": { "padding": "small" } }</code>. It
+          overrides the theme's <code>padding</code> for that module, which overrides the module's own spacing,
+          listed under its <em>Theme options</em>.
         </p>
         <p>
           The examples for each module show just that module's entry, to go in a row's <code>left</code> or
@@ -248,7 +249,7 @@
         <p>Blank segments with a black background, drawn as part of the current block. They take no options.</p>
         <details class="theme-opts" data-theme="spacer">
     <summary>Theme options <code>modules.spacer</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Unused by the blank segment, but accepted.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Spacer background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Blank cells on each side, so the spacer is twice this wide.</td><td>0 for small_spacer, 1 for large_spacer</td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Unused by the blank segment, but accepted.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Spacer background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Blank cells in the spacer: none for small, two for large, one for left or right.</td><td>small for small_spacer, large for large_spacer</td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="spacers/small">
@@ -339,7 +340,7 @@
         </table>
         <details class="theme-opts" data-theme="cwd">
     <summary>Theme options <code>modules.cwd</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>path_fg</code></td><td>color</td><td>Text of every path component.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg_colors</code></td><td>color list</td><td>Backgrounds for successive path components, repeating from the start when the path is longer.</td><td><code>[defaults.bg]</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of every path component.</td><td>1 before, 0 after</td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>path_fg</code></td><td>color</td><td>Text of every path component.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg_colors</code></td><td>color list</td><td>Backgrounds for successive path components, repeating from the start when the path is longer.</td><td><code>[defaults.bg]</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around every path component: small for none, large for both sides, left or right for one side.</td><td><code>left</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="cwd/minimal">
@@ -367,7 +368,7 @@
         <p>A lock icon, shown when the current directory is not writable. No config options. Themed as <code>readonly</code>.</p>
         <details class="theme-opts" data-theme="readonly">
     <summary>Theme options <code>modules.readonly</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The lock icon.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the lock icon.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The lock icon.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the lock icon: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="read_only/default">
@@ -386,7 +387,7 @@
         </p>
         <details class="theme-opts" data-theme="cmd">
     <summary>Theme options <code>modules.cmd</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>passed_fg</code></td><td>color</td><td>The prompt symbol after a successful command.</td><td><code>defaults.fg</code></td></tr><tr><td><code>passed_bg</code></td><td>color</td><td>Background after a successful command.</td><td><code>defaults.bg</code></td></tr><tr><td><code>failed_fg</code></td><td>color</td><td>The exit code after a failed command.</td><td><code>defaults.bg</code></td></tr><tr><td><code>failed_bg</code></td><td>color</td><td>Background after a failed command.</td><td><code>defaults.fg</code></td></tr><tr><td><code>user_symbol</code></td><td>string</td><td>The prompt symbol.</td><td><code>"$"</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the prompt symbol.</td><td><code>0</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>passed_fg</code></td><td>color</td><td>The prompt symbol after a successful command.</td><td><code>defaults.fg</code></td></tr><tr><td><code>passed_bg</code></td><td>color</td><td>Background after a successful command.</td><td><code>defaults.bg</code></td></tr><tr><td><code>failed_fg</code></td><td>color</td><td>The exit code after a failed command.</td><td><code>defaults.bg</code></td></tr><tr><td><code>failed_bg</code></td><td>color</td><td>Background after a failed command.</td><td><code>defaults.fg</code></td></tr><tr><td><code>user_symbol</code></td><td>string</td><td>The prompt symbol.</td><td><code>"$"</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the prompt symbol: small for none, large for both sides, left or right for one side.</td><td><code>small</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="cmd/default">
@@ -408,7 +409,7 @@
         </table>
         <details class="theme-opts" data-theme="last_cmd_duration">
     <summary>Theme options <code>modules.last_cmd_duration</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The duration text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>time_icon</code></td><td>string</td><td>Icon after the duration.</td><td>U+F1ACC</td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the duration.</td><td>1 before, 0 after</td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The duration text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>time_icon</code></td><td>string</td><td>Icon after the duration.</td><td>U+F1ACC</td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the duration: small for none, large for both sides, left or right for one side.</td><td><code>left</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="last_cmd_duration/default">
@@ -424,7 +425,7 @@
         <p>The name of the running shell: <code>fish</code>, <code>zsh</code>, <code>bash</code>, <code>pwsh</code> or <code>nu</code>. No config options.</p>
         <details class="theme-opts" data-theme="shell">
     <summary>Theme options <code>modules.shell</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The shell name.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the shell name.</td><td><code>0</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The shell name.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the shell name: small for none, large for both sides, left or right for one side.</td><td><code>small</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="shell/default">
@@ -443,7 +444,7 @@
         </p>
         <details class="theme-opts" data-theme="jobs">
     <summary>Theme options <code>modules.jobs</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The icon and job count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the icon and job count.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The icon and job count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the icon and job count: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="jobs/default">
@@ -481,7 +482,7 @@
         </table>
         <details class="theme-opts" data-theme="git">
     <summary>Theme options <code>modules.git</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>clean_fg</code></td><td>color</td><td>Branch name when the working tree is clean.</td><td><code>defaults.fg</code></td></tr><tr><td><code>clean_bg</code></td><td>color</td><td>Branch background when clean.</td><td><code>defaults.bg</code></td></tr><tr><td><code>dirty_fg</code></td><td>color</td><td>Branch name when there are changes.</td><td><code>defaults.fg</code></td></tr><tr><td><code>dirty_bg</code></td><td>color</td><td>Branch background when there are changes.</td><td><code>defaults.bg</code></td></tr><tr><td><code>notstaged_fg</code></td><td>color</td><td>Modified-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>notstaged_bg</code></td><td>color</td><td>Modified-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>untracked_fg</code></td><td>color</td><td>Untracked-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>untracked_bg</code></td><td>color</td><td>Untracked-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>staged_fg</code></td><td>color</td><td>Staged-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>staged_bg</code></td><td>color</td><td>Staged-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>conflicted_fg</code></td><td>color</td><td>Conflicted-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>conflicted_bg</code></td><td>color</td><td>Conflicted-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>remote_fg</code></td><td>color</td><td>GitHub logo and ahead/behind counts.</td><td><code>defaults.fg</code></td></tr><tr><td><code>remote_bg</code></td><td>color</td><td>Remote segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of every git segment's text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>clean_fg</code></td><td>color</td><td>Branch name when the working tree is clean.</td><td><code>defaults.fg</code></td></tr><tr><td><code>clean_bg</code></td><td>color</td><td>Branch background when clean.</td><td><code>defaults.bg</code></td></tr><tr><td><code>dirty_fg</code></td><td>color</td><td>Branch name when there are changes.</td><td><code>defaults.fg</code></td></tr><tr><td><code>dirty_bg</code></td><td>color</td><td>Branch background when there are changes.</td><td><code>defaults.bg</code></td></tr><tr><td><code>notstaged_fg</code></td><td>color</td><td>Modified-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>notstaged_bg</code></td><td>color</td><td>Modified-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>untracked_fg</code></td><td>color</td><td>Untracked-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>untracked_bg</code></td><td>color</td><td>Untracked-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>staged_fg</code></td><td>color</td><td>Staged-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>staged_bg</code></td><td>color</td><td>Staged-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>conflicted_fg</code></td><td>color</td><td>Conflicted-file count.</td><td><code>defaults.fg</code></td></tr><tr><td><code>conflicted_bg</code></td><td>color</td><td>Conflicted-file background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>remote_fg</code></td><td>color</td><td>GitHub logo and ahead/behind counts.</td><td><code>defaults.fg</code></td></tr><tr><td><code>remote_bg</code></td><td>color</td><td>Remote segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around every git segment's text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="git/minimal">
@@ -513,7 +514,7 @@
         </table>
         <details class="theme-opts" data-theme="pr">
     <summary>Theme options <code>modules.pr</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>draft_fg</code></td><td>color</td><td>Link text for a draft PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>draft_bg</code></td><td>color</td><td>Background for a draft PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>open_fg</code></td><td>color</td><td>Link text for an open PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>open_bg</code></td><td>color</td><td>Background for an open PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>merged_fg</code></td><td>color</td><td>Link text for a merged PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>merged_bg</code></td><td>color</td><td>Background for a merged PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>closed_fg</code></td><td>color</td><td>Link text for a closed PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>closed_bg</code></td><td>color</td><td>Background for a closed PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>status_success_fg</code></td><td>color</td><td>CI dot when checks pass.</td><td><code>defaults.fg</code></td></tr><tr><td><code>status_failure_fg</code></td><td>color</td><td>CI dot when checks fail.</td><td><code>defaults.fg</code></td></tr><tr><td><code>status_pending_fg</code></td><td>color</td><td>CI dot while checks run.</td><td><code>defaults.fg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Icon before the PR number.</td><td>U+EA64</td></tr><tr><td><code>status_icon</code></td><td>string</td><td>The CI dot.</td><td><code>"●"</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the link and CI dot.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>draft_fg</code></td><td>color</td><td>Link text for a draft PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>draft_bg</code></td><td>color</td><td>Background for a draft PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>open_fg</code></td><td>color</td><td>Link text for an open PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>open_bg</code></td><td>color</td><td>Background for an open PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>merged_fg</code></td><td>color</td><td>Link text for a merged PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>merged_bg</code></td><td>color</td><td>Background for a merged PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>closed_fg</code></td><td>color</td><td>Link text for a closed PR.</td><td><code>defaults.fg</code></td></tr><tr><td><code>closed_bg</code></td><td>color</td><td>Background for a closed PR.</td><td><code>defaults.bg</code></td></tr><tr><td><code>status_success_fg</code></td><td>color</td><td>CI dot when checks pass.</td><td><code>defaults.fg</code></td></tr><tr><td><code>status_failure_fg</code></td><td>color</td><td>CI dot when checks fail.</td><td><code>defaults.fg</code></td></tr><tr><td><code>status_pending_fg</code></td><td>color</td><td>CI dot while checks run.</td><td><code>defaults.fg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Icon before the PR number.</td><td>U+EA64</td></tr><tr><td><code>status_icon</code></td><td>string</td><td>The CI dot.</td><td><code>"●"</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the link and CI dot: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="pr/minimal">
@@ -562,7 +563,7 @@
         </table>
         <details class="theme-opts" data-theme="python">
     <summary>Theme options <code>modules.python</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>env_fg</code></td><td>color</td><td>Logo, venv name and pinned version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>env_bg</code></td><td>color</td><td>Background of that segment.</td><td><code>defaults.bg</code></td></tr><tr><td><code>version_fg</code></td><td>color</td><td>Interpreter version shown next to an active venv.</td><td><code>defaults.fg</code></td></tr><tr><td><code>version_bg</code></td><td>color</td><td>Background of the version segment.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of each segment's text.</td><td>1; the venv name has 0 before, 1 after</td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>env_fg</code></td><td>color</td><td>Logo, venv name and pinned version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>env_bg</code></td><td>color</td><td>Background of that segment.</td><td><code>defaults.bg</code></td></tr><tr><td><code>version_fg</code></td><td>color</td><td>Interpreter version shown next to an active venv.</td><td><code>defaults.fg</code></td></tr><tr><td><code>version_bg</code></td><td>color</td><td>Background of the version segment.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around each segment's text: small for none, large for both sides, left or right for one side.</td><td>large; right for the venv label</td></tr></tbody></table>
     <p class="note">Also read from <code>modules.py</code>, the key this module had before it was renamed.</p>
   </details><!-- /theme -->
         <div class="examples">
@@ -599,7 +600,7 @@
         </table>
         <details class="theme-opts" data-theme="node">
     <summary>Theme options <code>modules.node</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo and version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Background for a version nvm or mise has activated.</td><td><code>defaults.bg</code></td></tr><tr><td><code>inactive_bg</code></td><td>color</td><td>Background for a version that only comes from .nvmrc.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the logo and version.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo and version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Background for a version nvm or mise has activated.</td><td><code>defaults.bg</code></td></tr><tr><td><code>inactive_bg</code></td><td>color</td><td>Background for a version that only comes from .nvmrc.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the logo and version: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
     <p class="note">Also read from <code>modules.nvm</code>, the key this module had before it was renamed.</p>
   </details><!-- /theme -->
         <div class="examples">
@@ -632,7 +633,7 @@
         </table>
         <details class="theme-opts" data-theme="java">
     <summary>Theme options <code>modules.java</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo, version and distribution.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it. Read from java only.</td><td>U+F1064</td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the segment's text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo, version and distribution.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it. Read from java only.</td><td>U+F1064</td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the segment's text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
     <p class="note">Also read from <code>modules.sdkman</code>, the key this module had before it was renamed.</p>
   </details><!-- /theme -->
         <div class="examples">
@@ -664,7 +665,7 @@
         </table>
         <details class="theme-opts" data-theme="cargo">
     <summary>Theme options <code>modules.cargo</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo and toolchain version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the segment's text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Logo and toolchain version.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>mise_icon</code></td><td>string</td><td>Marker for a version pinned by mise; "" hides it.</td><td>U+F1064</td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the segment's text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="cargo/minimal">
@@ -731,7 +732,7 @@
         </table>
         <details class="theme-opts" data-theme="ai_usage">
     <summary>Theme options <code>modules.ai_usage</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>claude_fg</code></td><td>color</td><td>Claude widget text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>claude_bg</code></td><td>color</td><td>Claude widget background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>codex_fg</code></td><td>color</td><td>Codex widget text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>codex_bg</code></td><td>color</td><td>Codex widget background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>threshold_bg</code></td><td>color</td><td>Background once a visible lane crosses threshold.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the usage text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>claude_fg</code></td><td>color</td><td>Claude widget text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>claude_bg</code></td><td>color</td><td>Claude widget background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>codex_fg</code></td><td>color</td><td>Codex widget text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>codex_bg</code></td><td>color</td><td>Codex widget background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>threshold_bg</code></td><td>color</td><td>Background once a visible lane crosses threshold.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the usage text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="ai_usage/minimal">
@@ -780,7 +781,7 @@
         </p>
         <details class="theme-opts" data-theme="os">
     <summary>Theme options <code>modules.os</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The icon.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>symbol</code></td><td>string</td><td>Icon used for every operating system.</td><td>per-OS Nerd Font icon</td></tr><tr><td><code>macos_symbol</code></td><td>string</td><td>Icon on macOS. Takes precedence over symbol, as do the keys below.</td><td><code>symbol</code></td></tr><tr><td><code>linux_symbol</code></td><td>string</td><td>Icon on Linux.</td><td><code>symbol</code></td></tr><tr><td><code>windows_symbol</code></td><td>string</td><td>Icon on Windows.</td><td><code>symbol</code></td></tr><tr><td><code>android_symbol</code></td><td>string</td><td>Icon on Android.</td><td><code>symbol</code></td></tr><tr><td><code>freebsd_symbol</code></td><td>string</td><td>Icon on FreeBSD. Also openbsd_symbol, netbsd_symbol, dragonfly_symbol, illumos_symbol, solaris_symbol, haiku_symbol and unknown_symbol.</td><td><code>symbol</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the icon.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The icon.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>symbol</code></td><td>string</td><td>Icon used for every operating system.</td><td>per-OS Nerd Font icon</td></tr><tr><td><code>macos_symbol</code></td><td>string</td><td>Icon on macOS. Takes precedence over symbol, as do the keys below.</td><td><code>symbol</code></td></tr><tr><td><code>linux_symbol</code></td><td>string</td><td>Icon on Linux.</td><td><code>symbol</code></td></tr><tr><td><code>windows_symbol</code></td><td>string</td><td>Icon on Windows.</td><td><code>symbol</code></td></tr><tr><td><code>android_symbol</code></td><td>string</td><td>Icon on Android.</td><td><code>symbol</code></td></tr><tr><td><code>freebsd_symbol</code></td><td>string</td><td>Icon on FreeBSD. Also openbsd_symbol, netbsd_symbol, dragonfly_symbol, illumos_symbol, solaris_symbol, haiku_symbol and unknown_symbol.</td><td><code>symbol</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the icon: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="os/default">
@@ -805,7 +806,7 @@
         </table>
         <details class="theme-opts" data-theme="memory_usage">
     <summary>Theme options <code>modules.memory_usage</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Icon and percentages.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the segment's text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Icon and percentages.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the segment's text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="memory_usage/minimal">
@@ -832,7 +833,7 @@
         </table>
         <details class="theme-opts" data-theme="time">
     <summary>Theme options <code>modules.time</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The time.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the time.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The time.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the time: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="time/minimal">
@@ -864,7 +865,7 @@
         </table>
         <details class="theme-opts" data-theme="text">
     <summary>Theme options <code>modules.text</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="text/default">
@@ -885,15 +886,15 @@
         </p>
         <details class="theme-opts" data-theme="username">
     <summary>Theme options <code>modules.username</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The username.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>root_bg</code></td><td>color</td><td>Background when running as root.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the username.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The username.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>root_bg</code></td><td>color</td><td>Background when running as root.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the username: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <details class="theme-opts" data-theme="hostname">
     <summary>Theme options <code>modules.hostname</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The hostname.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the hostname.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The hostname.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the hostname: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <details class="theme-opts" data-theme="local_ip">
     <summary>Theme options <code>modules.local_ip</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The address.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the address.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The address.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the address: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
 <pre class="json"><code><span class="s">"username"</span>, <span class="s">"hostname"</span>, <span class="s">"local_ip"</span></code></pre>
       </section>
@@ -906,7 +907,7 @@
         </p>
         <details class="theme-opts" data-theme="battery">
     <summary>Theme options <code>modules.battery</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Charge and charging state.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the charge text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Charge and charging state.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the charge text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
 <pre class="json"><code><span class="s">"battery"</span></code></pre>
       </section>
@@ -920,7 +921,7 @@
         </p>
         <details class="theme-opts" data-theme="sudo">
     <summary>Theme options <code>modules.sudo</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The key symbol.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>symbol</code></td><td>string</td><td>Symbol shown while credentials are cached.</td><td><code>"⚿"</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the symbol.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The key symbol.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>symbol</code></td><td>string</td><td>Symbol shown while credentials are cached.</td><td><code>"⚿"</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the symbol: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
 <pre class="json"><code><span class="s">"sudo"</span></code></pre>
       </section>
@@ -935,7 +936,7 @@
         </p>
         <details class="theme-opts" data-theme="kubernetes">
     <summary>Theme options <code>modules.kubernetes</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Context and namespace.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Icon before the context; "" hides it.</td><td>U+F10FE</td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the context.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Context and namespace.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Icon before the context; "" hides it.</td><td>U+F10FE</td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the context: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
 <pre class="json"><code><span class="s">"kubernetes"</span></code></pre>
       </section>
@@ -952,8 +953,8 @@
           doesn't set, and <code>modules</code>, per-module overrides. Most modules take <code>fg</code> and
           <code>bg</code>; some have more (<code>git</code> has <code>staged_bg</code>, <code>cwd</code> takes a
           <code>bg_colors</code> list, <code>cmd</code> has <code>user_symbol</code>). Every module also takes
-          <code>padding</code>, the spaces on each side of its text, which a module's own <code>padding</code>
-          option overrides. Colors are a
+          <code>padding</code> (<code>small</code>, <code>large</code>, <code>left</code> or <code>right</code>),
+          where its text gets a space, which a module's own <code>padding</code> option overrides. Colors are a
           <a href="#colors">color name</a> or an ANSI 256-color code from <code>0</code> to <code>255</code>.
           <a href="https://github.com/alxhill/superline/blob/main/example_theme.json"><code>example_theme.json</code></a>
           covers every module.
@@ -1070,11 +1071,11 @@
   </details><!-- /theme -->
         <details class="theme-opts" data-theme="error">
     <summary>Theme options <code>modules.error</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Text of error segments, such as a config that fails to parse.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Error segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the error text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Text of error segments, such as a config that fails to parse.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Error segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the error text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
         <details class="theme-opts" data-theme="unknown">
     <summary>Theme options <code>modules.unknown</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Text of the segment shown for an unknown module name.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Unknown segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>integer</td><td>Spaces on each side of the segment's text.</td><td><code>1</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>Text of the segment shown for an unknown module name.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Unknown segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>padding</code></td><td>choice: small, large, left, right</td><td>Space around the segment's text: small for none, large for both sides, left or right for one side.</td><td><code>large</code></td></tr></tbody></table>
   </details><!-- /theme -->
       </section>
 

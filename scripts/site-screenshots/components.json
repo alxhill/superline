@@ -248,7 +248,7 @@
               "cwd": {
                 "max_length": 60,
                 "wanted_seg_num": 5,
-                "padding": 1
+                "padding": "large"
               }
             }
           ]

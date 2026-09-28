@@ -614,21 +614,30 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(keys(&doc, battery), ["padding"]);
-        doc.set_option(battery, "padding", Some(json!(0))).unwrap();
+        doc.set_option(battery, "padding", Some(json!("small")))
+            .unwrap();
         assert_eq!(
             doc.segment(pos(0, Side::Left, 0)),
-            &json!({ "battery": { "padding": 0 } })
+            &json!({ "battery": { "padding": "small" } })
         );
-        assert_eq!(doc.options(battery)[0].1, Some(&json!(0)));
+        assert_eq!(doc.options(battery)[0].1, Some(&json!("small")));
+        for bad in [json!(0), json!("wide")] {
+            assert!(doc.set_option(battery, "padding", Some(bad)).is_err());
+        }
+        assert_eq!(
+            doc.segment(pos(0, Side::Left, 0)),
+            &json!({ "battery": { "padding": "small" } })
+        );
         doc.set_option(battery, "padding", None).unwrap();
         assert_eq!(doc.segment(pos(0, Side::Left, 0)), &json!("battery"));
 
         let java = Target::Segment(pos(0, Side::Left, 1));
         assert_eq!(keys(&doc, java), ["version", "jdk", "padding"]);
-        doc.set_option(java, "padding", Some(json!(2))).unwrap();
+        doc.set_option(java, "padding", Some(json!("right")))
+            .unwrap();
         assert_eq!(
             doc.segment(pos(0, Side::Left, 1)),
-            &json!({ "sdkman": { "jdk": false, "padding": 2 } })
+            &json!({ "sdkman": { "jdk": false, "padding": "right" } })
         );
 
         assert_eq!(keys(&doc, Target::Segment(pos(0, Side::Left, 2))), ["text"]);
