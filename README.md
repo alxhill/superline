@@ -27,7 +27,7 @@ configurable modules and themes.
 - **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
   served from a cache.
 - **Flexible layout**: multiple rows, each with an optional right-aligned side.
-- **Themeable**: two built-in themes, or point at your own theme JSON file.
+- **Themeable**: themes are JSON files. Start from one of the two that come with superline, or write your own.
 - **Any shell**: fish, zsh, bash, PowerShell and nushell are all supported by `superline install`.
 
 ## Installation
@@ -114,9 +114,10 @@ Windows captures for every pull request.
 
 ## Configuration
 
-On first run superline writes a default config to `$HOME/.config/superline/config.json`. Edits take effect on the
-next prompt - no reload needed. [`example_config.json`](example_config.json) shows a complete setup and
-`src/config.rs` is the authoritative definition of every option.
+On first run superline writes a default config to `$HOME/.config/superline/config.json`, and the `rainbow` theme it
+names to `rainbow.json` next to it. Edits take effect on the next prompt - no reload needed.
+[`example_config.json`](example_config.json) shows a complete setup and `src/config.rs` is the authoritative
+definition of every option.
 
 Run `superline config` to edit it in the terminal. The editor lists every row's widgets, shows a live preview of the
 prompt as you change them, and saves back to the same file:
@@ -126,12 +127,12 @@ prompt as you change them, and saves back to the same file:
   they move the whole row. `n` adds a row.
 - `Enter` opens a widget's options: `Enter` or `space` toggles and cycles values or types a new one, `←`/`→` cycle
   choices, and `x` resets an option to its default.
-- `2` (or `t`) switches to the Theme page, which edits the custom theme file the config names. Pick a module to see
+- `2` (or `t`) switches to the Theme page, which edits the theme file the config names. Pick a module to see
   each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
   picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
-  property. On a built-in theme, `n` creates a new theme file from the example theme and points the config at it.
-  `1` returns to the layout.
+  property. `n` copies the theme into a new theme file next to the config and points the config at it. `1` returns
+  to the layout, where Settings picks another theme file.
 - `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
   and `?` lists every key.
 
@@ -304,7 +305,7 @@ operating system cannot provide a memory reading.
 Shows a compact Nerd Font icon for the current operating-system family. It
 recognizes Linux, macOS, Windows, Android and the common BSD/Unix targets
 without reading distro files or spawning a command, so it adds no prompt
-latency. The built-in themes use the Linux, Apple and Windows icons; custom
+latency. The bundled themes use the Linux, Apple and Windows icons; other
 themes may override the colors and symbol in their os module.
 
 ```json
@@ -557,9 +558,14 @@ one is pinned.
 
 ### Themes
 
-`theme` is `"rainbow"`, `"simple"`, or a path to a theme JSON file. Paths starting with `/` are absolute; anything
-else is resolved relative to the config directory (`$HOME/.config/superline/`). If a custom theme fails to load,
-superline falls back to `rainbow`. The Theme page of `superline config` edits a custom theme with a live preview.
+`theme` is a path to a theme JSON file, and `.json` is optional: `"rainbow"` is `rainbow.json`. Paths starting with
+`/` are absolute; anything else is resolved relative to the config directory (`$HOME/.config/superline/`). If the
+theme fails to load, superline falls back to `rainbow`.
+
+superline comes with two themes, [`rainbow`](themes/rainbow.json) and [`simple`](themes/simple.json). When the config
+names one of them and its file isn't in the config directory yet, superline writes it there, so it can be edited like
+any other theme file; an existing file is never replaced. Delete it to get the original back. The Theme page of
+`superline config` edits a theme file with a live preview.
 
 A theme file has two keys, `defaults` and `modules`:
 
@@ -585,7 +591,7 @@ Note that the `read_only` module is themed as `readonly`. The `node` and `python
 old theme keys, `nvm` and `py`.
 
 Colors are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-color code from
-`0` to `255`. [`example_theme.json`](example_theme.json) covers every module, and `src/themes/custom.rs` lists every
+`0` to `255`. [`themes/rainbow.json`](themes/rainbow.json) is a full example, and `src/themes/custom.rs` lists every
 module name and property.
 
 ## Commands
@@ -638,20 +644,24 @@ program. `examples/minimalistic.rs` and `examples/rainbow.rs` are complete, runn
 use superline::modules::*;
 use superline::powerline::{PowerlineRightBuilder, PowerlineShellBuilder};
 use superline::terminal::Shell;
-use superline::themes::SimpleTheme;
+use superline::themes::CustomTheme;
 
 fn main() {
+    // Any theme file, such as a copy of themes/simple.json.
+    CustomTheme::load("simple.json").expect("the theme loads");
+
     superline::Powerline::builder()
         .set_shell(Shell::Bare)
-        .add_module(Cwd::<SimpleTheme>::new(45, 4, false))
-        .add_module(Git::<SimpleTheme>::new())
-        .add_module(ReadOnly::<SimpleTheme>::new())
-        .add_module(Cmd::<SimpleTheme>::new("0"))
+        .add_module(Cwd::<CustomTheme>::new(45, 4, false))
+        .add_module(Git::<CustomTheme>::new())
+        .add_module(ReadOnly::<CustomTheme>::new())
+        .add_module(Cmd::<CustomTheme>::new("0"))
         .render(0);
 }
 ```
 
-Themes are types that implement each module's `*Scheme` trait, so a custom theme is just a struct with a few impls:
+`CustomTheme` reads its colours from the loaded theme file. A theme can also be a type that implements each module's
+`*Scheme` trait, so a theme compiled into the program is just a struct with a few impls:
 
 ```rust
 use superline::modules::*;

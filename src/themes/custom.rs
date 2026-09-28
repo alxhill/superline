@@ -16,9 +16,13 @@ use crate::modules::{
     ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme,
     UserScheme,
 };
-use crate::themes::{CompleteTheme, DefaultColors};
+use crate::themes::{
+    bundled_theme, install_theme, theme_path, CompleteTheme, DefaultColors, RAINBOW,
+};
 use crate::update::UpdateScheme;
 
+/// The theme prompts are drawn with: a theme file, loaded once per process by
+/// [`CustomTheme::load`] or [`CustomTheme::load_for_config`].
 #[derive(Clone)]
 pub struct CustomTheme;
 
@@ -120,6 +124,33 @@ impl CustomTheme {
         //         println!("{:?} | failed to set custom theme? {:?}, {x}", thread_id, e);
         //     }
         // }
+    }
+
+    /// Loads the theme file a config's `theme` value names (see
+    /// [`theme_path`]), first installing a bundled theme's file the config
+    /// directory is missing.
+    pub fn load_for_config(config_dir: &Path, theme: &str) -> Result<(), CustomThemeError> {
+        let path = theme_path(config_dir, theme);
+        if let Some(bundled) = bundled_theme(config_dir, &path) {
+            if install_theme(&path, bundled).is_err() {
+                // A config directory that can't be written still gets its prompt.
+                Self::set_bundled(bundled);
+                return Ok(());
+            }
+        }
+        Self::load(&path)
+    }
+
+    /// Loads the bundled rainbow theme, which a prompt falls back to when its
+    /// config or theme can't be loaded.
+    pub fn load_fallback() {
+        Self::set_bundled(RAINBOW);
+    }
+
+    fn set_bundled(text: &str) {
+        let theme: CustomThemeImpl =
+            serde_json::from_str(text).expect("bundled themes are valid theme files");
+        let _ = THEME.set(theme);
     }
 
     pub fn get_color(module: &str, color: &str) -> Option<Color> {

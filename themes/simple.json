@@ -1,0 +1,51 @@
+{
+  "defaults": { "fg": "light_grey", "bg": "black" },
+  "modules": {
+    "cwd": { "bg_colors": ["grey"] },
+    "readonly": { "fg": 254, "bg": 124 },
+    "cmd": { "passed_fg": 15, "passed_bg": 236, "failed_fg": 15, "failed_bg": 161 },
+    "git": {
+      "clean_fg": 0,
+      "clean_bg": 148,
+      "dirty_fg": 15,
+      "dirty_bg": 161,
+      "notstaged_fg": 15,
+      "notstaged_bg": 130,
+      "untracked_fg": 15,
+      "untracked_bg": 52,
+      "staged_fg": 15,
+      "staged_bg": 22,
+      "conflicted_fg": 15,
+      "conflicted_bg": 9,
+      "remote_fg": 250,
+      "remote_bg": 240
+    },
+    "pr": {
+      "draft_fg": 15,
+      "draft_bg": 240,
+      "open_fg": 15,
+      "open_bg": 28,
+      "merged_fg": 15,
+      "merged_bg": 54,
+      "closed_fg": 15,
+      "closed_bg": 124,
+      "status_success_fg": 40,
+      "status_failure_fg": 161,
+      "status_pending_fg": 178
+    },
+    "java": { "bg": "light_grey" },
+    "cargo": { "bg": "dark_grey" },
+    "ai_usage": { "threshold_bg": 161 },
+    "memory_usage": { "fg": 15, "bg": 160 },
+    "time": { "fg": 250, "bg": 238 },
+    "username": { "fg": 250, "bg": 240, "root_bg": 124 },
+    "hostname": { "fg": 250, "bg": 238 },
+    "local_ip": { "fg": 250, "bg": 238 },
+    "battery": { "fg": 15, "bg": 161 },
+    "sudo": { "fg": 15, "bg": 31 },
+    "update": { "fg": 15, "bg": 31 },
+    "error": { "fg": 15, "bg": 161 },
+    "unknown": { "fg": 15, "bg": 161 },
+    "exit_code": { "fg": 15, "bg": 161 }
+  }
+}
