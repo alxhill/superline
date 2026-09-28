@@ -33,6 +33,7 @@ const BLOCK_FILLED: char = '█';
 const SPARKLINE: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
+const CODEX_SESSION_WINDOW_MAX_MINS: u64 = 24 * 60;
 // A stable, disposable Claude CLI probe session prevents creating a new local
 // conversation on every refresh; its transcript is removed after each probe.
 const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
@@ -521,7 +522,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageReading> {
         UsageFetch::Reading(parsed) => parsed,
         UsageFetch::LoggedOut => return Some(UsageReading::logged_out()),
     };
-    parsed.session?;
+    parsed.session.or(parsed.weekly)?;
 
     Some(UsageReading {
         session: parsed.session,
@@ -671,7 +672,9 @@ fn codex_requires_login(message: &Value) -> bool {
 }
 
 /// Codex reports the five-hour window as `primary` and the weekly window as
-/// `secondary`; the durations settle it when both are present. Credits come
+/// `secondary`; the durations settle it when both are present. Plans with a
+/// single long window (the free plan's 30-day limit) report it alone as
+/// `primary`, so it moves to the weekly slot. Credits come
 /// from `individualLimit`, the per-seat credit budget, as a plain count.
 fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
     let limits = message.get("result")?.get("rateLimits")?;
@@ -685,10 +688,14 @@ fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
         ))
     };
     let (mut session, mut weekly) = (window("primary"), window("secondary"));
-    if let (Some((Some(short), _, _)), Some((Some(long), _, _))) = (session, weekly) {
-        if short > long {
+    match (session, weekly) {
+        (Some((Some(short), _, _)), Some((Some(long), _, _))) if short > long => {
             std::mem::swap(&mut session, &mut weekly);
         }
+        (Some((Some(duration), _, _)), None) if duration > CODEX_SESSION_WINDOW_MAX_MINS => {
+            std::mem::swap(&mut session, &mut weekly);
+        }
+        _ => {}
     }
     let credits = limits.get("individualLimit").and_then(|limit| {
         Some(CreditsUsage {
@@ -1246,6 +1253,27 @@ mod tests {
             Some(ParsedUsage {
                 session: Some(100.0),
                 weekly: None,
+                fable: None,
+                credits: None,
+                session_resets_at: None,
+            })
+        );
+
+        let free_plan = json!({
+            "id": 2,
+            "result": {
+                "rateLimits": {
+                    "primary": {"usedPercent": 14, "windowDurationMins": 43200, "resetsAt": 3},
+                    "secondary": null,
+                    "planType": "free"
+                }
+            }
+        });
+        assert_eq!(
+            parse_codex_rate_limits(&free_plan),
+            Some(ParsedUsage {
+                session: None,
+                weekly: Some(14.0),
                 fable: None,
                 credits: None,
                 session_resets_at: None,
