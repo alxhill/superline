@@ -1,5 +1,5 @@
-//! Segment padding: a widget's `padding` option wins over the theme's
-//! per-module `padding`, which wins over the widget's own spacing.
+//! Segment padding: a widget's `padding` option wins over the widget's own
+//! spacing. Themes take no padding.
 
 use std::fs;
 use std::path::PathBuf;
@@ -9,15 +9,31 @@ const BIN: &str = env!("CARGO_BIN_EXE_superline");
 
 const COLUMNS: usize = 100;
 
-/// `nvm` is the key the `node` module used to be themed under.
-const THEME: &str = r#"{
+const THEME: &str = r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": {} }"#;
+
+/// A theme written for v0.23.0, which read `padding` per module, including
+/// under `nvm`, the key the `node` module used to be themed under.
+const PADDED_THEME: &str = r#"{
     "defaults": { "fg": 15, "bg": 0 },
     "modules": {
         "text": { "padding": "small" },
         "shell": { "padding": "right" },
-        "nvm": { "padding": "left" }
+        "cmd": { "padding": "large" },
+        "nvm": { "padding": "left" },
+        "git": { "padding": "wide" }
     }
 }"#;
+
+const WIDGETS: &str = r#"
+    { "text": "themed" },
+    { "shell": { "padding": "left" } },
+    "shell",
+    "cmd",
+    { "cmd": { "padding": "large" } },
+    { "cmd": { "padding": "right" } },
+    "node",
+    { "node": { "padding": "small" } }
+"#;
 
 fn scratch_dir(label: &str) -> PathBuf {
     let dir =
@@ -62,15 +78,15 @@ fn run(label: &str, theme: &str, left: &str, right: &str) -> Output {
     output
 }
 
-/// The visible text of the preview of a one-row config.
-fn preview(label: &str, left: &str, right: &str) -> String {
-    let output = run(label, THEME, left, right);
+/// The preview of a one-row config using `theme`.
+fn preview(label: &str, theme: &str, left: &str, right: &str) -> String {
+    let output = run(label, theme, left, right);
     assert!(
         output.status.success(),
         "preview failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    visible(&String::from_utf8(output.stdout).expect("utf-8 prompt"))
+    String::from_utf8(output.stdout).expect("utf-8 prompt")
 }
 
 /// The prompt with its colour escapes removed.
@@ -88,32 +104,21 @@ fn visible(prompt: &str) -> String {
 }
 
 #[test]
-fn config_padding_wins_over_the_theme_which_wins_over_the_default() {
-    let widgets = r#"
-        { "text": "themed" },
-        { "shell": { "padding": "left" } },
-        "shell",
-        "cmd",
-        { "cmd": { "padding": "large" } },
-        { "cmd": { "padding": "right" } },
-        "node",
-        { "node": { "padding": "small" } }
-    "#;
-    let line = preview("precedence", widgets, widgets);
+fn config_padding_wins_over_the_widget_default() {
+    let line = visible(&preview("precedence", THEME, WIDGETS, WIDGETS));
 
     let segments = [
-        // text: the theme's small, where its own is large.
-        "themed",
-        // shell: the config's left over the theme's right, then the theme's.
+        // text: its own large.
+        " themed ",
+        // shell: the config's left, then its own small.
         " fish",
-        "fish ",
+        "fish",
         // cmd: its own small, then the config's large and right.
         "$",
         " $ ",
         "$ ",
-        // node: the theme's left, read from the old `nvm` key, then the
-        // config's small.
-        " \u{ed0d} 20.1.0",
+        // node: its own large, then the config's small.
+        " \u{ed0d} 20.1.0 ",
         "\u{ed0d} 20.1.0",
     ];
     let left: String = segments.iter().map(|s| format!("{s}\u{e0b0}")).collect();
@@ -126,20 +131,20 @@ fn config_padding_wins_over_the_theme_which_wins_over_the_default() {
 }
 
 #[test]
-fn an_invalid_padding_is_reported_with_the_choices() {
-    let config = run("bad-config", THEME, r#"{ "git": { "padding": 1 } }"#, "");
-    let theme = run(
-        "bad-theme",
-        r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": { "git": { "padding": "wide" } } }"#,
-        r#""git""#,
-        "",
+fn a_theme_that_sets_padding_still_loads_and_is_ignored() {
+    assert_eq!(
+        preview("padded-theme", PADDED_THEME, WIDGETS, WIDGETS),
+        preview("plain-theme", THEME, WIDGETS, WIDGETS)
     );
-    for output in [config, theme] {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success(), "{stderr}");
-        assert!(
-            stderr.contains("expected one of small, large, left, right"),
-            "{stderr}"
-        );
-    }
+}
+
+#[test]
+fn an_invalid_padding_is_reported_with_the_choices() {
+    let output = run("bad-config", THEME, r#"{ "git": { "padding": 1 } }"#, "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("expected one of small, large, left, right"),
+        "{stderr}"
+    );
 }

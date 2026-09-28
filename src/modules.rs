@@ -64,8 +64,8 @@ pub use usage::{Usage, UsageLookup, UsageScheme, UsageWindow, UsageWindows};
 pub use user::{User, UserScheme, Username};
 
 pub trait Module {
-    /// The padding of this module's segments when neither the config nor the
-    /// theme sets one. The editor shows it next to the `padding` option.
+    /// The padding of this module's segments when the config does not set
+    /// one. The editor shows it next to the `padding` option.
     fn default_padding(&self) -> DefaultPadding;
 
     fn append_segments(&mut self, powerline: &mut Powerline);

@@ -127,8 +127,8 @@ The keys:
 - `J`/`K` (or shift-arrows) move a widget, crossing between the left and right sides and between rows; on a row
   they move the whole row. `n` adds a row.
 - `Enter` opens a widget's options: `Enter` or `space` toggles and cycles values or types a new one, `←`/`→` cycle
-  choices, and `x` resets an option to its default. An unset `padding` shows what the widget gets instead: the theme's
-  padding for it, or the widget's own default, such as `left` for `cwd`. The Theme page shows the same defaults.
+  choices, and `x` resets an option to its default. An unset `padding` shows the widget's own default instead, such as
+  `left` for `cwd`.
 - `2` (or `t`) switches to the Theme page, which edits the theme file the config names. Pick a module to see
   each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
   picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
@@ -189,10 +189,9 @@ use the object form.
 
 Every module except `text`, `separator` and `padding` also takes a `padding` option: where each segment it draws gets a
 space beside its text. `"small"` adds none, `"large"` one on each side, and `"left"` or `"right"` one on that side only,
-as in `{ "git": { "padding": "small" } }`. It overrides the theme's `padding` for that module, which overrides the
-module's own spacing: `large` for most modules, `small` for `cmd` and `shell`, and `left` for `cwd` and
-`last_cmd_duration`. The [configuration reference](https://alxhill.github.io/superline/config.html) lists each
-module's.
+as in `{ "git": { "padding": "small" } }`. It overrides the module's own spacing: `large` for most modules, `small`
+for `cmd`, `shell` and `small_spacer`, and `left` for `cwd` and `last_cmd_duration`. The
+[configuration reference](https://alxhill.github.io/superline/config.html) lists each module's.
 
 ### Layout
 
@@ -610,8 +609,8 @@ A theme file has two keys, `defaults` and `modules`:
   `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array). Every icon a widget draws is a string property
   that defaults to its usual glyph (`cmd.user_symbol`, `git.branch_icon`, `git.staged_icon`, `battery.charging_icon`,
   `python.icon`, `mise_icon` on the language modules, and so on) - set one to `""` to hide it along with the space
-  beside it. Anything omitted falls back to `defaults`. Every module, `text` included, also takes `padding`:
-  `small`, `large`, `left` or `right`, as for the module option above.
+  beside it. Anything omitted falls back to `defaults`. Padding is set with the module option above, not in
+  the theme, which ignores a `padding` property.
 
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
 old theme keys, `nvm` and `py`.

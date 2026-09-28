@@ -8,9 +8,11 @@ use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
 use ratatui::Terminal;
+use serde_json::json;
 
+use super::model::{Document, Entry, SegPos, Side, Target};
 use super::theme::{ThemeDoc, STARTER_THEME};
-use super::{draw_scrollbar, load, App};
+use super::{draw_scrollbar, load, option_value_spans, App};
 
 const WIDTH: u16 = 100;
 const HEIGHT: u16 = 30;
@@ -155,4 +157,68 @@ fn scrollbar_thumb_spans_the_rows_on_screen() {
     assert_eq!(render(8, 0), "██││");
     assert_eq!(render(8, 2), "│██│");
     assert_eq!(render(8, 4), "││██");
+}
+
+fn left(index: usize) -> SegPos {
+    SegPos {
+        row: 0,
+        side: Side::Left,
+        index,
+    }
+}
+
+#[test]
+fn padding_shows_the_widget_default_it_falls_back_to() {
+    let dir = Scratch::new();
+    // A theme's `padding`, as v0.23.0 read it, is ignored.
+    std::fs::write(
+        dir.0.join("theme.json"),
+        r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": { "git": { "padding": "small" } } }"#,
+    )
+    .unwrap();
+    let config = json!({ "theme": "theme.json", "rows": [{ "left": [
+        { "cwd": { "max_length": 60, "wanted_seg_num": 5 } },
+        "git",
+        { "python": { "padding": "small" } },
+    ] }] });
+    let mut app = App::new(Document::new(config).unwrap(), dir.0.join("config.json"));
+    app.load_theme_slot();
+    let shown = |app: &App, index| {
+        let options = app.doc.options(Target::Segment(left(index)));
+        let (spec, value) = options.iter().find(|(s, _)| s.key == "padding").unwrap();
+        option_value_spans(spec, *value, app.padding_fallback(left(index)), false)
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>()
+    };
+
+    assert_eq!(shown(&app, 0), "default (left)");
+    assert_eq!(shown(&app, 1), "default (large)");
+    assert_eq!(
+        shown(&app, 2),
+        "small  (overrides default large; venv label right)"
+    );
+}
+
+#[test]
+fn widget_padding_cycles_through_its_choices_and_unset() {
+    let dir = Scratch::new();
+    let config = json!({ "theme": "rainbow", "rows": [{ "left": ["battery"] }] });
+    let mut app = App::new(Document::new(config).unwrap(), dir.0.join("config.json"));
+    let battery = left(0);
+    app.select(Entry::Segment(battery));
+    press(&mut app, KeyCode::Enter, 1);
+    assert_eq!(app.current_option().unwrap().1.key, "padding");
+
+    for (key, expected) in [
+        (KeyCode::Right, json!({ "battery": { "padding": "small" } })),
+        (KeyCode::Enter, json!({ "battery": { "padding": "large" } })),
+        (KeyCode::Right, json!({ "battery": { "padding": "left" } })),
+        (KeyCode::Right, json!({ "battery": { "padding": "right" } })),
+        (KeyCode::Right, json!("battery")),
+        (KeyCode::Left, json!({ "battery": { "padding": "right" } })),
+    ] {
+        press(&mut app, key, 1);
+        assert_eq!(app.doc.segment(battery), &expected, "{key:?}");
+    }
 }
