@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/alxhill/superline/compare/v0.22.3...v0.23.0) - 2026-09-28
+
+### Added
+
+- configurable segment padding per widget and theme module ([#177](https://github.com/alxhill/superline/pull/177))
+- edit theme colour lists entry by entry in superline config ([#176](https://github.com/alxhill/superline/pull/176))
+- show the linked worktree count in the git widget ([#174](https://github.com/alxhill/superline/pull/174))
+- bold, italic and underline text attributes in themes ([#178](https://github.com/alxhill/superline/pull/178))
+- make every widget icon configurable through themes ([#175](https://github.com/alxhill/superline/pull/175))
+- ship rainbow and simple as bundled JSON theme files ([#179](https://github.com/alxhill/superline/pull/179))
+
+### Other
+
+- regenerate site screenshots for worktrees, padding and the editor ([#183](https://github.com/alxhill/superline/pull/183))
+- lead the website with the superline config editor ([#180](https://github.com/alxhill/superline/pull/180))
+
 ## [0.22.3](https://github.com/alxhill/superline/compare/v0.22.2...v0.22.3) - 2026-09-28
 
 ### Added
