@@ -20,6 +20,7 @@ pub enum PropKind {
     Color,
     ColorList,
     Str,
+    Int,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +68,7 @@ pub fn module_specs() -> &'static [ModuleSpec] {
                         kind: match row[1].as_str() {
                             Some("color") => PropKind::Color,
                             Some("color list") => PropKind::ColorList,
+                            Some("integer") => PropKind::Int,
                             _ => PropKind::Str,
                         },
                         help: row[2].as_str().unwrap_or_default().to_string(),
@@ -104,6 +106,7 @@ fn inferred_prop(key: &str) -> PropSpec {
         kind: match infer_theme_property_kind(key) {
             Some(ThemePropertyKind::ColorList) => PropKind::ColorList,
             Some(ThemePropertyKind::Color) => PropKind::Color,
+            Some(ThemePropertyKind::Integer) => PropKind::Int,
             _ => PropKind::Str,
         },
         help: String::new(),
@@ -339,6 +342,9 @@ impl ThemeDoc {
         spec: &PropSpec,
         value: Option<&Value>,
     ) -> Option<u8> {
+        if spec.kind == PropKind::Int {
+            return None;
+        }
         if let Some(value) = value {
             return color_code(value).or_else(|| value.as_array()?.first().and_then(color_code));
         }
@@ -364,7 +370,7 @@ impl ThemeDoc {
         let pick = |suffix: &str| {
             props
                 .iter()
-                .filter(|(spec, _)| spec.kind != PropKind::Str)
+                .filter(|(spec, _)| matches!(spec.kind, PropKind::Color | PropKind::ColorList))
                 .find(|(spec, _)| {
                     spec.key == suffix
                         || spec.key.ends_with(&format!("_{suffix}"))
@@ -402,6 +408,14 @@ pub fn parse_color_list(text: &str) -> Result<Value, String> {
         return Err("give at least one colour".into());
     }
     Ok(Value::Array(colors))
+}
+
+/// Parses a whole number of 0 or more, such as a padding.
+pub fn parse_int(text: &str) -> Result<Value, String> {
+    let text = text.trim();
+    text.parse::<u64>()
+        .map(Value::from)
+        .map_err(|_| format!("{text:?} is not a whole number of 0 or more"))
 }
 
 /// How a colour value is written back: as a name when the value it replaces
@@ -534,6 +548,20 @@ mod tests {
     }
 
     #[test]
+    fn padding_is_edited_as_a_whole_number() {
+        let mut doc = doc();
+        let git = ThemeEntry::Module("git".into());
+        doc.set(&git, "padding", Some(json!(0))).unwrap();
+        assert_eq!(doc.root()["modules"]["git"], json!({ "padding": 0 }));
+        let props = doc.props(&git);
+        let (spec, value) = props.iter().find(|(s, _)| s.key == "padding").unwrap();
+        assert_eq!(spec.kind, PropKind::Int);
+        // 0 is also a colour code, but a padding has no colour.
+        assert_eq!(doc.resolve(&git, spec, value.as_ref()), None);
+        assert!(doc.set(&git, "padding", Some(json!(-1))).is_err());
+    }
+
+    #[test]
     fn unset_properties_resolve_through_the_defaults() {
         let doc = doc();
         let git = ThemeEntry::Module("git".into());
@@ -555,6 +583,9 @@ mod tests {
             json!(["red", 166, 72])
         );
         assert!(parse_color_list(" , ").is_err());
+        assert_eq!(parse_int(" 2 ").unwrap(), json!(2));
+        assert!(parse_int("-1").is_err());
+        assert!(parse_int("wide").is_err());
         assert_eq!(color_value(4, true), json!("blue"));
         assert_eq!(color_value(4, false), json!(4));
         assert_eq!(color_value(99, true), json!(99));

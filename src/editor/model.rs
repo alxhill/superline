@@ -4,7 +4,7 @@
 use serde_json::{Map, Value};
 
 use super::schema::{self, OptionSpec, Shape, WidgetSpec};
-use crate::config::LineSegment;
+use crate::config::Widget;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
@@ -305,8 +305,10 @@ impl Document {
                 let Some(spec) = widget_spec(segment) else {
                     return Vec::new();
                 };
+                let padding = spec.takes_padding().then_some(&schema::WIDGET_PADDING);
                 spec.options()
                     .iter()
+                    .chain(padding)
                     .map(|option| (*option, option_value(segment, spec, option.key)))
                     .collect()
             }
@@ -353,8 +355,7 @@ impl Document {
                 let segment = &mut Self::side_mut(root, pos.row, pos.side)[pos.index];
                 let spec = widget_spec(segment).ok_or("unknown widget")?;
                 set_segment_option(segment, spec, key, value)?;
-                serde_json::from_value::<LineSegment>(segment.clone())
-                    .map_err(|e| e.to_string())?;
+                serde_json::from_value::<Widget>(segment.clone()).map_err(|e| e.to_string())?;
                 Ok(())
             }),
         }
@@ -384,13 +385,13 @@ fn set_segment_option(
         .ok_or("unrecognised segment")?
         .to_string();
     match spec.shape {
-        Shape::Unit => Err(format!("{name} has no options")),
+        Shape::Unit if key != schema::WIDGET_PADDING.key => Err(format!("{name} has no options")),
         Shape::Value(option) => {
             let value = value.ok_or(format!("{} is required", option.key))?;
             *segment = Value::Object(Map::from_iter([(name, value)]));
             Ok(())
         }
-        Shape::Object(_) => {
+        Shape::Unit | Shape::Object(_) => {
             let mut options = match segment {
                 Value::Object(map) => match map.values().next() {
                     Some(Value::Object(inner)) => inner.clone(),
@@ -596,6 +597,44 @@ mod tests {
             doc.segment(pos(0, Side::Left, 1)),
             &json!({ "sdkman": { "jdk": false, "version": false } })
         );
+    }
+
+    #[test]
+    fn every_widget_with_options_or_none_takes_padding() {
+        let mut doc = Document::new(json!({
+            "theme": "rainbow",
+            "rows": [{ "left": ["battery", { "sdkman": { "jdk": false } }, { "text": "hi" }] }]
+        }))
+        .unwrap();
+        let battery = Target::Segment(pos(0, Side::Left, 0));
+        let keys = |doc: &Document, target| {
+            doc.options(target)
+                .iter()
+                .map(|(spec, _)| spec.key)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(keys(&doc, battery), ["padding"]);
+        doc.set_option(battery, "padding", Some(json!(0))).unwrap();
+        assert_eq!(
+            doc.segment(pos(0, Side::Left, 0)),
+            &json!({ "battery": { "padding": 0 } })
+        );
+        assert_eq!(doc.options(battery)[0].1, Some(&json!(0)));
+        doc.set_option(battery, "padding", None).unwrap();
+        assert_eq!(doc.segment(pos(0, Side::Left, 0)), &json!("battery"));
+
+        let java = Target::Segment(pos(0, Side::Left, 1));
+        assert_eq!(keys(&doc, java), ["version", "jdk", "padding"]);
+        doc.set_option(java, "padding", Some(json!(2))).unwrap();
+        assert_eq!(
+            doc.segment(pos(0, Side::Left, 1)),
+            &json!({ "sdkman": { "jdk": false, "padding": 2 } })
+        );
+
+        assert_eq!(keys(&doc, Target::Segment(pos(0, Side::Left, 2))), ["text"]);
+        assert!(doc
+            .set_option(battery, "colour", Some(json!("teal")))
+            .is_err());
     }
 
     #[test]

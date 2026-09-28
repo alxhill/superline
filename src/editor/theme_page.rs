@@ -14,8 +14,8 @@ use serde_json::Value;
 
 use super::model::Target;
 use super::theme::{
-    color_names, color_value, edit_text, parse_color, parse_color_list, PropKind, PropSpec,
-    ThemeDoc, ThemeEntry,
+    color_names, color_value, edit_text, parse_color, parse_color_list, parse_int, PropKind,
+    PropSpec, ThemeDoc, ThemeEntry,
 };
 use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
@@ -266,6 +266,7 @@ impl App {
                     PropKind::Color => parse_color(text),
                     PropKind::ColorList => parse_color_list(text),
                     PropKind::Str => Ok(Value::from(text)),
+                    PropKind::Int => parse_int(text),
                 };
                 match parsed {
                     Ok(value) => self.set_theme_prop(Some(value)),
@@ -847,6 +848,11 @@ fn prop_value_spans(
             spans
         }
         (PropKind::Str, Some(value)) => icon_spans(&edit_text(value), false),
+        (PropKind::Int, Some(value)) => vec![Span::raw(edit_text(value)).yellow()],
+        (PropKind::Int, None) if spec.fallback.is_empty() => vec![Span::raw("unset").dark_gray()],
+        (PropKind::Int, None) => {
+            vec![Span::raw(format!("{} (default)", spec.fallback)).dark_gray()]
+        }
         (PropKind::Str, None) => match glyphs::fallback_text(&spec.fallback) {
             Some(text) => icon_spans(&text, true),
             None if spec.fallback.is_empty() => vec![Span::raw("unset").dark_gray()],

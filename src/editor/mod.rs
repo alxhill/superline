@@ -973,14 +973,7 @@ impl App {
                 let segment = self.doc.segment(pos);
                 let (name, _) = describe(segment);
                 let intro = match widget_spec(segment) {
-                    Some(spec) => {
-                        let mut intro = vec![Line::from(spec.summary).italic()];
-                        if spec.options().is_empty() {
-                            intro.push(Line::default());
-                            intro.push(Line::from("No options.").dark_gray());
-                        }
-                        intro
-                    }
+                    Some(spec) => vec![Line::from(spec.summary).italic()],
                     None => vec![Line::from(
                         "superline does not recognise this widget. It is kept exactly as written.",
                     )

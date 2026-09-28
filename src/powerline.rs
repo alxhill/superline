@@ -6,7 +6,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::colors::Color;
 use crate::config;
-use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
+use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata, Widget};
 use crate::debug;
 use crate::modules::{
     Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes, LastCmdDuration,
@@ -29,6 +29,22 @@ impl Style {
             fg: fg.into(),
             bg: bg.into(),
             sep_fg: bg.into(),
+        }
+    }
+}
+
+/// Spaces drawn on each side of a segment's text.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Padding {
+    pub left: usize,
+    pub right: usize,
+}
+
+impl Padding {
+    pub const fn both(spaces: usize) -> Padding {
+        Padding {
+            left: spaces,
+            right: spaces,
         }
     }
 }
@@ -142,6 +158,9 @@ pub struct Powerline {
     separator: Separator,
     direction: Direction,
     last_padding: bool,
+    /// The configured padding of the widget being drawn, which replaces the
+    /// default each of its segments asks for.
+    widget_padding: Option<Padding>,
 }
 
 impl Default for Powerline {
@@ -162,6 +181,7 @@ impl Powerline {
             separator: Separator::Chevron,
             direction: Direction::Left,
             last_padding: false,
+            widget_padding: None,
         }
     }
 
@@ -195,7 +215,7 @@ impl Powerline {
         &mut self,
         seg: D,
         style: Style,
-        spaces: bool,
+        padding: Padding,
         visible_width: Option<usize>,
     ) -> fmt::Result {
         // write the last style's separator on the new style's background
@@ -228,17 +248,21 @@ impl Powerline {
         }
 
         let orig_len = self.left_buffer.len();
-        if spaces {
-            write!(self.left_buffer, " {} ", seg)?;
-        } else {
-            write!(self.left_buffer, "{}", seg)?;
-        };
+        write!(
+            self.left_buffer,
+            "{:left$}{}{:right$}",
+            "",
+            seg,
+            "",
+            left = padding.left,
+            right = padding.right
+        )?;
 
         // Count terminal cells, so wide characters take two columns. When the
         // segment carries invisible escapes (e.g. a hyperlink) the caller
         // passes the real visible width instead.
         self.left_columns += visible_width
-            .map(|width| width + if spaces { 2 } else { 0 })
+            .map(|width| width + padding.left + padding.right)
             .unwrap_or_else(|| self.left_buffer[orig_len..].width());
 
         self.last_style = Some(style);
@@ -249,7 +273,7 @@ impl Powerline {
         &mut self,
         seg: D,
         style: Style,
-        spaces: bool,
+        padding: Padding,
         visible_width: Option<usize>,
     ) -> fmt::Result {
         // write the separator directly onto the current background
@@ -269,35 +293,57 @@ impl Powerline {
         write!(self.right_buffer, "{}", style.fg)?;
 
         let orig_len = self.right_buffer.len();
-        if spaces {
-            write!(self.right_buffer, " {} ", seg)?;
-        } else {
-            write!(self.right_buffer, "{}", seg)?;
-        };
+        write!(
+            self.right_buffer,
+            "{:left$}{}{:right$}",
+            "",
+            seg,
+            "",
+            left = padding.left,
+            right = padding.right
+        )?;
 
         // Count terminal cells, so wide characters take two columns. When the
         // segment carries invisible escapes (e.g. a hyperlink) the caller
         // passes the real visible width instead.
         self.right_columns += visible_width
-            .map(|width| width + if spaces { 2 } else { 0 })
+            .map(|width| width + padding.left + padding.right)
             .unwrap_or_else(|| self.right_buffer[orig_len..].width());
 
         self.last_style_right = Some(style);
         Ok(())
     }
 
-    pub fn add_segment<D: Display>(&mut self, seg: D, style: Style) {
+    fn push_segment<D: Display>(
+        &mut self,
+        seg: D,
+        style: Style,
+        default: Padding,
+        visible_width: Option<usize>,
+    ) {
+        let padding = self.widget_padding.unwrap_or(default);
         let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, true, None),
-            Direction::Right => self.write_segment_right(seg, style, true, None),
+            Direction::Left => self.write_segment(seg, style, padding, visible_width),
+            Direction::Right => self.write_segment_right(seg, style, padding, visible_width),
         };
     }
 
+    /// Adds a segment with a space on each side, unless the widget's padding
+    /// is configured.
+    pub fn add_segment<D: Display>(&mut self, seg: D, style: Style) {
+        self.push_segment(seg, style, Padding::both(1), None);
+    }
+
+    /// Adds a segment with no padding, unless the widget's padding is
+    /// configured.
     pub fn add_short_segment<D: Display>(&mut self, seg: D, style: Style) {
-        let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, false, None),
-            Direction::Right => self.write_segment_right(seg, style, false, None),
-        };
+        self.push_segment(seg, style, Padding::both(0), None);
+    }
+
+    /// Adds a segment with `default` spaces around its text, unless the
+    /// widget's padding is configured.
+    pub fn add_padded_segment<D: Display>(&mut self, seg: D, style: Style, default: Padding) {
+        self.push_segment(seg, style, default, None);
     }
 
     /// Adds a segment whose text is an OSC 8 terminal hyperlink, optionally
@@ -325,10 +371,7 @@ impl Powerline {
             }
             None => link,
         };
-        let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, true, Some(visible_width)),
-            Direction::Right => self.write_segment_right(seg, style, true, Some(visible_width)),
-        };
+        self.push_segment(seg, style, Padding::both(1), Some(visible_width));
     }
 
     pub fn start_right(&mut self) {
@@ -345,10 +388,16 @@ impl Powerline {
 
     fn add_conf_modules<T: CompleteTheme>(
         &mut self,
-        modules: &Vec<LineSegment>,
+        widgets: &[Widget],
         runtime_data: &impl TerminalRuntimeMetadata,
     ) {
-        for module in modules {
+        for widget in widgets {
+            // The config's padding wins over the theme's.
+            self.widget_padding = widget
+                .padding
+                .or_else(|| theme_module(&widget.segment).and_then(T::padding))
+                .map(Padding::both);
+            let module = &widget.segment;
             match module {
                 LineSegment::Battery => self.add_module(Battery::<T>::new()),
                 LineSegment::SmallSpacer => self.add_module(Spacer::<T>::small()),
@@ -449,6 +498,7 @@ impl Powerline {
                 LineSegment::Unknown { name } => self.add_module(Unknown::<T>::new(name.clone())),
             };
         }
+        self.widget_padding = None;
     }
 
     pub fn add_padding(&mut self, len: usize) {
@@ -539,6 +589,40 @@ impl Powerline {
     }
 }
 
+/// The `modules` key a widget is themed under, for the properties every
+/// module takes. `None` for layout entries that draw no segment.
+fn theme_module(segment: &LineSegment) -> Option<&'static str> {
+    Some(match segment {
+        LineSegment::Battery => "battery",
+        LineSegment::SmallSpacer | LineSegment::LargeSpacer => "spacer",
+        LineSegment::Separator(_) | LineSegment::Padding(_) => return None,
+        LineSegment::Cwd { .. } => "cwd",
+        LineSegment::ReadOnly => "readonly",
+        LineSegment::Git { .. } => "git",
+        LineSegment::Pr { .. } => "pr",
+        LineSegment::Python { .. } => "python",
+        LineSegment::Node { .. } => "node",
+        LineSegment::Java { .. } => "java",
+        LineSegment::Cargo { .. } => "cargo",
+        LineSegment::Kubernetes => "kubernetes",
+        LineSegment::Host | LineSegment::Hostname => "hostname",
+        LineSegment::Jobs => "jobs",
+        LineSegment::LocalIp => "local_ip",
+        LineSegment::MemoryUsage { .. } => "memory_usage",
+        LineSegment::Os => "os",
+        LineSegment::Sudo => "sudo",
+        LineSegment::Shell => "shell",
+        LineSegment::Time { .. } => "time",
+        LineSegment::Text(_) => "text",
+        LineSegment::AiUsage { .. } => "ai_usage",
+        LineSegment::User | LineSegment::Username => "username",
+        LineSegment::Cmd => "cmd",
+        LineSegment::LastCmdDuration { .. } => "last_cmd_duration",
+        LineSegment::Error { .. } => "error",
+        LineSegment::Unknown { .. } => "unknown",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,5 +690,91 @@ mod tests {
         // " データ " and " 日本語 ": three double-width characters plus padding
         assert_eq!(powerline.left_columns, 8);
         assert_eq!(powerline.right_columns, 8);
+    }
+
+    fn flush_powerline() -> Powerline {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.set_separator(Separator::None);
+        powerline
+    }
+
+    #[test]
+    fn widget_padding_replaces_every_segment_default_on_both_sides() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        for spaces in [0, 2] {
+            let mut powerline = flush_powerline();
+            powerline.widget_padding = Some(Padding::both(spaces));
+            powerline.add_segment("one", style.clone());
+            powerline.add_short_segment("two", style.clone());
+            powerline.add_padded_segment("six", style.clone(), Padding { left: 1, right: 0 });
+            powerline.start_right();
+            powerline.add_segment("one", style.clone());
+            powerline.add_short_segment("two", style.clone());
+
+            let pad = " ".repeat(spaces);
+            for text in ["one", "two", "six"] {
+                assert!(
+                    powerline
+                        .left_buffer
+                        .contains(&format!("m{pad}{text}{pad}")),
+                    "{spaces}: {:?}",
+                    powerline.left_buffer
+                );
+            }
+            for text in ["one", "two"] {
+                assert!(
+                    powerline
+                        .right_buffer
+                        .contains(&format!("m{pad}{text}{pad}")),
+                    "{spaces}: {:?}",
+                    powerline.right_buffer
+                );
+            }
+            assert_eq!(powerline.left_columns, 3 * (3 + 2 * spaces));
+            assert_eq!(powerline.right_columns, 2 * (3 + 2 * spaces));
+        }
+    }
+
+    #[test]
+    fn padded_segment_matches_text_padded_by_hand() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let mut padded = flush_powerline();
+        padded.add_padded_segment("dev", style.clone(), Padding { left: 1, right: 0 });
+        padded.add_padded_segment("env", style.clone(), Padding { left: 0, right: 1 });
+        let mut by_hand = flush_powerline();
+        by_hand.add_short_segment(" dev", style.clone());
+        by_hand.add_short_segment("env ", style);
+
+        assert_eq!(padded.left_buffer, by_hand.left_buffer);
+        assert_eq!(padded.left_columns, 8);
+        assert_eq!(by_hand.left_columns, 8);
+    }
+
+    #[test]
+    fn hyperlink_width_includes_the_widget_padding() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let marker = Some(("●", Color::from_u8(2)));
+        for (padding, width) in [(None, 2 + 5), (Some(0), 5), (Some(3), 6 + 5)] {
+            let mut powerline = flush_powerline();
+            powerline.widget_padding = padding.map(Padding::both);
+            // "#12" plus a space and the marker glyph is five cells.
+            powerline.add_hyperlink_segment(
+                "#12",
+                "https://example.com/pr/12",
+                style.clone(),
+                marker,
+            );
+            powerline.start_right();
+            powerline.add_hyperlink_segment(
+                "#12",
+                "https://example.com/pr/12",
+                style.clone(),
+                marker,
+            );
+
+            assert_eq!(powerline.left_columns, width, "{padding:?}");
+            assert_eq!(powerline.right_columns, width, "{padding:?}");
+        }
     }
 }

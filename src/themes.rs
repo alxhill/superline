@@ -67,4 +67,8 @@ pub trait CompleteTheme:
     + UnknownScheme
     + UpdateScheme
 {
+    /// Spaces on each side of a module's segments, when the theme sets them.
+    fn padding(_module: &str) -> Option<usize> {
+        None
+    }
 }

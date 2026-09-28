@@ -3,13 +3,15 @@
   "cwd": {
     "properties": [
       ["path_fg", "color", "Text of every path component.", "defaults.fg"],
-      ["bg_colors", "color list", "Backgrounds for successive path components, repeating from the start when the path is longer.", "[defaults.bg]"]
+      ["bg_colors", "color list", "Backgrounds for successive path components, repeating from the start when the path is longer.", "[defaults.bg]"],
+      ["padding", "integer", "Spaces on each side of every path component.", "1 before, 0 after"]
     ]
   },
   "readonly": {
     "properties": [
       ["fg", "color", "The lock icon.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the lock icon.", "1"]
     ]
   },
   "cmd": {
@@ -18,26 +20,30 @@
       ["passed_bg", "color", "Background after a successful command.", "defaults.bg"],
       ["failed_fg", "color", "The exit code after a failed command.", "defaults.bg"],
       ["failed_bg", "color", "Background after a failed command.", "defaults.fg"],
-      ["user_symbol", "string", "The prompt symbol.", "\"$\""]
+      ["user_symbol", "string", "The prompt symbol.", "\"$\""],
+      ["padding", "integer", "Spaces on each side of the prompt symbol.", "0"]
     ]
   },
   "last_cmd_duration": {
     "properties": [
       ["fg", "color", "The duration text.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["time_icon", "string", "Icon after the duration.", "U+F1ACC"]
+      ["time_icon", "string", "Icon after the duration.", "U+F1ACC"],
+      ["padding", "integer", "Spaces on each side of the duration.", "1 before, 0 after"]
     ]
   },
   "shell": {
     "properties": [
       ["fg", "color", "The shell name.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the shell name.", "0"]
     ]
   },
   "jobs": {
     "properties": [
       ["fg", "color", "The icon and job count.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the icon and job count.", "1"]
     ]
   },
   "git": {
@@ -55,7 +61,8 @@
       ["conflicted_fg", "color", "Conflicted-file count.", "defaults.fg"],
       ["conflicted_bg", "color", "Conflicted-file background.", "defaults.bg"],
       ["remote_fg", "color", "GitHub logo and ahead/behind counts.", "defaults.fg"],
-      ["remote_bg", "color", "Remote segment background.", "defaults.bg"]
+      ["remote_bg", "color", "Remote segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of every git segment's text.", "1"]
     ]
   },
   "pr": {
@@ -72,7 +79,8 @@
       ["status_failure_fg", "color", "CI dot when checks fail.", "defaults.fg"],
       ["status_pending_fg", "color", "CI dot while checks run.", "defaults.fg"],
       ["icon", "string", "Icon before the PR number.", "U+EA64"],
-      ["status_icon", "string", "The CI dot.", "\"●\""]
+      ["status_icon", "string", "The CI dot.", "\"●\""],
+      ["padding", "integer", "Spaces on each side of the link and CI dot.", "1"]
     ]
   },
   "python": {
@@ -82,7 +90,8 @@
       ["env_bg", "color", "Background of that segment.", "defaults.bg"],
       ["version_fg", "color", "Interpreter version shown next to an active venv.", "defaults.fg"],
       ["version_bg", "color", "Background of the version segment.", "defaults.bg"],
-      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"]
+      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
+      ["padding", "integer", "Spaces on each side of each segment's text.", "1; the venv name has 0 before, 1 after"]
     ]
   },
   "node": {
@@ -91,7 +100,8 @@
       ["fg", "color", "Logo and version.", "defaults.fg"],
       ["bg", "color", "Background for a version nvm or mise has activated.", "defaults.bg"],
       ["inactive_bg", "color", "Background for a version that only comes from .nvmrc.", "defaults.bg"],
-      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"]
+      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
+      ["padding", "integer", "Spaces on each side of the logo and version.", "1"]
     ]
   },
   "java": {
@@ -99,14 +109,16 @@
     "properties": [
       ["fg", "color", "Logo, version and distribution.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it. Read from java only.", "U+F1064"]
+      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it. Read from java only.", "U+F1064"],
+      ["padding", "integer", "Spaces on each side of the segment's text.", "1"]
     ]
   },
   "cargo": {
     "properties": [
       ["fg", "color", "Logo and toolchain version.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"]
+      ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
+      ["padding", "integer", "Spaces on each side of the segment's text.", "1"]
     ]
   },
   "ai_usage": {
@@ -115,7 +127,8 @@
       ["claude_bg", "color", "Claude widget background.", "defaults.bg"],
       ["codex_fg", "color", "Codex widget text.", "defaults.fg"],
       ["codex_bg", "color", "Codex widget background.", "defaults.bg"],
-      ["threshold_bg", "color", "Background once a visible lane crosses threshold.", "defaults.bg"]
+      ["threshold_bg", "color", "Background once a visible lane crosses threshold.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the usage text.", "1"]
     ]
   },
   "os": {
@@ -127,64 +140,79 @@
       ["linux_symbol", "string", "Icon on Linux.", "symbol"],
       ["windows_symbol", "string", "Icon on Windows.", "symbol"],
       ["android_symbol", "string", "Icon on Android.", "symbol"],
-      ["freebsd_symbol", "string", "Icon on FreeBSD. Also openbsd_symbol, netbsd_symbol, dragonfly_symbol, illumos_symbol, solaris_symbol, haiku_symbol and unknown_symbol.", "symbol"]
+      ["freebsd_symbol", "string", "Icon on FreeBSD. Also openbsd_symbol, netbsd_symbol, dragonfly_symbol, illumos_symbol, solaris_symbol, haiku_symbol and unknown_symbol.", "symbol"],
+      ["padding", "integer", "Spaces on each side of the icon.", "1"]
     ]
   },
   "memory_usage": {
     "properties": [
       ["fg", "color", "Icon and percentages.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the segment's text.", "1"]
     ]
   },
   "time": {
     "properties": [
       ["fg", "color", "The time.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the time.", "1"]
+    ]
+  },
+  "text": {
+    "properties": [
+      ["padding", "integer", "Spaces on each side of the text.", "1"]
     ]
   },
   "username": {
     "properties": [
       ["fg", "color", "The username.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["root_bg", "color", "Background when running as root.", "defaults.bg"]
+      ["root_bg", "color", "Background when running as root.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the username.", "1"]
     ]
   },
   "hostname": {
     "properties": [
       ["fg", "color", "The hostname.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the hostname.", "1"]
     ]
   },
   "local_ip": {
     "properties": [
       ["fg", "color", "The address.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the address.", "1"]
     ]
   },
   "battery": {
     "properties": [
       ["fg", "color", "Charge and charging state.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the charge text.", "1"]
     ]
   },
   "sudo": {
     "properties": [
       ["fg", "color", "The key symbol.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["symbol", "string", "Symbol shown while credentials are cached.", "\"⚿\""]
+      ["symbol", "string", "Symbol shown while credentials are cached.", "\"⚿\""],
+      ["padding", "integer", "Spaces on each side of the symbol.", "1"]
     ]
   },
   "kubernetes": {
     "properties": [
       ["fg", "color", "Context and namespace.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["icon", "string", "Icon before the context; \"\" hides it.", "U+F10FE"]
+      ["icon", "string", "Icon before the context; \"\" hides it.", "U+F10FE"],
+      ["padding", "integer", "Spaces on each side of the context.", "1"]
     ]
   },
   "spacer": {
     "properties": [
       ["fg", "color", "Unused by the blank segment, but accepted.", "defaults.fg"],
-      ["bg", "color", "Spacer background.", "defaults.bg"]
+      ["bg", "color", "Spacer background.", "defaults.bg"],
+      ["padding", "integer", "Blank cells on each side, so the spacer is twice this wide.", "0 for small_spacer, 1 for large_spacer"]
     ]
   },
   "update": {
@@ -197,13 +225,15 @@
   "error": {
     "properties": [
       ["fg", "color", "Text of error segments, such as a config that fails to parse.", "defaults.fg"],
-      ["bg", "color", "Error segment background.", "defaults.bg"]
+      ["bg", "color", "Error segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the error text.", "1"]
     ]
   },
   "unknown": {
     "properties": [
       ["fg", "color", "Text of the segment shown for an unknown module name.", "defaults.fg"],
-      ["bg", "color", "Unknown segment background.", "defaults.bg"]
+      ["bg", "color", "Unknown segment background.", "defaults.bg"],
+      ["padding", "integer", "Spaces on each side of the segment's text.", "1"]
     ]
   }
 }

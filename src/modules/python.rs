@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::mise;
+use crate::powerline::Padding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -196,11 +197,15 @@ impl<S: PythonScheme> Module for Python<S> {
             let venv_name = Path::new(&venv_path).file_name().unwrap().to_string_lossy();
 
             let label = if self.show_venv {
-                format!("{} {} ", pylogo, venv_name)
+                format!("{} {}", pylogo, venv_name)
             } else {
-                format!("{} ", pylogo)
+                pylogo
             };
-            powerline.add_short_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
+            powerline.add_padded_segment(
+                label,
+                Style::simple(S::pyenv_fg(), S::pyenv_bg()),
+                Padding { left: 0, right: 1 },
+            );
 
             if self.show_version {
                 let venv_dir = Path::new(&venv_path);

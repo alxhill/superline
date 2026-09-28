@@ -5,6 +5,7 @@ use std::path::{PathBuf, MAIN_SEPARATOR, MAIN_SEPARATOR_STR};
 
 use crate::colors::Color;
 use crate::platform;
+use crate::powerline::Padding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -39,7 +40,11 @@ impl<S: CwdScheme> Cwd<S> {
 macro_rules! rainbow_segment {
     ($powerline:ident, $iter_var:ident, $value:expr) => {
         let r_col = S::path_bg_colors()[$iter_var % S::path_bg_colors().len()];
-        $powerline.add_short_segment(format!(" {}", $value), Style::simple(S::path_fg(), r_col));
+        $powerline.add_padded_segment(
+            $value,
+            Style::simple(S::path_fg(), r_col),
+            Padding { left: 1, right: 0 },
+        );
         $iter_var = $iter_var.wrapping_add(1);
     };
 }
