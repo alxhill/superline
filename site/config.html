@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Configuration reference · superline</title>
-  <meta name="description" content="Reference for superline's config file: every module and layout segment, their options and defaults, with examples.">
-  <meta property="og:title" content="superline configuration reference">
-  <meta property="og:description" content="Reference for superline's config file: every module and layout segment, their options and defaults, with examples.">
+  <title>Configuration · superline</title>
+  <meta name="description" content="Configure superline with superline config, a terminal editor with a live prompt preview, plus a reference for every module and option in the config file.">
+  <meta property="og:title" content="Configuring superline">
+  <meta property="og:description" content="Configure superline with superline config, a terminal editor with a live prompt preview, plus a reference for every module and option in the config file.">
   <meta property="og:image" content="https://alxhill.github.io/superline/img/hero.png">
   <meta name="color-scheme" content="dark">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <header class="nav">
@@ -30,8 +30,111 @@
     </div>
   </header>
 
+  <main id="top">
+    <section id="editor" class="wrap guide">
+      <header class="doc-head">
+        <h1>Configuration</h1>
+        <p class="lede">
+          Run <code>superline config</code> to set up your prompt in the terminal: add, move and tweak widgets and
+          recolor a theme while a live preview redraws the prompt after every key. Below the editor guide, the
+          <a href="#reference">reference</a> documents the config file itself, for when you'd rather edit the JSON by
+          hand.
+        </p>
+      </header>
+
+      <div class="guide-facts">
+        <div class="card">
+          <h3>Open it</h3>
+          <p>
+            <code>superline config</code> edits <code>~/.config/superline/config.json</code>, writing the default
+            config first if there isn't one. <code>--config &lt;path&gt;</code> edits another file, and a symlinked
+            config is saved through to the file it points at.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Save it</h3>
+          <p>
+            <kbd>s</kbd> saves the config and any theme you changed, and the next prompt picks them up&mdash;no
+            reload. <kbd>u</kbd> undoes, <kbd>U</kbd> redoes, and <kbd>q</kbd> asks before dropping unsaved changes.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Keep your edits</h3>
+          <p>
+            Widgets, options and theme keys the editor doesn't know are kept exactly as written. <kbd>e</kbd> opens
+            the file in <code>$EDITOR</code> and reloads it afterwards, and <kbd>?</kbd> lists every key.
+          </p>
+        </div>
+      </div>
+
+      <article id="editor-widgets" class="guide-step">
+        <div class="guide-copy">
+          <h2>Add and arrange widgets</h2>
+          <p>
+            The Layout page lists each row, its <code>left</code> and <code>right</code> sides, and the widgets on
+            them, top to bottom. The last row is the one you type on. <kbd>a</kbd> opens a filterable list of every
+            widget and adds your pick just below the cursor, so on a side's heading it goes first.
+          </p>
+        </div>
+        <dl class="keys">
+          <div><dt><kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>j</kbd> <kbd>k</kbd></dt><dd>Move the cursor.</dd></div>
+          <div><dt><kbd>a</kbd></dt><dd>Add a widget below the cursor.</dd></div>
+          <div><dt><kbd>d</kbd></dt><dd>Delete the widget, or the whole row.</dd></div>
+          <div><dt><kbd>J</kbd> <kbd>K</kbd></dt><dd>Move the widget, across sides and rows. On a row, move the row.</dd></div>
+          <div><dt><kbd>c</kbd></dt><dd>Duplicate the widget.</dd></div>
+          <div><dt><kbd>n</kbd></dt><dd>Add a row below.</dd></div>
+        </dl>
+        <figure class="term"><a href="img/editor-widgets.gif" title="Open full size"><img src="img/editor-widgets.gif" width="1146" height="490" loading="lazy" alt="In superline config: adding the ai_usage widget after git and the time widget on the right side, moving time above cargo, saving, and quitting to a prompt that shows both."></a></figure>
+      </article>
+
+      <article id="editor-options" class="guide-step">
+        <div class="guide-copy">
+          <h2>Change a widget's options</h2>
+          <p>
+            <kbd>&#9166;</kbd> on a widget moves to its options, and on <strong>Settings</strong> to the theme and the
+            update check. Each option shows its value, or its default in gray, with a line of help underneath. The
+            preview picks up every change straight away, before anything is saved.
+          </p>
+        </div>
+        <dl class="keys">
+          <div><dt><kbd>&uarr;</kbd> <kbd>&darr;</kbd></dt><dd>Select an option.</dd></div>
+          <div><dt><kbd>&#9166;</kbd> <kbd>space</kbd></dt><dd>Toggle a switch, cycle a choice, or type a new value.</dd></div>
+          <div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Cycle through the choices. On Settings, through the themes.</dd></div>
+          <div><dt><kbd>x</kbd></dt><dd>Reset the option to its default.</dd></div>
+          <div><dt><kbd>esc</kbd></dt><dd>Back to the layout.</dd></div>
+        </dl>
+        <figure class="term"><a href="img/editor-options.gif" title="Open full size"><img src="img/editor-options.gif" width="1146" height="490" loading="lazy" alt="In superline config: opening the ai_usage widget's options, switching the provider to Codex and back, turning on the Fable window, and cycling the display through bar, capped bar, block and sparkline."></a></figure>
+      </article>
+
+      <article id="editor-theme" class="guide-step">
+        <div class="guide-copy">
+          <h2>Edit a theme</h2>
+          <p>
+            <kbd>2</kbd> opens the Theme page, which edits the custom theme file the config names one module at a
+            time, with a swatch and the fallback for every property. On a built-in theme, <kbd>n</kbd> creates
+            <code>theme.json</code> from the example theme and points the config at it. Built-in themes and theme
+            files next to the config are also one <kbd>&larr;</kbd> <kbd>&rarr;</kbd> away under Settings.
+          </p>
+        </div>
+        <dl class="keys">
+          <div><dt><kbd>2</kbd> <kbd>1</kbd></dt><dd>Theme page, and back to the layout. <kbd>t</kbd> switches.</dd></div>
+          <div><dt><kbd>n</kbd></dt><dd>Create a new theme file from the example theme.</dd></div>
+          <div><dt><kbd>&#9166;</kbd></dt><dd>On a color, open the 256-color picker, which previews as you move. On an icon, search every Nerd Font glyph.</dd></div>
+          <div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Step a color by one code.</dd></div>
+          <div><dt><kbd>i</kbd></dt><dd>Type a color name, a 0&ndash;255 code, or text.</dd></div>
+          <div><dt><kbd>x</kbd></dt><dd>Reset the property to its fallback.</dd></div>
+        </dl>
+        <figure class="term"><a href="img/editor-theme.gif" title="Open full size"><img src="img/editor-theme.gif" width="1146" height="766" loading="lazy" alt="In superline config: switching to the Theme page, creating theme.json from the example theme, and picking a purple background for the git segment in the 256-color picker while the preview updates."></a></figure>
+      </article>
+    </section>
+
   <div class="wrap docs">
     <aside class="toc" aria-label="On this page">
+      <p class="toc-title">Editor</p>
+      <a href="#editor"><code>superline config</code></a>
+      <a href="#editor-widgets">Widgets</a>
+      <a href="#editor-options">Options</a>
+      <a href="#editor-theme">Themes</a>
       <p class="toc-title">Basics</p>
       <a href="#file">The config file</a>
       <a href="#rows">Rows</a>
@@ -72,14 +175,15 @@
       <a href="#commands">Commands</a>
     </aside>
 
-    <main class="doc">
-      <header class="doc-head">
-        <h1>Configuration reference</h1>
+    <div class="doc">
+      <header class="doc-head" id="reference">
+        <p class="eyebrow">Reference</p>
+        <h2>Hand-editing the JSON</h2>
         <p class="lede">
-          This page documents the config file and every segment it can contain. Each entry lists the segment's
-          options with their types and defaults, followed by examples. Each example pairs a screenshot with the
-          JSON that produced it. Segments with several options have a minimal example and one that sets every
-          option.
+          Everything the editor changes is plain JSON, and this reference documents the config file and every
+          segment it can contain. Each entry lists the segment's options with their types and defaults, followed by
+          examples. Each example pairs a screenshot with the JSON that produced it. Segments with several options
+          have a minimal example and one that sets every option.
         </p>
       </header>
 
@@ -1077,8 +1181,9 @@
           </tbody>
         </table>
       </section>
-    </main>
+    </div>
   </div>
+  </main>
 
   <footer class="footer">
     <div class="wrap">
