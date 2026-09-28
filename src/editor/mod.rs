@@ -12,6 +12,9 @@ mod schema;
 mod theme;
 mod theme_page;
 
+#[cfg(test)]
+mod tests;
+
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -471,9 +474,14 @@ impl App {
                 choices[next].map(Value::from)
             }
             Kind::Str { .. } if target == Target::Settings && spec.key == schema::THEME.key => {
+                let dir = self.config_dir();
                 let current = value.as_ref().and_then(Value::as_str).unwrap_or_default();
+                let current = crate::themes::theme_path(dir, current);
                 let choices = &self.theme_choices;
-                let next = match choices.iter().position(|c| c == current) {
+                let next = match choices
+                    .iter()
+                    .position(|c| crate::themes::theme_path(dir, c) == current)
+                {
                     Some(i) if forward => (i + 1) % choices.len(),
                     Some(i) => (i + choices.len() - 1) % choices.len(),
                     None => 0,
@@ -932,6 +940,8 @@ impl App {
             .highlight_style(highlight);
         self.list.select(Some(self.cursor));
         frame.render_stateful_widget(list, area, &mut self.list);
+        let rows = Block::bordered().inner(area);
+        draw_scrollbar(frame, rows, self.entries.len(), self.list.offset());
     }
 
     fn draw_options(&self, frame: &mut Frame, area: Rect) {
@@ -1007,7 +1017,10 @@ impl App {
         if !options.is_empty() {
             lines.push(Line::default());
         }
-        let first_option_line = lines.len();
+        // Counted in screen rows, since the intro can wrap.
+        let first_option_line = Paragraph::new(lines.clone())
+            .wrap(Wrap { trim: false })
+            .line_count(body.width);
         let mut cursor_position = None;
         for (i, (spec, value)) in options.iter().enumerate() {
             let selected = focused && i == self.option_cursor;
@@ -1041,12 +1054,10 @@ impl App {
         } else {
             0
         };
-        frame.render_widget(
-            Paragraph::new(lines)
-                .wrap(Wrap { trim: false })
-                .scroll((scroll as u16, 0)),
-            body,
-        );
+        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+        let total = paragraph.line_count(body.width);
+        frame.render_widget(paragraph.scroll((scroll as u16, 0)), body);
+        draw_scrollbar(frame, body, total, scroll);
         if let Some((x, row)) = cursor_position {
             let y = body.y + row.saturating_sub(scroll as u16);
             if y < body.y + body.height {
@@ -1106,7 +1117,7 @@ impl App {
                     (_, Focus::Layout) if self.page == Page::Theme => &[
                         ("↑↓", "move"),
                         ("⏎", "edit"),
-                        ("n", "new theme"),
+                        ("n", "fork theme"),
                         ("u", "undo"),
                         ("s", "save"),
                         ("q", "quit"),
@@ -1216,6 +1227,33 @@ fn panel(title: &str, focused: bool) -> Block<'static> {
         .border_style(border)
 }
 
+/// Draws a scrollbar over the border to the right of `rows` when `total` rows
+/// don't fit in it. `offset` is the first row on screen.
+fn draw_scrollbar(frame: &mut Frame, rows: Rect, total: usize, offset: usize) {
+    use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+    let visible = rows.height as usize;
+    if total <= visible {
+        return;
+    }
+    let track = Rect {
+        x: rows.right(),
+        width: 1,
+        ..rows
+    }
+    .intersection(frame.area());
+    // Positions are scroll offsets, not rows, so the thumb reaches the bottom
+    // at the last one.
+    let mut state = ScrollbarState::new(total - visible + 1)
+        .viewport_content_length(visible)
+        .position(offset);
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(None)
+        .end_symbol(None)
+        .track_symbol(Some("│"))
+        .thumb_symbol("█");
+    frame.render_stateful_widget(scrollbar, track, &mut state);
+}
+
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
     let width = width.min(area.width);
     let height = height.min(area.height);
@@ -1268,6 +1306,7 @@ fn draw_picker(frame: &mut Frame, area: Rect, filter: &str, selected: usize) {
         list_area,
         &mut state,
     );
+    draw_scrollbar(frame, list_area, matches.len(), state.offset());
     if empty {
         frame.render_widget(
             Paragraph::new(Line::from("no matching widget").dark_gray()),
@@ -1327,9 +1366,10 @@ fn draw_help(frame: &mut Frame, area: Rect) {
             "edit a module; ⏎ opens the colour picker or icon browser",
         ),
         ("← →", "step a colour by one code"),
+        ("⏎  space", "switch bold, italic or underline on or off"),
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
-        ("n", "create a new custom theme file"),
+        ("n", "fork the theme into a new theme file"),
         ("⏎ on a list", "edit each colour: ⏎ pick, ← → step, i type"),
         (
             "a I d J K c",
@@ -1390,25 +1430,36 @@ fn truncate_start(text: &str, width: usize) -> String {
     format!("…{kept}")
 }
 
-/// The built-in themes plus any theme files next to the config.
+/// The theme files next to the config, plus the bundled themes that aren't
+/// installed yet (choosing one installs it), by the name a config uses.
 fn theme_choices(config_path: &Path) -> Vec<String> {
-    let mut choices = vec!["rainbow".to_string(), "simple".to_string()];
-    let Some(dir) = config_path.parent() else {
-        return choices;
-    };
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return choices;
-    };
-    let mut themes: Vec<String> = entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
-        .filter(|path| is_theme_file(path))
-        .filter_map(|path| path.file_name()?.to_str().map(str::to_string))
+    let mut files: Vec<String> = crate::themes::BUNDLED_THEMES
+        .iter()
+        .map(|(file, _)| file.to_string())
         .collect();
-    themes.sort();
-    choices.extend(themes);
-    choices
+    let entries = config_path
+        .parent()
+        .and_then(|dir| std::fs::read_dir(dir).ok());
+    for entry in entries.into_iter().flatten().filter_map(Result::ok) {
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "json") && is_theme_file(&path) {
+            if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+                if !files.iter().any(|file| file == name) {
+                    files.push(name.to_string());
+                }
+            }
+        }
+    }
+    files.sort();
+    files.iter().map(|file| theme_name(file)).collect()
+}
+
+/// A theme file's name without `.json` when the config can leave it off.
+fn theme_name(file: &str) -> String {
+    match file.strip_suffix(".json") {
+        Some(stem) if !stem.is_empty() && Path::new(stem).extension().is_none() => stem.into(),
+        _ => file.into(),
+    }
 }
 
 fn is_theme_file(path: &Path) -> bool {

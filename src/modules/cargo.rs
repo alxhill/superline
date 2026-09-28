@@ -16,6 +16,8 @@ pub struct Cargo<S> {
 }
 
 pub trait CargoScheme: DefaultColors {
+    const CARGO_ICON: &'static str = "\u{e68b}";
+
     fn cargo_fg() -> Color {
         Self::default_fg()
     }
@@ -25,7 +27,7 @@ pub trait CargoScheme: DefaultColors {
     }
 
     fn icon() -> &'static str {
-        "\u{e68b}"
+        Self::CARGO_ICON
     }
 
     /// Marks a toolchain version that a mise config pins for this project.
@@ -77,7 +79,9 @@ impl<S: CargoScheme> Module for Cargo<S> {
                 .collect::<Vec<_>>()
                 .join(" ");
 
-                powerline.add_segment(label, Style::simple(S::cargo_fg(), S::cargo_bg()));
+                if !label.is_empty() {
+                    powerline.add_segment(label, Style::simple(S::cargo_fg(), S::cargo_bg()));
+                }
             }
         }
     }

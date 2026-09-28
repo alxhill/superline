@@ -1,24 +1,26 @@
-//! The editor's Theme page: the custom theme file the config names, one module
-//! at a time, with a colour picker.
+//! The editor's Theme page: the theme file the config names, one module at a
+//! time, with a colour picker.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 use serde_json::Value;
 
 use super::model::Target;
+use super::theme::TextSample;
 use super::theme::{
-    color_names, color_value, edit_text, parse_color, parse_color_list, PropKind, PropSpec,
-    ThemeDoc, ThemeEntry,
+    color_names, color_value, edit_text, parse_bool, parse_color, parse_color_list, PropKind,
+    PropSpec, ThemeDoc, ThemeEntry,
 };
 use super::{glyphs, list_editor, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
+use crate::themes::{bundled_theme, install_theme, theme_path};
 
 /// Rows PageUp/PageDown move in the icon browser.
 const ICON_PAGE: usize = 10;
@@ -86,24 +88,36 @@ fn load_slot(path: &Path) -> Slot {
 }
 
 impl App {
-    /// The theme file the config names, or `None` for a built-in theme.
+    pub(super) fn config_dir(&self) -> &Path {
+        self.path.parent().unwrap_or(Path::new("."))
+    }
+
+    /// The theme file the config names.
     fn theme_path(&self) -> Option<PathBuf> {
         let name = self.doc.root().get("theme")?.as_str()?;
-        if name == "rainbow" || name == "simple" {
-            return None;
-        }
-        let dir = self.path.parent().unwrap_or(Path::new("."));
-        Some(dir.join(name))
+        Some(theme_path(self.config_dir(), name))
     }
 
     /// Reads the named theme the first time the config points at it.
     pub(super) fn load_theme_slot(&mut self) {
-        if let Some(path) = self.theme_path() {
-            self.theme
-                .slots
-                .entry(path)
-                .or_insert_with_key(|path| load_slot(path));
+        let Some(path) = self.theme_path() else {
+            return;
+        };
+        if !self.theme.slots.contains_key(&path) {
+            let slot = self.read_theme(&path);
+            self.theme.slots.insert(path, slot);
         }
+    }
+
+    /// Reads a theme file, first installing a bundled theme's file that the
+    /// config directory is missing.
+    fn read_theme(&mut self, path: &Path) -> Slot {
+        if let Some(bundled) = bundled_theme(self.config_dir(), path) {
+            if let Err(error) = install_theme(path, bundled) {
+                self.set_status(format!("could not write {}: {error}", path.display()), true);
+            }
+        }
+        load_slot(path)
     }
 
     fn slot(&self) -> Option<&Slot> {
@@ -211,30 +225,43 @@ impl App {
         }
     }
 
-    /// Points the config at a theme file, creating it from the example theme
-    /// when it does not exist yet.
+    /// A copy of the theme open on the page for a new theme file, and the name
+    /// of what it copies. The example theme stands in when no theme is open.
+    fn fork_open_theme(&self) -> (ThemeDoc, String) {
+        let name = self.doc.root().get("theme").and_then(Value::as_str);
+        match (self.theme_doc(), name) {
+            (Some(doc), Some(name)) => (doc.fork(), name.to_string()),
+            _ => (
+                ThemeDoc::new_from_starter(),
+                "the example theme".to_string(),
+            ),
+        }
+    }
+
+    /// Points the config at a theme file, creating it as a copy of the open
+    /// theme when it does not exist yet.
     fn use_new_theme(&mut self, name: &str) -> bool {
         let name = name.trim();
         if name.is_empty() {
             self.set_status("Give the theme a file name", true);
             return false;
         }
-        if name == "rainbow" || name == "simple" {
-            self.set_status(format!("{name} is a built-in theme name"), true);
-            return false;
-        }
-        let dir = self.path.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let path = dir.join(name);
-        let slot = match load_slot(&path) {
-            Slot::Missing => Slot::Loaded(ThemeDoc::new_from_starter()),
+        let path = theme_path(self.config_dir(), name);
+        let forking = self.theme_doc().is_some();
+        let mut copied_from = None;
+        let slot = match self.read_theme(&path) {
+            Slot::Missing => {
+                let (doc, source) = self.fork_open_theme();
+                copied_from = Some(source);
+                Slot::Loaded(doc)
+            }
             Slot::Broken(error) => {
                 self.set_status(format!("{name} exists but is not a theme: {error}"), true);
                 return false;
             }
             loaded => loaded,
         };
-        let created = matches!(&slot, Slot::Loaded(doc) if doc.is_dirty());
-        self.theme.slots.insert(path, slot);
+        self.theme.slots.insert(path.clone(), slot);
         if let Err(error) =
             self.doc
                 .set_option(Target::Settings, schema::THEME.key, Some(Value::from(name)))
@@ -242,17 +269,25 @@ impl App {
             self.set_status(error, true);
             return false;
         }
-        if !self.theme_choices.iter().any(|choice| choice == name) {
+        let dir = self.config_dir();
+        if !self
+            .theme_choices
+            .iter()
+            .any(|choice| theme_path(dir, choice) == path)
+        {
             self.theme_choices.push(name.to_string());
         }
         self.changed();
-        self.theme.cursor = 0;
-        self.theme.prop_cursor = 0;
+        // A fork has the same modules, so the cursor stays on the one being
+        // edited.
+        if !(forking && copied_from.is_some()) {
+            self.theme.cursor = 0;
+            self.theme.prop_cursor = 0;
+        }
         self.set_status(
-            if created {
-                format!("Created {name} from the example theme (s to save)")
-            } else {
-                format!("Switched to {name}")
+            match copied_from {
+                Some(source) => format!("Created {name} from {source} (s to save)"),
+                None => format!("Switched to {name}"),
             },
             false,
         );
@@ -272,6 +307,7 @@ impl App {
                     PropKind::Color => parse_color(text),
                     PropKind::ColorList => parse_color_list(text),
                     PropKind::Str => Ok(Value::from(text)),
+                    PropKind::Bool => parse_bool(text),
                 };
                 match parsed {
                     Ok(value) => self.set_theme_prop(Some(value)),
@@ -380,6 +416,18 @@ impl App {
                     }
                     KeyCode::Enter | KeyCode::Char(' ') if spec.kind == PropKind::ColorList => {
                         self.open_color_list()
+                    }
+                    KeyCode::Enter
+                    | KeyCode::Char(' ')
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Char('h')
+                    | KeyCode::Char('l')
+                        if spec.kind == PropKind::Bool =>
+                    {
+                        // Off is the default, so switching off removes the key.
+                        let on = value.as_ref().and_then(Value::as_bool).unwrap_or(false);
+                        self.set_theme_prop((!on).then_some(Value::Bool(true)));
                     }
                     KeyCode::Enter | KeyCode::Char(' ') if spec.kind == PropKind::Str => {
                         let current = value
@@ -579,6 +627,7 @@ impl App {
             list_area,
             &mut state,
         );
+        super::draw_scrollbar(frame, list_area, matches.len(), offset);
         if matches.is_empty() {
             frame.render_widget(
                 Paragraph::new(Line::from("no matching icon").dark_gray()),
@@ -612,22 +661,11 @@ impl App {
             .and_then(Value::as_str)
             .unwrap_or("?")
             .to_string();
-        let message = match (self.theme_path(), self.slot()) {
-            (None, _) => Some(vec![
-                Line::from(format!(
-                    "The config uses the built-in {name} theme, which can't be edited."
-                )),
-                Line::default(),
-                Line::from(vec![
-                    Span::raw("n").bold(),
-                    Span::raw(" create a custom theme file, starting from the example theme"),
-                ]),
-                Line::from(vec![
-                    Span::raw("1").bold(),
-                    Span::raw(" back to the layout, where Settings picks another theme"),
-                ]),
-            ]),
-            (Some(_), Some(Slot::Missing)) => Some(vec![
+        let message = match self.slot() {
+            None => Some(vec![Line::from(
+                "The config names no theme. Pick one in Settings (1).",
+            )]),
+            Some(Slot::Missing) => Some(vec![
                 Line::from(format!("{name} does not exist yet.")),
                 Line::default(),
                 Line::from(vec![
@@ -635,23 +673,23 @@ impl App {
                     Span::raw(format!(" create {name} from the example theme")),
                 ]),
             ]),
-            (Some(_), Some(Slot::Broken(error))) => Some(vec![
+            Some(Slot::Broken(error)) => Some(vec![
                 Line::from(format!("{name} can't be edited here:")).red(),
                 Line::from(error.clone()).red(),
                 Line::default(),
                 Line::from("Fix the file by hand, or pick another theme in Settings (1)."),
             ]),
+            Some(Slot::Loaded(_)) => None,
+        };
+        let input = match &self.mode {
+            Mode::Input {
+                buffer,
+                cursor,
+                purpose: InputPurpose::NewTheme,
+            } => Some((buffer.clone(), *cursor)),
             _ => None,
         };
         if let Some(message) = message {
-            let input = match &self.mode {
-                Mode::Input {
-                    buffer,
-                    cursor,
-                    purpose: InputPurpose::NewTheme,
-                } => Some((buffer.clone(), *cursor)),
-                _ => None,
-            };
             let block = panel(" Theme ", true);
             let inner = block.inner(area);
             let mut lines = message;
@@ -680,6 +718,9 @@ impl App {
                 .areas(area);
         self.draw_theme_modules(frame, left, &name);
         self.draw_theme_props(frame, right);
+        if let Some((buffer, cursor)) = input {
+            draw_fork_prompt(frame, area, &name, &buffer, cursor);
+        }
     }
 
     fn draw_theme_modules(&mut self, frame: &mut Frame, area: Rect, name: &str) {
@@ -712,12 +753,15 @@ impl App {
         } else {
             Style::new().bg(Color::DarkGray)
         };
+        let total = items.len();
         let list = List::new(items)
             .block(panel(&format!(" {name} "), focused))
             .highlight_symbol("▸")
             .highlight_style(highlight);
         self.theme.list.select(Some(self.theme.cursor));
         frame.render_stateful_widget(list, area, &mut self.theme.list);
+        let rows = Block::bordered().inner(area);
+        super::draw_scrollbar(frame, rows, total, self.theme.list.offset());
     }
 
     fn draw_theme_props(&self, frame: &mut Frame, area: Rect) {
@@ -749,20 +793,44 @@ impl App {
                 Span::raw(if selected { "▸ " } else { "  " }),
                 Span::styled(format!("{:key_width$}  ", spec.key), key_style),
             ];
-            if let (true, Mode::Input { buffer, cursor, .. }) = (selected, &self.mode) {
+            if let (
+                true,
+                Mode::Input {
+                    buffer,
+                    cursor,
+                    purpose: InputPurpose::ThemeProperty,
+                },
+            ) = (selected, &self.mode)
+            {
                 let before: String = buffer.chars().take(*cursor).collect();
                 let x = 2 + key_width + 2 + unicode_width::UnicodeWidthStr::width(before.as_str());
                 cursor_position = Some((inner.x + x as u16, i));
                 spans.push(Span::raw(buffer.clone()).underlined());
             } else {
                 spans.extend(prop_value_spans(doc, &entry, spec, value.as_ref()));
+                // The preview only draws the text when the prompt shows it
+                // (git's unstaged count only in a repo with unstaged changes),
+                // so the switch under the cursor draws a sample of it.
+                if let Some(sample) = doc
+                    .text_sample(&entry, &spec.key)
+                    .filter(|_| selected && spec.kind == PropKind::Bool)
+                {
+                    spans.push(Span::raw("  "));
+                    spans.push(text_sample_span(&sample));
+                }
             }
             lines.push(Line::from(spans));
         }
 
         let visible = body.height as usize;
-        let scroll = (self.theme.prop_cursor + 1).saturating_sub(visible);
+        let scroll = if focused {
+            (self.theme.prop_cursor + 1).saturating_sub(visible)
+        } else {
+            0
+        };
+        let total = lines.len();
         frame.render_widget(Paragraph::new(lines).scroll((scroll as u16, 0)), body);
+        super::draw_scrollbar(frame, body, total, scroll);
         if let Some((x, row)) = cursor_position {
             frame.set_cursor_position((x, body.y + (row - scroll) as u16));
         }
@@ -835,6 +903,29 @@ impl App {
     }
 }
 
+/// The file name prompt for forking the open theme.
+fn draw_fork_prompt(frame: &mut Frame, area: Rect, source: &str, buffer: &str, cursor: usize) {
+    let popup = super::centered(area, 64, 6);
+    frame.render_widget(Clear, popup);
+    let block = panel(" Fork theme ", true);
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+    let lines = vec![
+        Line::from(format!(
+            "Copy {source} to a new theme file next to the config."
+        )),
+        Line::default(),
+        Line::from(vec![
+            Span::raw("file name: ").dark_gray(),
+            Span::raw(buffer.to_string()).underlined(),
+        ]),
+    ];
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    let before: String = buffer.chars().take(cursor).collect();
+    let x = inner.x + 11 + unicode_width::UnicodeWidthStr::width(before.as_str()) as u16;
+    frame.set_cursor_position((x, inner.y + 2));
+}
+
 /// An icon or symbol value: the text itself, then its code points and glyph
 /// name, the same way for a set value and a default.
 fn icon_spans(text: &str, default: bool) -> Vec<Span<'static>> {
@@ -852,6 +943,33 @@ fn icon_spans(text: &str, default: bool) -> Vec<Span<'static>> {
         Span::raw(detail).dark_gray(),
     ]
 }
+
+/// Columns a switch's value is padded to: `false (default)`.
+const BOOL_WIDTH: usize = 15;
+
+/// Sample text in a text colour, on its background, with its bold, italic
+/// and underline switches applied.
+fn text_sample_span(sample: &TextSample) -> Span<'static> {
+    let mut style = Style::new();
+    if let Some(fg) = sample.fg {
+        style = style.fg(Color::Indexed(fg));
+    }
+    if let Some(bg) = sample.bg {
+        style = style.bg(Color::Indexed(bg));
+    }
+    for (on, modifier) in [
+        (sample.attrs.bold, Modifier::BOLD),
+        (sample.attrs.italic, Modifier::ITALIC),
+        (sample.attrs.underline, Modifier::UNDERLINED),
+    ] {
+        if on {
+            style = style.add_modifier(modifier);
+        }
+    }
+    Span::styled(TEXT_SAMPLE, style)
+}
+
+const TEXT_SAMPLE: &str = " Sample 123 ";
 
 fn prop_value_spans(
     doc: &ThemeDoc,
@@ -878,6 +996,13 @@ fn prop_value_spans(
             None if spec.fallback.is_empty() => vec![Span::raw("unset").dark_gray()],
             None => vec![Span::raw(format!("default: {}", spec.fallback)).dark_gray()],
         },
+        // Padded so the sample drawn after a switch stays put when it flips.
+        (PropKind::Bool, Some(value)) => {
+            vec![Span::raw(format!("{:BOOL_WIDTH$}", edit_text(value))).yellow()]
+        }
+        (PropKind::Bool, None) => {
+            vec![Span::raw(format!("{:BOOL_WIDTH$}", "false (default)")).dark_gray()]
+        }
         (_, Some(value)) => vec![
             swatch(doc.resolve(entry, spec, Some(value))),
             Span::raw(format!(" {}", edit_text(value))).yellow(),
@@ -895,5 +1020,292 @@ fn prop_value_spans(
             }
             spans
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::model::{Document, Entry};
+    use crate::editor::Page;
+    use ratatui::backend::TestBackend;
+    use ratatui::crossterm::event::KeyModifiers;
+    use ratatui::Terminal;
+    use serde_json::json;
+
+    fn app(label: &str, config: Value, files: &[(&str, &str)]) -> (App, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "superline-theme-page-{label}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, text) in files {
+            std::fs::write(dir.join(name), text).unwrap();
+        }
+        let path = dir.join("config.json");
+        std::fs::write(&path, config.to_string()).unwrap();
+        let mut app = App::new(Document::new(config).unwrap(), path);
+        app.page = Page::Theme;
+        app.load_theme_slot();
+        (app, dir)
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn screen(app: &mut App) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect()
+    }
+
+    fn read_json(path: &Path) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn bundled(file: &str) -> Value {
+        let (_, text) = crate::themes::BUNDLED_THEMES
+            .iter()
+            .find(|(bundled, _)| *bundled == file)
+            .unwrap();
+        serde_json::from_str(text).unwrap()
+    }
+
+    #[test]
+    fn a_bundled_theme_is_installed_and_opens_as_a_normal_file() {
+        let (mut app, dir) = app(
+            "install",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
+            &[],
+        );
+        assert_eq!(
+            read_json(&dir.join("rainbow.json")),
+            bundled("rainbow.json")
+        );
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&bundled("rainbow.json"))
+        );
+        assert_eq!(app.preview_theme(), Some(bundled("rainbow.json")));
+        let shown = screen(&mut app);
+        assert!(shown.contains(" rainbow "), "{shown}");
+        assert!(!shown.contains("built in"), "{shown}");
+
+        // Step the first colour of the first module and save.
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        while app.theme_prop().unwrap().1.kind != PropKind::Color {
+            press(&mut app, KeyCode::Down);
+        }
+        press(&mut app, KeyCode::Right);
+        assert!(app.theme.is_dirty());
+        app.save();
+        let saved = read_json(&dir.join("rainbow.json"));
+        assert_ne!(saved, bundled("rainbow.json"));
+        assert_eq!(read_json(&dir.join("config.json"))["theme"], "rainbow");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_installed_theme_file_is_left_as_it_is() {
+        let edited = r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": {} }"#;
+        let (app, dir) = app(
+            "existing",
+            json!({ "theme": "rainbow.json", "rows": [{ "left": ["cmd"] }] }),
+            &[("rainbow.json", edited)],
+        );
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&serde_json::from_str::<Value>(edited).unwrap())
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("rainbow.json")).unwrap(),
+            edited
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn settings_offer_theme_files_and_uninstalled_bundled_themes() {
+        let custom = r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": {} }"#;
+        let (mut app, dir) = app(
+            "choices",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
+            &[("ocean.json", custom)],
+        );
+        assert_eq!(app.theme_choices, ["ocean", "rainbow", "simple"]);
+        assert!(!dir.join("simple.json").exists());
+
+        app.page = Page::Layout;
+        app.select(Entry::Settings);
+        app.focus = Focus::Options;
+        app.option_cursor = app
+            .doc
+            .options(Target::Settings)
+            .iter()
+            .position(|(spec, _)| spec.key == schema::THEME.key)
+            .unwrap();
+        app.cycle(true);
+        assert_eq!(app.doc.root()["theme"], "simple");
+        app.load_theme_slot();
+        assert_eq!(read_json(&dir.join("simple.json")), bundled("simple.json"));
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&bundled("simple.json"))
+        );
+        app.cycle(false);
+        assert_eq!(app.doc.root()["theme"], "rainbow");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn n_forks_the_open_theme_into_a_new_file() {
+        let (mut app, dir) = app(
+            "fork",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
+            &[],
+        );
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('n'));
+        let shown = screen(&mut app);
+        assert!(shown.contains("Fork theme"), "{shown}");
+        assert!(shown.contains("file name: theme.json"), "{shown}");
+
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.doc.root()["theme"], "theme.json");
+        assert_eq!(app.theme_entry(), Some(ThemeEntry::Module("cwd".into())));
+        app.save();
+        assert_eq!(read_json(&dir.join("theme.json")), bundled("rainbow.json"));
+        assert_eq!(read_json(&dir.join("config.json"))["theme"], "theme.json");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn forking_a_theme_file_copies_it() {
+        let custom =
+            r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": { "git": { "clean_bg": 3 } } }"#;
+        let (mut app, dir) = app(
+            "custom",
+            json!({ "theme": "theme.json", "rows": [{ "left": ["cmd"] }] }),
+            &[("theme.json", custom)],
+        );
+        press(&mut app, KeyCode::Char('n'));
+        let shown = screen(&mut app);
+        assert!(shown.contains("file name: theme-2.json"), "{shown}");
+        press(&mut app, KeyCode::Enter);
+        app.save();
+        assert_eq!(
+            read_json(&dir.join("theme-2.json")),
+            serde_json::from_str::<Value>(custom).unwrap()
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn space_switches_a_text_attribute_on_and_off() {
+        let dir = std::env::temp_dir().join(format!("superline-theme-page-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("theme.json"),
+            r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": {} }"#,
+        )
+        .unwrap();
+        let config = json!({ "theme": "theme.json", "rows": [{ "left": ["read_only"] }] });
+        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        app.load_theme_slot();
+
+        let entries = app.theme_doc().unwrap().entries();
+        app.theme.cursor = entries
+            .iter()
+            .position(|e| e.label() == "readonly")
+            .unwrap();
+        app.theme.focus = Focus::Options;
+        app.theme.prop_cursor = 1;
+        assert_eq!(app.theme_prop().unwrap().1.key, "bold");
+
+        let space = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+        app.on_theme_key(space);
+        let modules = |app: &App| app.theme_doc().unwrap().root()["modules"].clone();
+        assert_eq!(modules(&app), json!({ "readonly": { "bold": true } }));
+        app.on_theme_key(space);
+        assert_eq!(modules(&app), json!({}));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_switch_under_the_cursor_draws_a_sample_of_its_text() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let dir = std::env::temp_dir().join(format!(
+            "superline-theme-page-sample-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("theme.json"),
+            r#"{
+                "defaults": { "fg": 15, "bg": 0 },
+                "modules": { "git": { "notstaged_fg": 229, "notstaged_bg": 166 } }
+            }"#,
+        )
+        .unwrap();
+        let config = json!({ "theme": "theme.json", "rows": [{ "left": ["read_only"] }] });
+        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        app.load_theme_slot();
+
+        let doc = app.theme_doc().unwrap();
+        let entries = doc.entries();
+        let git = entries.iter().position(|e| e.label() == "git").unwrap();
+        let bold = doc
+            .props(&entries[git])
+            .iter()
+            .position(|(spec, _)| spec.key == "notstaged_bold")
+            .unwrap();
+        app.theme.cursor = git;
+        app.theme.prop_cursor = bold;
+        app.theme.focus = Focus::Options;
+
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        app.on_theme_key(key(KeyCode::Char(' ')));
+        app.on_theme_key(key(KeyCode::Down));
+        app.on_theme_key(key(KeyCode::Char(' ')));
+        assert_eq!(app.theme_prop().unwrap().1.key, "notstaged_italic");
+
+        let mut terminal = Terminal::new(TestBackend::new(90, 60)).unwrap();
+        terminal
+            .draw(|frame| app.draw_theme_props(frame, frame.area()))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> = (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect()
+            })
+            .collect();
+        let sampled: Vec<usize> = (0..rows.len())
+            .filter(|y| rows[*y].contains(TEXT_SAMPLE.trim()))
+            .collect();
+        assert_eq!(sampled.len(), 1, "{rows:#?}");
+        let row = &rows[sampled[0]];
+        assert!(row.contains("notstaged_italic"), "{row}");
+
+        let x = row[..row.find(TEXT_SAMPLE.trim()).unwrap()].chars().count() as u16;
+        let cell = &buffer[(x, sampled[0] as u16)];
+        assert_eq!(cell.fg, Color::Indexed(229));
+        assert_eq!(cell.bg, Color::Indexed(166));
+        assert_eq!(cell.modifier, Modifier::BOLD | Modifier::ITALIC);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
