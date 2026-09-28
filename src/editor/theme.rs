@@ -493,8 +493,8 @@ mod tests {
     }
 
     #[test]
-    fn builtin_themes_only_set_documented_properties() {
-        for (name, text) in crate::themes::BUILTIN_THEMES {
+    fn bundled_themes_only_set_documented_properties() {
+        for (file, text) in crate::themes::BUNDLED_THEMES {
             let doc = ThemeDoc::load(text).unwrap();
             for entry in doc.entries() {
                 // Only the library's ExitCode module reads this; no widget shows it.
@@ -504,7 +504,7 @@ mod tests {
                 for (spec, value) in doc.props(&entry) {
                     assert!(
                         value.is_none() || !spec.help.is_empty(),
-                        "themes/{name}.json sets {}.{}, which theme-options.json does not describe",
+                        "themes/{file} sets {}.{}, which theme-options.json does not describe",
                         entry.label(),
                         spec.key
                     );

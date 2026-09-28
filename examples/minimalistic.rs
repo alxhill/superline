@@ -4,7 +4,8 @@ use superline::terminal::Shell;
 use superline::themes::CustomTheme;
 
 fn main() {
-    CustomTheme::load_builtin("simple");
+    CustomTheme::load(concat!(env!("CARGO_MANIFEST_DIR"), "/themes/simple.json"))
+        .expect("the simple theme loads");
 
     superline::Powerline::builder()
         .set_shell(Shell::Bare) // override this to whatever shell you use

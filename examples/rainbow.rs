@@ -19,7 +19,8 @@ fn main() {
     let columns = str::parse::<usize>(columns).unwrap_or(0);
     let duration = str::parse::<u64>(duration).map(Duration::from_millis).ok();
 
-    CustomTheme::load_builtin("rainbow");
+    CustomTheme::load(concat!(env!("CARGO_MANIFEST_DIR"), "/themes/rainbow.json"))
+        .expect("the rainbow theme loads");
 
     superline::Powerline::builder()
         .set_shell(Shell::Bare) // override this to whatever shell you use

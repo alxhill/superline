@@ -72,28 +72,3 @@ fn a_missing_theme_is_reported_on_stderr() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("missing-theme.json"), "{stderr}");
 }
-
-#[test]
-fn builtin_themes_draw_like_their_bundled_theme_files() {
-    let widgets = r#"[
-        { "text": "text" }, "username", { "time": { "format": "12:34" } },
-        "read_only", "jobs", "shell", "cmd"
-    ]"#;
-    for name in ["rainbow", "simple"] {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("themes/{name}.json"));
-        let by_name = preview(
-            &format!("{name}-name"),
-            &format!(r#"{{ "theme": "{name}", "rows": [{{ "left": {widgets} }}] }}"#),
-        );
-        let by_path = preview(
-            &format!("{name}-path"),
-            &format!(
-                r#"{{ "theme": {}, "rows": [{{ "left": {widgets} }}] }}"#,
-                serde_json::to_string(&file.to_string_lossy()).unwrap()
-            ),
-        );
-        assert!(by_name.status.success(), "{by_name:?}");
-        assert!(!by_name.stdout.is_empty());
-        assert_eq!(by_name.stdout, by_path.stdout, "{name}");
-    }
-}

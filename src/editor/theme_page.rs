@@ -1,6 +1,5 @@
-//! The editor's Theme page: the theme the config names, one module at a time,
-//! with a colour picker. Built-in themes are shown read-only and can be forked
-//! into a theme file.
+//! The editor's Theme page: the theme file the config names, one module at a
+//! time, with a colour picker.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,19 +19,12 @@ use super::theme::{
 };
 use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
-use crate::themes::{builtin_theme, BUILTIN_THEMES};
+use crate::themes::{bundled_theme, install_theme, theme_path};
 
 /// Rows PageUp/PageDown move in the icon browser.
 const ICON_PAGE: usize = 10;
 
-/// A theme the config can name.
-#[derive(Clone, PartialEq, Eq, Hash)]
-enum ThemeRef {
-    Builtin(&'static str),
-    File(PathBuf),
-}
-
-/// A theme the config has pointed at during this session.
+/// A theme file the config has pointed at during this session.
 pub(super) enum Slot {
     Loaded(ThemeDoc),
     Missing,
@@ -40,7 +32,7 @@ pub(super) enum Slot {
 }
 
 pub(super) struct ThemePage {
-    slots: HashMap<ThemeRef, Slot>,
+    slots: HashMap<PathBuf, Slot>,
     cursor: usize,
     prop_cursor: usize,
     focus: Focus,
@@ -67,8 +59,8 @@ impl ThemePage {
     /// Writes every changed theme, returning the files written.
     pub(super) fn save(&mut self) -> Result<Vec<PathBuf>, String> {
         let mut written = Vec::new();
-        for (theme, slot) in &mut self.slots {
-            if let (ThemeRef::File(path), Slot::Loaded(doc)) = (theme, slot) {
+        for (path, slot) in &mut self.slots {
+            if let Slot::Loaded(doc) = slot {
                 if doc.is_dirty() {
                     write_atomic(path, &json::to_pretty_theme(doc.root()))
                         .map_err(|e| format!("could not write {}: {e}", path.display()))?;
@@ -81,14 +73,7 @@ impl ThemePage {
     }
 }
 
-fn load_slot(theme: &ThemeRef) -> Slot {
-    let path = match theme {
-        ThemeRef::Builtin(name) => {
-            let text = builtin_theme(name).expect("built-in theme names resolve");
-            return Slot::Loaded(ThemeDoc::load(text).expect("built-in themes are valid"));
-        }
-        ThemeRef::File(path) => path,
-    };
+fn load_slot(path: &Path) -> Slot {
     match std::fs::read_to_string(path) {
         Ok(text) => match ThemeDoc::load(&text) {
             Ok(doc) => Slot::Loaded(doc),
@@ -100,32 +85,40 @@ fn load_slot(theme: &ThemeRef) -> Slot {
 }
 
 impl App {
-    /// The theme the config names.
-    fn theme_ref(&self) -> Option<ThemeRef> {
-        let name = self.doc.root().get("theme")?.as_str()?;
-        if let Some((builtin, _)) = BUILTIN_THEMES.iter().find(|(builtin, _)| *builtin == name) {
-            return Some(ThemeRef::Builtin(builtin));
-        }
-        let dir = self.path.parent().unwrap_or(Path::new("."));
-        Some(ThemeRef::File(dir.join(name)))
+    pub(super) fn config_dir(&self) -> &Path {
+        self.path.parent().unwrap_or(Path::new("."))
     }
 
-    fn builtin_theme_name(&self) -> Option<&'static str> {
-        match self.theme_ref()? {
-            ThemeRef::Builtin(name) => Some(name),
-            ThemeRef::File(_) => None,
-        }
+    /// The theme file the config names.
+    fn theme_path(&self) -> Option<PathBuf> {
+        let name = self.doc.root().get("theme")?.as_str()?;
+        Some(theme_path(self.config_dir(), name))
     }
 
     /// Reads the named theme the first time the config points at it.
     pub(super) fn load_theme_slot(&mut self) {
-        if let Some(theme) = self.theme_ref() {
-            self.theme.slots.entry(theme).or_insert_with_key(load_slot);
+        let Some(path) = self.theme_path() else {
+            return;
+        };
+        if !self.theme.slots.contains_key(&path) {
+            let slot = self.read_theme(&path);
+            self.theme.slots.insert(path, slot);
         }
     }
 
+    /// Reads a theme file, first installing a bundled theme's file that the
+    /// config directory is missing.
+    fn read_theme(&mut self, path: &Path) -> Slot {
+        if let Some(bundled) = bundled_theme(self.config_dir(), path) {
+            if let Err(error) = install_theme(path, bundled) {
+                self.set_status(format!("could not write {}: {error}", path.display()), true);
+            }
+        }
+        load_slot(path)
+    }
+
     fn slot(&self) -> Option<&Slot> {
-        self.theme.slots.get(&self.theme_ref()?)
+        self.theme.slots.get(&self.theme_path()?)
     }
 
     fn theme_doc(&self) -> Option<&ThemeDoc> {
@@ -135,12 +128,9 @@ impl App {
         }
     }
 
-    /// The theme open on the page, unless it is a built-in one.
     fn theme_doc_mut(&mut self) -> Option<&mut ThemeDoc> {
-        let theme = self
-            .theme_ref()
-            .filter(|t| matches!(t, ThemeRef::File(_)))?;
-        match self.theme.slots.get_mut(&theme)? {
+        let path = self.theme_path()?;
+        match self.theme.slots.get_mut(&path)? {
             Slot::Loaded(doc) => Some(doc),
             _ => None,
         }
@@ -250,15 +240,10 @@ impl App {
             self.set_status("Give the theme a file name", true);
             return false;
         }
-        if builtin_theme(name).is_some() {
-            self.set_status(format!("{name} is a built-in theme name"), true);
-            return false;
-        }
-        let dir = self.path.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let theme = ThemeRef::File(dir.join(name));
+        let path = theme_path(self.config_dir(), name);
         let forking = self.theme_doc().is_some();
         let mut copied_from = None;
-        let slot = match load_slot(&theme) {
+        let slot = match self.read_theme(&path) {
             Slot::Missing => {
                 let (doc, source) = self.fork_open_theme();
                 copied_from = Some(source);
@@ -270,7 +255,7 @@ impl App {
             }
             loaded => loaded,
         };
-        self.theme.slots.insert(theme, slot);
+        self.theme.slots.insert(path.clone(), slot);
         if let Err(error) =
             self.doc
                 .set_option(Target::Settings, schema::THEME.key, Some(Value::from(name)))
@@ -278,7 +263,12 @@ impl App {
             self.set_status(error, true);
             return false;
         }
-        if !self.theme_choices.iter().any(|choice| choice == name) {
+        let dir = self.config_dir();
+        if !self
+            .theme_choices
+            .iter()
+            .any(|choice| theme_path(dir, choice) == path)
+        {
             self.theme_choices.push(name.to_string());
         }
         self.changed();
@@ -390,19 +380,6 @@ impl App {
                     self.theme.focus = Focus::Layout;
                     return;
                 };
-                let edits = match key.code {
-                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('i') => true,
-                    KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') => {
-                        spec.kind == PropKind::Color
-                    }
-                    KeyCode::Char('x') | KeyCode::Delete | KeyCode::Backspace => value.is_some(),
-                    _ => false,
-                };
-                if let (true, Some(name)) = (edits, self.builtin_theme_name()) {
-                    self.set_status(format!("{name} is built in: fork it to edit a copy"), false);
-                    self.start_new_theme();
-                    return;
-                }
                 match key.code {
                     KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => {
                         self.theme.focus = Focus::Layout
@@ -703,11 +680,7 @@ impl App {
         let [left, right] =
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(area);
-        let title = match self.builtin_theme_name() {
-            Some(_) => format!("{name} (built in)"),
-            None => name.clone(),
-        };
-        self.draw_theme_modules(frame, left, &title);
+        self.draw_theme_modules(frame, left, &name);
         self.draw_theme_props(frame, right);
         if let Some((buffer, cursor)) = input {
             draw_fork_prompt(frame, area, &name, &buffer, cursor);
@@ -959,7 +932,7 @@ fn prop_value_spans(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor::model::Document;
+    use crate::editor::model::{Document, Entry};
     use crate::editor::Page;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
@@ -1003,48 +976,110 @@ mod tests {
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
     }
 
-    fn builtin(name: &str) -> Value {
-        serde_json::from_str(builtin_theme(name).unwrap()).unwrap()
+    fn bundled(file: &str) -> Value {
+        let (_, text) = crate::themes::BUNDLED_THEMES
+            .iter()
+            .find(|(bundled, _)| *bundled == file)
+            .unwrap();
+        serde_json::from_str(text).unwrap()
     }
 
     #[test]
-    fn builtin_themes_open_like_theme_files() {
+    fn a_bundled_theme_is_installed_and_opens_as_a_normal_file() {
         let (mut app, dir) = app(
-            "open",
-            json!({ "theme": "simple", "rows": [{ "left": ["cmd"] }] }),
+            "install",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
             &[],
         );
         assert_eq!(
-            app.theme_doc().map(ThemeDoc::root),
-            Some(&builtin("simple"))
+            read_json(&dir.join("rainbow.json")),
+            bundled("rainbow.json")
         );
-        assert_eq!(app.preview_theme(), Some(builtin("simple")));
-        assert!(screen(&mut app).contains("simple (built in)"));
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&bundled("rainbow.json"))
+        );
+        assert_eq!(app.preview_theme(), Some(bundled("rainbow.json")));
+        let shown = screen(&mut app);
+        assert!(shown.contains(" rainbow "), "{shown}");
+        assert!(!shown.contains("built in"), "{shown}");
+
+        // Step the first colour of the first module and save.
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        while app.theme_prop().unwrap().1.kind != PropKind::Color {
+            press(&mut app, KeyCode::Down);
+        }
+        press(&mut app, KeyCode::Right);
+        assert!(app.theme.is_dirty());
+        app.save();
+        let saved = read_json(&dir.join("rainbow.json"));
+        assert_ne!(saved, bundled("rainbow.json"));
+        assert_eq!(read_json(&dir.join("config.json"))["theme"], "rainbow");
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
-    fn editing_a_builtin_theme_asks_for_a_file_to_fork_it_into() {
+    fn an_installed_theme_file_is_left_as_it_is() {
+        let edited = r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": {} }"#;
+        let (app, dir) = app(
+            "existing",
+            json!({ "theme": "rainbow.json", "rows": [{ "left": ["cmd"] }] }),
+            &[("rainbow.json", edited)],
+        );
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&serde_json::from_str::<Value>(edited).unwrap())
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("rainbow.json")).unwrap(),
+            edited
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn settings_offer_theme_files_and_uninstalled_bundled_themes() {
+        let custom = r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": {} }"#;
         let (mut app, dir) = app(
-            "edit",
+            "choices",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
+            &[("ocean.json", custom)],
+        );
+        assert_eq!(app.theme_choices, ["ocean", "rainbow", "simple"]);
+        assert!(!dir.join("simple.json").exists());
+
+        app.page = Page::Layout;
+        app.select(Entry::Settings);
+        app.focus = Focus::Options;
+        app.option_cursor = app
+            .doc
+            .options(Target::Settings)
+            .iter()
+            .position(|(spec, _)| spec.key == schema::THEME.key)
+            .unwrap();
+        app.cycle(true);
+        assert_eq!(app.doc.root()["theme"], "simple");
+        app.load_theme_slot();
+        assert_eq!(read_json(&dir.join("simple.json")), bundled("simple.json"));
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&bundled("simple.json"))
+        );
+        app.cycle(false);
+        assert_eq!(app.doc.root()["theme"], "rainbow");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn n_forks_the_open_theme_into_a_new_file() {
+        let (mut app, dir) = app(
+            "fork",
             json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
             &[],
         );
         press(&mut app, KeyCode::Down);
-        press(&mut app, KeyCode::Enter);
-        press(&mut app, KeyCode::Right);
-        assert_eq!(
-            app.theme_doc().map(ThemeDoc::root),
-            Some(&builtin("rainbow"))
-        );
-        assert!(!app.is_dirty());
-        assert!(matches!(
-            app.mode,
-            Mode::Input {
-                purpose: InputPurpose::NewTheme,
-                ..
-            }
-        ));
+        press(&mut app, KeyCode::Char('n'));
         let shown = screen(&mut app);
         assert!(shown.contains("Fork theme"), "{shown}");
         assert!(shown.contains("file name: theme.json"), "{shown}");
@@ -1053,12 +1088,8 @@ mod tests {
         assert_eq!(app.doc.root()["theme"], "theme.json");
         assert_eq!(app.theme_entry(), Some(ThemeEntry::Module("cwd".into())));
         app.save();
-        assert_eq!(read_json(&dir.join("theme.json")), builtin("rainbow"));
+        assert_eq!(read_json(&dir.join("theme.json")), bundled("rainbow.json"));
         assert_eq!(read_json(&dir.join("config.json"))["theme"], "theme.json");
-
-        // The fork is an ordinary theme file, so edits now apply to it.
-        press(&mut app, KeyCode::Right);
-        assert!(app.theme.is_dirty());
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1080,18 +1111,6 @@ mod tests {
             read_json(&dir.join("theme-2.json")),
             serde_json::from_str::<Value>(custom).unwrap()
         );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn a_fork_cannot_take_a_builtin_theme_name() {
-        let (mut app, dir) = app(
-            "name",
-            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
-            &[],
-        );
-        assert!(!app.use_new_theme("simple"));
-        assert_eq!(app.doc.root()["theme"], "rainbow");
         let _ = std::fs::remove_dir_all(dir);
     }
 }

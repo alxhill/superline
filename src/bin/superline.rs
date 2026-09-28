@@ -698,7 +698,7 @@ fn show(args: ShowArgs, right_only: bool) {
                 Ok(()) => render_prompt(&args, conf, right_only),
                 Err(error @ PowerlineError::InvalidTheme(_)) => {
                     prepend_error_module(&mut conf, fallback_message(&error));
-                    CustomTheme::load_builtin(FALLBACK_THEME);
+                    CustomTheme::load_fallback();
                     render_prompt(&args, conf, right_only);
                 }
                 Err(error) => show_fallback(&args, &error, right_only),
@@ -789,21 +789,9 @@ fn render_normal(args: &ShowArgs, conf: Config) {
     span.finish();
 }
 
-/// The built-in theme a prompt falls back to when its config or theme can't
-/// be loaded.
-const FALLBACK_THEME: &str = "rainbow";
-
-/// Loads the theme the config names: a built-in theme, or a theme file
-/// relative to the config directory.
+/// Loads the theme file the config names, relative to the config directory.
 fn load_theme(conf: &Config, conf_root: &Path) -> Result<(), PowerlineError> {
-    if CustomTheme::load_builtin(&conf.theme) {
-        return Ok(());
-    }
-    let path = match conf.theme.as_bytes() {
-        [b'/', ..] => PathBuf::from(&conf.theme),
-        _ => conf_root.join(&conf.theme),
-    };
-    CustomTheme::load(&path)?;
+    CustomTheme::load_for_config(conf_root, &conf.theme)?;
     Ok(())
 }
 
@@ -813,7 +801,7 @@ fn powerline_from_conf(prompt: &CommandLine, args: &ShowArgs) -> Powerline {
 
 fn show_fallback(args: &ShowArgs, error: &PowerlineError, right_only: bool) {
     let conf = fallback_config(error);
-    CustomTheme::load_builtin(FALLBACK_THEME);
+    CustomTheme::load_fallback();
     render_prompt(args, conf, right_only);
 }
 
