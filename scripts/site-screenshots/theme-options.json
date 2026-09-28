@@ -63,7 +63,7 @@
       ["remote_fg", "color", "GitHub logo and ahead/behind counts.", "defaults.fg"],
       ["remote_bg", "color", "Remote segment background.", "defaults.bg"],
       ["branch_icon", "string", "Icon before the branch name.", "U+E0A0"],
-      ["worktree_branch_icon", "string", "Icon before the branch name in a linked worktree.", "U+F1BB"],
+      ["linked_worktree_icon", "string", "Replaces branch_icon inside a linked worktree.", "U+F1BB"],
       ["detached_icon", "string", "Between a detached HEAD's commit and the branch it sits on.", "U+F432"],
       ["notstaged_icon", "string", "After the modified-file count.", "U+EAE9"],
       ["untracked_icon", "string", "After the untracked-file count.", "\"?\""],

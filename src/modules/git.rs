@@ -84,12 +84,12 @@ pub trait GitScheme: DefaultColors {
     const STAGED_SYMBOL: &'static str = "+";
     const UNTRACKED_SYMBOL: &'static str = "?";
     const CONFLICTED_SYMBOL: &'static str = FANCY_STAR;
-    const BRANCH_ICON: &'static str = GIT_ICON;
-    const WORKTREE_BRANCH_ICON: &'static str = WORKTREE_ICON;
-    const DETACHED_ICON: &'static str = DETACHED_ARROW;
-    const REMOTE_ICON: &'static str = GITHUB_LOGO;
-    const AHEAD_ICON: &'static str = UP_ARROW;
-    const BEHIND_ICON: &'static str = DOWN_ARROW;
+    const DEFAULT_BRANCH_ICON: &'static str = GIT_ICON;
+    const DEFAULT_LINKED_WORKTREE_ICON: &'static str = LINKED_WORKTREE_ICON;
+    const DEFAULT_DETACHED_ICON: &'static str = DETACHED_ARROW;
+    const DEFAULT_REMOTE_ICON: &'static str = GITHUB_LOGO;
+    const DEFAULT_AHEAD_ICON: &'static str = UP_ARROW;
+    const DEFAULT_BEHIND_ICON: &'static str = DOWN_ARROW;
 
     fn git_notstaged_icon() -> &'static str {
         Self::NOT_STAGED_SYMBOL
@@ -105,24 +105,25 @@ pub trait GitScheme: DefaultColors {
     }
     /// Before the branch name in a repository's main working tree.
     fn git_branch_icon() -> &'static str {
-        Self::BRANCH_ICON
+        Self::DEFAULT_BRANCH_ICON
     }
-    /// Before the branch name in a linked worktree.
-    fn git_worktree_branch_icon() -> &'static str {
-        Self::WORKTREE_BRANCH_ICON
+    /// Before the branch name in a linked worktree, in place of the branch
+    /// icon.
+    fn git_linked_worktree_icon() -> &'static str {
+        Self::DEFAULT_LINKED_WORKTREE_ICON
     }
     /// Between a detached HEAD's hash and the branch it sits on.
     fn git_detached_icon() -> &'static str {
-        Self::DETACHED_ICON
+        Self::DEFAULT_DETACHED_ICON
     }
     fn git_remote_icon() -> &'static str {
-        Self::REMOTE_ICON
+        Self::DEFAULT_REMOTE_ICON
     }
     fn git_ahead_icon() -> &'static str {
-        Self::AHEAD_ICON
+        Self::DEFAULT_AHEAD_ICON
     }
     fn git_behind_icon() -> &'static str {
-        Self::BEHIND_ICON
+        Self::DEFAULT_BEHIND_ICON
     }
 }
 
@@ -511,7 +512,7 @@ const FANCY_STAR: &str = "\u{273C}";
 
 const GITHUB_LOGO: &str = "\u{e709}";
 const GIT_ICON: &str = "\u{e0a0}";
-const WORKTREE_ICON: &str = "\u{f1bb}";
+const LINKED_WORKTREE_ICON: &str = "\u{f1bb}";
 const DETACHED_ARROW: &str = "\u{f432}";
 
 /// Git status for one repository. The status walk is always attempted live
@@ -552,7 +553,7 @@ impl<S: GitScheme> Module for Git<S> {
         };
 
         let icon = if is_worktree {
-            S::git_worktree_branch_icon()
+            S::git_linked_worktree_icon()
         } else {
             S::git_branch_icon()
         };

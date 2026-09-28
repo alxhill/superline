@@ -374,21 +374,21 @@ impl GitScheme for CustomTheme {
     color_from_json!(git_repo_dirty_bg, git, dirty_bg, default_bg);
     color_from_json!(git_repo_dirty_fg, git, dirty_fg, default_fg);
 
-    icon_from_json!(git_branch_icon, git, branch_icon, BRANCH_ICON);
+    icon_from_json!(git_branch_icon, git, branch_icon, DEFAULT_BRANCH_ICON);
     icon_from_json!(
-        git_worktree_branch_icon,
+        git_linked_worktree_icon,
         git,
-        worktree_branch_icon,
-        WORKTREE_BRANCH_ICON
+        linked_worktree_icon,
+        DEFAULT_LINKED_WORKTREE_ICON
     );
-    icon_from_json!(git_detached_icon, git, detached_icon, DETACHED_ICON);
+    icon_from_json!(git_detached_icon, git, detached_icon, DEFAULT_DETACHED_ICON);
     icon_from_json!(git_notstaged_icon, git, notstaged_icon, NOT_STAGED_SYMBOL);
     icon_from_json!(git_untracked_icon, git, untracked_icon, UNTRACKED_SYMBOL);
     icon_from_json!(git_staged_icon, git, staged_icon, STAGED_SYMBOL);
     icon_from_json!(git_conflicted_icon, git, conflicted_icon, CONFLICTED_SYMBOL);
-    icon_from_json!(git_remote_icon, git, remote_icon, REMOTE_ICON);
-    icon_from_json!(git_ahead_icon, git, ahead_icon, AHEAD_ICON);
-    icon_from_json!(git_behind_icon, git, behind_icon, BEHIND_ICON);
+    icon_from_json!(git_remote_icon, git, remote_icon, DEFAULT_REMOTE_ICON);
+    icon_from_json!(git_ahead_icon, git, ahead_icon, DEFAULT_AHEAD_ICON);
+    icon_from_json!(git_behind_icon, git, behind_icon, DEFAULT_BEHIND_ICON);
 }
 
 impl PrScheme for CustomTheme {
