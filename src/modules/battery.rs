@@ -6,6 +6,7 @@ use battery::{Manager, State};
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
+use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
 use super::{DefaultPadding, Module};
@@ -15,26 +16,46 @@ use super::{DefaultPadding, Module};
 /// case while still making the low-battery warning hard to miss.
 const DISPLAY_THRESHOLD_PERCENT: f32 = 10.0;
 
-const FULL_SYMBOL: &str = "\u{f0079}"; // nf-md-battery
-const CHARGING_SYMBOL: &str = "\u{f0084}"; // nf-md-battery_charging
-const DISCHARGING_SYMBOL: &str = "\u{f0083}"; // nf-md-battery_alert
-const UNKNOWN_SYMBOL: &str = "\u{f0091}"; // nf-md-battery_unknown
-const EMPTY_SYMBOL: &str = "\u{f008e}"; // nf-md-battery_outline
-
 pub struct Battery<S> {
     status: Option<BatteryStatus>,
     scheme: PhantomData<S>,
 }
 
-/// Colours for the low-battery warning. Themes can override these through the
-/// same per-module colour mechanism as the other widgets.
+/// Colours and per-state icons for the low-battery warning. Themes can
+/// override these through the same per-module mechanism as the other widgets.
 pub trait BatteryScheme: DefaultColors {
+    const BATTERY_FULL_ICON: &'static str = "\u{f0079}"; // nf-md-battery
+    const BATTERY_CHARGING_ICON: &'static str = "\u{f0084}"; // nf-md-battery_charging
+    const BATTERY_DISCHARGING_ICON: &'static str = "\u{f0083}"; // nf-md-battery_alert
+    const BATTERY_UNKNOWN_ICON: &'static str = "\u{f0091}"; // nf-md-battery_unknown
+    const BATTERY_EMPTY_ICON: &'static str = "\u{f008e}"; // nf-md-battery_outline
+
     fn battery_fg() -> Color {
         Self::alert_fg()
     }
 
     fn battery_bg() -> Color {
         Self::alert_bg()
+    }
+
+    fn battery_full_icon() -> &'static str {
+        Self::BATTERY_FULL_ICON
+    }
+
+    fn battery_charging_icon() -> &'static str {
+        Self::BATTERY_CHARGING_ICON
+    }
+
+    fn battery_discharging_icon() -> &'static str {
+        Self::BATTERY_DISCHARGING_ICON
+    }
+
+    fn battery_unknown_icon() -> &'static str {
+        Self::BATTERY_UNKNOWN_ICON
+    }
+
+    fn battery_empty_icon() -> &'static str {
+        Self::BATTERY_EMPTY_ICON
     }
 }
 
@@ -61,7 +82,7 @@ impl<S: BatteryScheme> Module for Battery<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if let Some(status) = self.status {
             powerline.add_segment(
-                status.label(),
+                status.label(icon_for_state::<S>(status.state)),
                 Style::simple(S::battery_fg(), S::battery_bg()),
             );
         }
@@ -82,22 +103,19 @@ struct BatteryReading {
 }
 
 impl BatteryStatus {
-    fn label(self) -> String {
-        format!(
-            "{} {}%",
-            symbol_for_state(self.state),
-            self.percentage.round().clamp(0.0, 100.0) as u8
-        )
+    fn label(self, icon: &str) -> String {
+        let percentage = format!("{}%", self.percentage.round().clamp(0.0, 100.0) as u8);
+        join_non_empty([icon, percentage.as_str()])
     }
 }
 
-fn symbol_for_state(state: State) -> &'static str {
+fn icon_for_state<S: BatteryScheme>(state: State) -> &'static str {
     match state {
-        State::Full => FULL_SYMBOL,
-        State::Charging => CHARGING_SYMBOL,
-        State::Discharging => DISCHARGING_SYMBOL,
-        State::Unknown => UNKNOWN_SYMBOL,
-        State::Empty => EMPTY_SYMBOL,
+        State::Full => S::battery_full_icon(),
+        State::Charging => S::battery_charging_icon(),
+        State::Discharging => S::battery_discharging_icon(),
+        State::Unknown => S::battery_unknown_icon(),
+        State::Empty => S::battery_empty_icon(),
     }
 }
 
@@ -175,6 +193,25 @@ fn merge_states(first: State, second: State) -> State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::colors::{black, white};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            white()
+        }
+    }
+
+    impl BatteryScheme for TestTheme {}
+
+    fn label(status: BatteryStatus) -> String {
+        status.label(icon_for_state::<TestTheme>(status.state))
+    }
 
     fn reading(energy: f32, energy_full: f32, state: State) -> BatteryReading {
         BatteryReading {
@@ -252,23 +289,33 @@ mod tests {
             state: State::Discharging,
         };
 
-        assert_eq!(status.label(), format!("{DISCHARGING_SYMBOL} 10%"));
+        assert_eq!(label(status), "\u{f0083} 10%");
+    }
+
+    #[test]
+    fn an_empty_icon_leaves_only_the_percentage() {
+        let status = BatteryStatus {
+            percentage: 5.0,
+            state: State::Charging,
+        };
+
+        assert_eq!(status.label(""), "5%");
     }
 
     #[test]
     fn uses_state_specific_symbols() {
         for (state, symbol) in [
-            (State::Full, FULL_SYMBOL),
-            (State::Charging, CHARGING_SYMBOL),
-            (State::Discharging, DISCHARGING_SYMBOL),
-            (State::Unknown, UNKNOWN_SYMBOL),
-            (State::Empty, EMPTY_SYMBOL),
+            (State::Full, "\u{f0079}"),
+            (State::Charging, "\u{f0084}"),
+            (State::Discharging, "\u{f0083}"),
+            (State::Unknown, "\u{f0091}"),
+            (State::Empty, "\u{f008e}"),
         ] {
             let status = BatteryStatus {
                 percentage: 5.0,
                 state,
             };
-            assert_eq!(status.label(), format!("{symbol} 5%"));
+            assert_eq!(label(status), format!("{symbol} 5%"));
         }
     }
 

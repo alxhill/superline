@@ -298,6 +298,11 @@ const GIT: &[OptionSpec] = &[
         },
         "cli shells out to git, gitoxide is in-process, auto picks by repo size.",
     ),
+    boolean(
+        "worktrees",
+        true,
+        "Show the linked-worktree count by the branch, index/count inside one.",
+    ),
 ];
 
 const PR: &[OptionSpec] = &[boolean(
@@ -594,7 +599,8 @@ pub fn segment_name(segment: &Value) -> Option<&str> {
 pub const THEME: OptionSpec = required(
     "theme",
     Kind::Str { default: None },
-    "rainbow, simple, or a path to a theme JSON file (relative to the config directory).",
+    "Theme file, relative to the config directory (.json optional). rainbow and simple are \
+     created on first use.",
 );
 
 pub const UPDATE: &[OptionSpec] = &[
@@ -685,6 +691,6 @@ mod tests {
     fn value_widgets_expose_their_option() {
         assert_eq!(find("padding").unwrap().options()[0].key, "width");
         assert_eq!(find("battery").unwrap().options().len(), 0);
-        assert_eq!(find("git").unwrap().options().len(), 2);
+        assert_eq!(find("git").unwrap().options().len(), 3);
     }
 }

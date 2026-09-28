@@ -19,11 +19,30 @@ pub struct Cwd<S: CwdScheme> {
 }
 
 pub trait CwdScheme: DefaultColors {
+    const CWD_HOME_ICON: &'static str = "~";
+    const CWD_ROOT_ICON: &'static str = "~";
+    const CWD_ELLIPSIS_ICON: &'static str = "...";
+
     fn path_fg() -> Color {
         Self::default_fg()
     }
 
     fn path_bg_colors() -> Vec<Color>;
+
+    /// Stands in for the home directory at the start of the path.
+    fn cwd_home_icon() -> &'static str {
+        Self::CWD_HOME_ICON
+    }
+
+    /// Shown on its own at the filesystem root.
+    fn cwd_root_icon() -> &'static str {
+        Self::CWD_ROOT_ICON
+    }
+
+    /// Stands in for the components a long path leaves out.
+    fn cwd_ellipsis_icon() -> &'static str {
+        Self::CWD_ELLIPSIS_ICON
+    }
 }
 
 impl<S: CwdScheme> Cwd<S> {
@@ -42,6 +61,17 @@ macro_rules! rainbow_segment {
         let r_col = S::path_bg_colors()[$iter_var % S::path_bg_colors().len()];
         $powerline.add_segment($value, Style::simple(S::path_fg(), r_col));
         $iter_var = $iter_var.wrapping_add(1);
+    };
+}
+
+/// Like `rainbow_segment!`, but an icon the theme set to `""` draws nothing
+/// and leaves the next segment its colour.
+macro_rules! rainbow_icon {
+    ($powerline:ident, $iter_var:ident, $icon:expr) => {
+        let icon = $icon;
+        if !icon.is_empty() {
+            rainbow_segment!($powerline, $iter_var, icon);
+        }
     };
 }
 
@@ -89,14 +119,14 @@ impl<S: CwdScheme> Module for Cwd<S> {
         // Sitting at the filesystem root ("/" on Unix) - just show the glyph.
         #[allow(unused_assignments)]
         if cwd == MAIN_SEPARATOR_STR {
-            rainbow_segment!(powerline, current_bg, "~");
+            rainbow_icon!(powerline, current_bg, S::cwd_root_icon());
             return;
         }
 
         if let Some(home) = platform::home_dir() {
             let home = home.to_string_lossy();
             if cwd.starts_with(home.as_ref()) {
-                rainbow_segment!(powerline, current_bg, "~");
+                rainbow_icon!(powerline, current_bg, S::cwd_home_icon());
                 cwd = &cwd[home.len()..]
             }
         }
@@ -114,7 +144,7 @@ impl<S: CwdScheme> Module for Cwd<S> {
                 rainbow_segment!(powerline, current_bg, val);
             }
 
-            rainbow_segment!(powerline, current_bg, "...");
+            rainbow_icon!(powerline, current_bg, S::cwd_ellipsis_icon());
 
             for val in end {
                 rainbow_segment!(powerline, current_bg, val);

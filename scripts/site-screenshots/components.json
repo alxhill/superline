@@ -367,7 +367,22 @@
             {
               "git": {
                 "status_timeout_ms": 500,
-                "backend": "cli"
+                "backend": "cli",
+                "worktrees": false
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "worktrees",
+        "label": "Inside the second of two linked worktrees",
+        "fixture": "git-worktrees",
+        "row": {
+          "left": [
+            {
+              "git": {
+                "worktrees": true
               }
             }
           ]

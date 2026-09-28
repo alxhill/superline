@@ -1,9 +1,18 @@
 {
   "_comment": "Theme file properties per module, as read by src/themes/custom.rs. Each entry is [property, type, what it styles, fallback]. Fallbacks name the theme file's defaults.",
+  "_text_attributes": {
+    "_comment": "Every fg or <prefix>_fg color also takes these true/false properties, named bold or <prefix>_bold and so on, for the text drawn in that color. They default to false. The editor lists them after each such color, with these descriptions ({fg} is the color's property).",
+    "bold": "Draws the {fg} text in bold.",
+    "italic": "Draws the {fg} text in italics.",
+    "underline": "Underlines the {fg} text."
+  },
   "cwd": {
     "properties": [
       ["path_fg", "color", "Text of every path component.", "defaults.fg"],
       ["bg_colors", "color list", "Backgrounds for successive path components, repeating from the start when the path is longer.", "[defaults.bg]"],
+      ["home_icon", "string", "Stands in for the home directory at the start of the path; \"\" hides it.", "\"~\""],
+      ["root_icon", "string", "Shown on its own at the filesystem root.", "\"~\""],
+      ["ellipsis_icon", "string", "Stands in for the components a long path leaves out.", "\"...\""],
       ["padding", "choice: small, large, left, right", "Space around every path component: small for none, large for both sides, left or right for one side.", "left"]
     ]
   },
@@ -11,6 +20,7 @@
     "properties": [
       ["fg", "color", "The lock icon.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
+      ["icon", "string", "The lock icon; \"\" hides the widget.", "U+E0A2"],
       ["padding", "choice: small, large, left, right", "Space around the lock icon: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },
@@ -21,6 +31,7 @@
       ["failed_fg", "color", "The exit code after a failed command.", "defaults.bg"],
       ["failed_bg", "color", "Background after a failed command.", "defaults.fg"],
       ["user_symbol", "string", "The prompt symbol.", "\"$\""],
+      ["root_symbol", "string", "The prompt symbol when running as root.", "\"#\""],
       ["padding", "choice: small, large, left, right", "Space around the prompt symbol: small for none, large for both sides, left or right for one side.", "small"]
     ]
   },
@@ -43,6 +54,7 @@
     "properties": [
       ["fg", "color", "The icon and job count.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
+      ["icon", "string", "Icon before the job count.", "U+F085"],
       ["padding", "choice: small, large, left, right", "Space around the icon and job count: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },
@@ -62,6 +74,17 @@
       ["conflicted_bg", "color", "Conflicted-file background.", "defaults.bg"],
       ["remote_fg", "color", "GitHub logo and ahead/behind counts.", "defaults.fg"],
       ["remote_bg", "color", "Remote segment background.", "defaults.bg"],
+      ["branch_icon", "string", "Icon before the branch name.", "U+E0A0"],
+      ["linked_worktree_icon", "string", "Replaces branch_icon inside a linked worktree.", "U+F1BB"],
+      ["detached_icon", "string", "Between a detached HEAD's commit and the branch it sits on.", "U+F432"],
+      ["notstaged_icon", "string", "After the modified-file count.", "U+EAE9"],
+      ["untracked_icon", "string", "After the untracked-file count.", "\"?\""],
+      ["staged_icon", "string", "After the staged-file count.", "\"+\""],
+      ["conflicted_icon", "string", "After the conflicted-file count.", "U+273C"],
+      ["remote_icon", "string", "GitHub logo that opens the remote segment.", "U+E709"],
+      ["ahead_icon", "string", "After the number of commits ahead of the upstream.", "U+F062"],
+      ["behind_icon", "string", "After the number of commits behind the upstream.", "U+F063"],
+      ["worktree_icon", "string", "Icon before the linked-worktree count (index/count inside a linked worktree) next to the branch. \"\" shows just the numbers.", "U+F1897"],
       ["padding", "choice: small, large, left, right", "Space around every git segment's text: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },
@@ -91,6 +114,8 @@
       ["version_fg", "color", "Interpreter version shown next to an active venv.", "defaults.fg"],
       ["version_bg", "color", "Background of the version segment.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
+      ["icon", "string", "The Python logo.", "U+E73C"],
+      ["pyproject_icon", "string", "After the logo in a directory with a pyproject.toml.", "U+F150E"],
       ["padding", "choice: small, large, left, right", "Space around each segment's text: small for none, large for both sides, left or right for one side.", "large; venv label right"]
     ]
   },
@@ -101,6 +126,7 @@
       ["bg", "color", "Background for a version nvm or mise has activated.", "defaults.bg"],
       ["inactive_bg", "color", "Background for a version that only comes from .nvmrc.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
+      ["icon", "string", "The Node.js logo.", "U+ED0D"],
       ["padding", "choice: small, large, left, right", "Space around the logo and version: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },
@@ -110,6 +136,7 @@
       ["fg", "color", "Logo, version and distribution.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it. Read from java only.", "U+F1064"],
+      ["icon", "string", "The Java logo.", "U+F0176"],
       ["padding", "choice: small, large, left, right", "Space around the segment's text: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },
@@ -118,6 +145,7 @@
       ["fg", "color", "Logo and toolchain version.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
+      ["icon", "string", "The Rust logo.", "U+E68B"],
       ["padding", "choice: small, large, left, right", "Space around the segment's text: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },
@@ -128,6 +156,12 @@
       ["codex_fg", "color", "Codex widget text.", "defaults.fg"],
       ["codex_bg", "color", "Codex widget background.", "defaults.bg"],
       ["threshold_bg", "color", "Background once a visible lane crosses threshold.", "defaults.bg"],
+      ["claude_icon", "string", "Claude logo that opens the Claude widget.", "U+EC82"],
+      ["codex_icon", "string", "OpenAI logo that opens the Codex widget.", "U+EC81"],
+      ["reset_icon", "string", "Before the time left until the session window resets.", "\"↻\""],
+      ["loading_icon", "string", "In place of a reading until the first refresh lands.", "\"…\""],
+      ["logged_out_icon", "string", "In place of a reading when the provider CLI has no signed-in account.", "U+F235"],
+      ["not_installed_icon", "string", "In place of a reading when the provider CLI is not installed.", "\"?\""],
       ["padding", "choice: small, large, left, right", "Space around the usage text: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },
@@ -148,6 +182,7 @@
     "properties": [
       ["fg", "color", "Icon and percentages.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
+      ["icon", "string", "Icon before the memory percentage.", "U+F035B"],
       ["padding", "choice: small, large, left, right", "Space around the segment's text: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },
@@ -189,6 +224,11 @@
     "properties": [
       ["fg", "color", "Charge and charging state.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
+      ["full_icon", "string", "Icon when the battery is full.", "U+F0079"],
+      ["charging_icon", "string", "Icon while charging.", "U+F0084"],
+      ["discharging_icon", "string", "Icon while discharging.", "U+F0083"],
+      ["empty_icon", "string", "Icon when the battery is empty.", "U+F008E"],
+      ["unknown_icon", "string", "Icon when the charging state is unknown.", "U+F0091"],
       ["padding", "choice: small, large, left, right", "Space around the charge text: small for none, large for both sides, left or right for one side.", "large"]
     ]
   },

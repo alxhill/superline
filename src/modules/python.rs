@@ -13,6 +13,7 @@ use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::mise;
 use crate::themes::DefaultColors;
+use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
 use super::{DefaultPadding, Module};
@@ -26,6 +27,9 @@ pub struct Python<S: PythonScheme> {
 }
 
 pub trait PythonScheme: DefaultColors {
+    const PYTHON_ICON: &'static str = "\u{e73c}";
+    const PYTHON_PYPROJECT_ICON: &'static str = "\u{f150e}";
+
     fn pyenv_fg() -> Color {
         Self::default_fg()
     }
@@ -43,6 +47,15 @@ pub trait PythonScheme: DefaultColors {
     /// `.python-version`.
     fn mise_icon() -> &'static str {
         mise::DEFAULT_ICON
+    }
+
+    fn python_icon() -> &'static str {
+        Self::PYTHON_ICON
+    }
+
+    /// Shown after the logo in a directory with a `pyproject.toml`.
+    fn python_pyproject_icon() -> &'static str {
+        Self::PYTHON_PYPROJECT_ICON
     }
 }
 
@@ -64,8 +77,6 @@ impl<S: PythonScheme> Python<S> {
 
 const PYTHON_VERSION_CMD: &str =
     r#"from sys import version_info as v; print(f"{v.major}.{v.minor}.{v.micro}")"#;
-const PYTHON_LOGO: &str = "\u{e73c}";
-const SNAKE_ICON: &str = "\u{f150e}";
 const LOADING_MARKER: &str = "\u{2026}";
 /// The venv label differs from the module's other segments, which are `large`.
 const VENV_PADDING: SegmentPadding = SegmentPadding::Right;
@@ -193,9 +204,9 @@ impl<S: PythonScheme> Module for Python<S> {
 
         let pylogo = if let Ok(cwd) = env::current_dir() {
             if cwd.join("pyproject.toml").exists() {
-                format!("{} {}", PYTHON_LOGO, SNAKE_ICON)
+                join_non_empty([S::python_icon(), S::python_pyproject_icon()])
             } else {
-                PYTHON_LOGO.to_string()
+                S::python_icon().to_string()
             }
         } else {
             "".into()
@@ -205,16 +216,15 @@ impl<S: PythonScheme> Module for Python<S> {
             // file_name is always some, because env variable is a valid directory path.
             let venv_name = Path::new(&venv_path).file_name().unwrap().to_string_lossy();
 
-            let label = if self.show_venv {
-                format!("{} {}", pylogo, venv_name)
-            } else {
-                pylogo
-            };
-            powerline.add_padded_segment(
-                label,
-                Style::simple(S::pyenv_fg(), S::pyenv_bg()),
-                VENV_PADDING,
-            );
+            let venv_name: &str = if self.show_venv { &venv_name } else { "" };
+            let label = join_non_empty([pylogo.as_str(), venv_name]);
+            if !label.is_empty() {
+                powerline.add_padded_segment(
+                    label,
+                    Style::simple(S::pyenv_fg(), S::pyenv_bg()),
+                    VENV_PADDING,
+                );
+            }
 
             if self.show_version {
                 let venv_dir = Path::new(&venv_path);

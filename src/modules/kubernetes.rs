@@ -29,6 +29,8 @@ pub struct Kubernetes<S: KubernetesScheme> {
 
 /// Colours and the icon used by the Kubernetes segment.
 pub trait KubernetesScheme: DefaultColors {
+    const KUBERNETES_ICON: &'static str = "\u{f10fe}"; // nf-md-kubernetes
+
     fn kubernetes_fg() -> Color {
         Self::default_fg()
     }
@@ -38,7 +40,7 @@ pub trait KubernetesScheme: DefaultColors {
     }
 
     fn kubernetes_icon() -> &'static str {
-        "\u{f10fe}" // nf-md-kubernetes
+        Self::KUBERNETES_ICON
     }
 }
 

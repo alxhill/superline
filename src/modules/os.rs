@@ -142,10 +142,10 @@ impl<S: OsScheme> Module for Os<S> {
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_segment(
-            S::os_symbol(self.kind),
-            Style::simple(S::os_fg(), S::os_bg()),
-        );
+        let symbol = S::os_symbol(self.kind);
+        if !symbol.is_empty() {
+            powerline.add_segment(symbol, Style::simple(S::os_fg(), S::os_bg()));
+        }
     }
 }
 

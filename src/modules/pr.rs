@@ -9,6 +9,7 @@ use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
+use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
 use super::{DefaultPadding, Module};
@@ -23,6 +24,9 @@ pub struct Pr<S> {
 }
 
 pub trait PrScheme: DefaultColors {
+    const PR_ICON: &'static str = "\u{ea64}"; // nf-cod-git_pull_request
+    const PR_STATUS_ICON: &'static str = "\u{25cf}"; // ● black circle
+
     fn pr_draft_fg() -> Color {
         Self::default_fg()
     }
@@ -48,7 +52,7 @@ pub trait PrScheme: DefaultColors {
         Self::default_bg()
     }
     fn pr_icon() -> &'static str {
-        "\u{ea64}" // nf-cod-git_pull_request
+        Self::PR_ICON
     }
 
     fn pr_status_success_fg() -> Color {
@@ -61,7 +65,7 @@ pub trait PrScheme: DefaultColors {
         Self::default_fg()
     }
     fn pr_status_icon() -> &'static str {
-        "\u{25cf}" // ● black circle
+        Self::PR_STATUS_ICON
     }
 }
 
@@ -188,7 +192,7 @@ impl<S: PrScheme> Module for Pr<S> {
             return;
         };
 
-        let label = format!("{} #{}", S::pr_icon(), pr.number);
+        let label = join_non_empty([S::pr_icon(), format!("#{}", pr.number).as_str()]);
         let (fg, bg) = pr.state.style::<S>();
 
         // The CI status, when enabled and meaningful, renders as a coloured
@@ -200,7 +204,8 @@ impl<S: PrScheme> Module for Pr<S> {
                 pr.checks
                     .map(|status| (S::pr_status_icon(), status.fg::<S>()))
             })
-            .flatten();
+            .flatten()
+            .filter(|(icon, _)| !icon.is_empty());
 
         powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
     }

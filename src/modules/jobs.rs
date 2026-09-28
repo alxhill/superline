@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
+use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
 use super::{DefaultPadding, Module};
@@ -21,6 +22,8 @@ pub struct Jobs<S: JobsScheme> {
 }
 
 pub trait JobsScheme: DefaultColors {
+    const JOBS_ICON: &'static str = "\u{f085}"; // nf-fa-gears
+
     fn jobs_fg() -> Color {
         Self::default_fg()
     }
@@ -30,7 +33,7 @@ pub trait JobsScheme: DefaultColors {
     }
 
     fn jobs_symbol() -> &'static str {
-        "\u{f085}" // nf-fa-gears
+        Self::JOBS_ICON
     }
 }
 
@@ -56,7 +59,7 @@ impl<S: JobsScheme> Module for Jobs<S> {
 }
 
 fn display_text<S: JobsScheme>(count: usize) -> Option<String> {
-    (count > 0).then(|| format!("{} {}", S::jobs_symbol(), count))
+    (count > 0).then(|| join_non_empty([S::jobs_symbol(), count.to_string().as_str()]))
 }
 
 #[cfg(test)]
@@ -77,6 +80,29 @@ mod tests {
     }
 
     impl JobsScheme for TestTheme {}
+
+    struct NoIconTheme;
+
+    impl DefaultColors for NoIconTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            green()
+        }
+    }
+
+    impl JobsScheme for NoIconTheme {
+        fn jobs_symbol() -> &'static str {
+            ""
+        }
+    }
+
+    #[test]
+    fn an_empty_icon_leaves_only_the_count() {
+        assert_eq!(display_text::<NoIconTheme>(2).as_deref(), Some("2"));
+    }
 
     #[test]
     fn hides_when_no_jobs_are_running() {

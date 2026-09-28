@@ -10,6 +10,8 @@ use super::{DefaultPadding, Module};
 pub struct ReadOnly<S>(PhantomData<S>);
 
 pub trait ReadOnlyScheme: DefaultColors {
+    const READONLY_ICON: &'static str = "\u{e0a2}"; // the Powerline padlock
+
     fn readonly_fg() -> Color {
         Self::default_fg()
     }
@@ -18,7 +20,7 @@ pub trait ReadOnlyScheme: DefaultColors {
     }
 
     fn readonly_symbol() -> &'static str {
-        ""
+        Self::READONLY_ICON
     }
 }
 
@@ -40,11 +42,9 @@ impl<S: ReadOnlyScheme> Module for ReadOnly<S> {
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        if platform::cwd_is_readonly() {
-            powerline.add_segment(
-                S::readonly_symbol(),
-                Style::simple(S::readonly_fg(), S::readonly_bg()),
-            );
+        let symbol = S::readonly_symbol();
+        if !symbol.is_empty() && platform::cwd_is_readonly() {
+            powerline.add_segment(symbol, Style::simple(S::readonly_fg(), S::readonly_bg()));
         }
     }
 }

@@ -19,6 +19,7 @@ use crate::colors::Color;
 use crate::config::{SegmentPadding, UsageDisplay, UsageProvider};
 use crate::platform::resolve_binary;
 use crate::themes::DefaultColors;
+use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
 use super::{DefaultPadding, Module};
@@ -43,14 +44,6 @@ const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
 // below starts. Unix pty backends never ask, but Claude's own TUI does.
 const CURSOR_POSITION_REQUEST: &[u8] = b"\x1b[6n";
 const CURSOR_POSITION_REPORT: &[u8] = b"\x1b[1;1R";
-// Shown in place of a reading: the first refresh has yet to land, the provider
-// CLI the reading comes from is not on `PATH` at all, or it has no signed-in
-// account to report on (nf-fa-user_xmark).
-const LOADING_MARKER: char = '\u{2026}';
-const NOT_INSTALLED_MARKER: char = '?';
-const LOGGED_OUT_MARKER: char = '\u{f235}';
-const OPENAI_ICON: &str = "\u{ec81}";
-const CLAUDE_ICON: &str = "\u{ec82}";
 // spaces added manually to allow for compact display
 const DEFAULT_SESSION_LABEL: &str = "5h ";
 const DEFAULT_WEEKLY_LABEL: &str = " 7d ";
@@ -158,6 +151,16 @@ impl UsageWindows {
 }
 
 pub trait UsageScheme: DefaultColors {
+    const CLAUDE_USAGE_ICON: &'static str = "\u{ec82}";
+    const CODEX_USAGE_ICON: &'static str = "\u{ec81}";
+    // Shown in place of a reading: the first refresh has yet to land, the
+    // provider CLI the reading comes from is not on `PATH` at all, or it has no
+    // signed-in account to report on (nf-fa-user_xmark).
+    const USAGE_LOADING_ICON: &'static str = "\u{2026}";
+    const USAGE_NOT_INSTALLED_ICON: &'static str = "?";
+    const USAGE_LOGGED_OUT_ICON: &'static str = "\u{f235}";
+    const USAGE_RESET_ICON: &'static str = "↻";
+
     fn claude_usage_fg() -> Color {
         Self::default_fg()
     }
@@ -172,6 +175,25 @@ pub trait UsageScheme: DefaultColors {
     }
     fn usage_threshold_bg() -> Color {
         Self::alert_bg()
+    }
+    fn claude_usage_icon() -> &'static str {
+        Self::CLAUDE_USAGE_ICON
+    }
+    fn codex_usage_icon() -> &'static str {
+        Self::CODEX_USAGE_ICON
+    }
+    fn usage_loading_icon() -> &'static str {
+        Self::USAGE_LOADING_ICON
+    }
+    fn usage_not_installed_icon() -> &'static str {
+        Self::USAGE_NOT_INSTALLED_ICON
+    }
+    fn usage_logged_out_icon() -> &'static str {
+        Self::USAGE_LOGGED_OUT_ICON
+    }
+    /// Before the time left until the session window resets.
+    fn usage_reset_icon() -> &'static str {
+        Self::USAGE_RESET_ICON
     }
 }
 
@@ -318,11 +340,12 @@ impl<S: UsageScheme> Module for Usage<S> {
         .load();
 
         let (default_fg, bg) = provider_style::<S>(self.provider);
+        let icon = provider_icon::<S>(self.provider);
         let label = match &lookup {
             Lookup::Ready(reading) if reading.logged_out => {
-                format!("{} {LOGGED_OUT_MARKER}", provider_label(self.provider))
+                join_non_empty([icon, S::usage_logged_out_icon()])
             }
-            Lookup::Ready(reading) => format_usage(
+            Lookup::Ready(reading) => format_usage::<S>(
                 self.provider,
                 reading,
                 &self.windows,
@@ -330,11 +353,12 @@ impl<S: UsageScheme> Module for Usage<S> {
                 self.show_session_time_remaining,
                 self.session_time_remaining_only_at_limit,
             ),
-            Lookup::Loading => format!("{} {LOADING_MARKER}", provider_label(self.provider)),
-            Lookup::Unavailable => {
-                format!("{} {NOT_INSTALLED_MARKER}", provider_label(self.provider))
-            }
+            Lookup::Loading => join_non_empty([icon, S::usage_loading_icon()]),
+            Lookup::Unavailable => join_non_empty([icon, S::usage_not_installed_icon()]),
         };
+        if label.is_empty() {
+            return;
+        }
         let bg = lookup
             .ready()
             .filter(|reading| {
@@ -346,10 +370,10 @@ impl<S: UsageScheme> Module for Usage<S> {
     }
 }
 
-fn provider_label(provider: UsageProvider) -> &'static str {
+fn provider_icon<S: UsageScheme>(provider: UsageProvider) -> &'static str {
     match provider {
-        UsageProvider::Claude => CLAUDE_ICON,
-        UsageProvider::Codex => OPENAI_ICON,
+        UsageProvider::Claude => S::claude_usage_icon(),
+        UsageProvider::Codex => S::codex_usage_icon(),
     }
 }
 
@@ -360,7 +384,7 @@ fn provider_style<S: UsageScheme>(provider: UsageProvider) -> (Color, Color) {
     }
 }
 
-fn format_usage(
+fn format_usage<S: UsageScheme>(
     provider: UsageProvider,
     cache: &UsageReading,
     windows: &UsageWindows,
@@ -368,7 +392,12 @@ fn format_usage(
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: f64,
 ) -> String {
-    let mut parts = vec![provider_label(provider).to_string(), " ".to_string()];
+    let icon = provider_icon::<S>(provider);
+    let mut parts = if icon.is_empty() {
+        vec![]
+    } else {
+        vec![icon.to_string(), " ".to_string()]
+    };
     for (window, used_percent) in [
         (&windows.session, cache.session),
         (&windows.weekly, cache.weekly),
@@ -392,8 +421,11 @@ fn format_usage(
             .is_some_and(|percent| percent >= session_time_remaining_only_at_limit * 100.0)
     {
         parts.push(format!(
-            " ↻ {}",
-            format_time_remaining(cache.session_resets_at)
+            " {}",
+            join_non_empty([
+                S::usage_reset_icon(),
+                format_time_remaining(cache.session_resets_at).as_str()
+            ])
         ));
     }
     parts.join("")
@@ -1197,6 +1229,42 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::colors::{black, white};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            white()
+        }
+    }
+
+    impl UsageScheme for TestTheme {}
+
+    struct NoIconTheme;
+
+    impl DefaultColors for NoIconTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            white()
+        }
+    }
+
+    impl UsageScheme for NoIconTheme {
+        fn claude_usage_icon() -> &'static str {
+            ""
+        }
+        fn usage_reset_icon() -> &'static str {
+            ""
+        }
+    }
 
     #[test]
     fn parses_codex_rate_limit_windows_from_app_server_response() {
@@ -1538,7 +1606,7 @@ mod tests {
             false,
         );
         assert_eq!(
-            format_usage(
+            format_usage::<TestTheme>(
                 UsageProvider::Claude,
                 &cache(12.0, Some(DOLLARS)),
                 &windows,
@@ -1583,7 +1651,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            format_usage(
+            format_usage::<TestTheme>(
                 UsageProvider::Codex,
                 &cache(40.0, Some(DOLLARS)),
                 &windows,
@@ -1594,7 +1662,7 @@ mod tests {
             "\u{ec81} 40%"
         );
         assert_eq!(
-            format_usage(
+            format_usage::<TestTheme>(
                 UsageProvider::Codex,
                 &cache(100.0, Some(DOLLARS)),
                 &windows,
@@ -1618,7 +1686,7 @@ mod tests {
         };
         let windows = windows(UsageProvider::Codex, true, false, false, None);
         let format = |cache: &UsageReading| {
-            format_usage(
+            format_usage::<TestTheme>(
                 UsageProvider::Codex,
                 cache,
                 &windows,
@@ -1634,6 +1702,40 @@ mod tests {
             ..cache
         })
         .contains('↻'));
+    }
+
+    #[test]
+    fn empty_icons_are_hidden_with_their_spaces() {
+        let cache = UsageReading {
+            session: Some(12.4),
+            weekly: None,
+            fable: None,
+            credits: None,
+            session_resets_at: Some(now_secs().saturating_add(2 * 3600 + 90)),
+            logged_out: false,
+        };
+        assert_eq!(
+            format_usage::<NoIconTheme>(
+                UsageProvider::Claude,
+                &cache,
+                &windows(UsageProvider::Claude, true, false, false, None),
+                UsageDisplay::Percentage,
+                true,
+                0.0,
+            ),
+            "5h 12% 2h 1m"
+        );
+        assert_eq!(
+            format_usage::<TestTheme>(
+                UsageProvider::Claude,
+                &cache,
+                &windows(UsageProvider::Claude, true, false, false, None),
+                UsageDisplay::Percentage,
+                true,
+                0.0,
+            ),
+            "\u{ec82} 5h 12% ↻ 2h 1m"
+        );
     }
 
     #[test]
@@ -1686,7 +1788,7 @@ mod tests {
             logged_out: false,
         };
         assert_eq!(
-            format_usage(
+            format_usage::<TestTheme>(
                 UsageProvider::Claude,
                 &cache,
                 &windows(UsageProvider::Claude, true, false, false, None),
@@ -1697,7 +1799,7 @@ mod tests {
             "\u{ec82} 5h 12%"
         );
         assert_eq!(
-            format_usage(
+            format_usage::<TestTheme>(
                 UsageProvider::Codex,
                 &cache,
                 &windows(UsageProvider::Codex, false, true, false, None),
@@ -1708,7 +1810,7 @@ mod tests {
             "\u{ec81}  7d 68%"
         );
         assert_eq!(
-            format_usage(
+            format_usage::<TestTheme>(
                 UsageProvider::Claude,
                 &cache,
                 &windows(UsageProvider::Claude, true, true, true, None),
@@ -1719,7 +1821,7 @@ mod tests {
             "\u{ec82} 5h 12% 7d 68% F 33%"
         );
         assert_eq!(
-            format_usage(
+            format_usage::<TestTheme>(
                 UsageProvider::Claude,
                 &cache,
                 &windows(UsageProvider::Claude, true, true, false, Some("")),
