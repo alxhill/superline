@@ -150,9 +150,19 @@ impl ThemeDoc {
     }
 
     pub fn new_from_starter() -> ThemeDoc {
-        let mut doc = ThemeDoc::load(STARTER_THEME).expect("the example theme is valid");
-        doc.saved = None;
-        doc
+        ThemeDoc::load(STARTER_THEME)
+            .expect("the example theme is valid")
+            .fork()
+    }
+
+    /// An unsaved copy, for a new theme file.
+    pub fn fork(&self) -> ThemeDoc {
+        ThemeDoc {
+            root: self.root.clone(),
+            saved: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
+        }
     }
 
     pub fn root(&self) -> &Value {
@@ -480,6 +490,27 @@ mod tests {
     fn the_starter_theme_is_valid() {
         let doc = ThemeDoc::new_from_starter();
         assert!(doc.is_dirty());
+    }
+
+    #[test]
+    fn bundled_themes_only_set_documented_properties() {
+        for (file, text) in crate::themes::BUNDLED_THEMES {
+            let doc = ThemeDoc::load(text).unwrap();
+            for entry in doc.entries() {
+                // Only the library's ExitCode module reads this; no widget shows it.
+                if entry == ThemeEntry::Module("exit_code".into()) {
+                    continue;
+                }
+                for (spec, value) in doc.props(&entry) {
+                    assert!(
+                        value.is_none() || !spec.help.is_empty(),
+                        "themes/{file} sets {}.{}, which theme-options.json does not describe",
+                        entry.label(),
+                        spec.key
+                    );
+                }
+            }
+        }
     }
 
     #[test]

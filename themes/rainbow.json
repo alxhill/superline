@@ -1,0 +1,75 @@
+{
+  "defaults": { "fg": "green", "bg": "black" },
+  "modules": {
+    "cwd": {
+      "path_fg": "white",
+      "bg_colors": ["red", "orange", "yellow", "green", "blue", "nice_purple"]
+    },
+    "readonly": { "fg": 254, "bg": 124, "symbol": "󰈡" },
+    "cmd": {
+      "passed_fg": "green",
+      "passed_bg": "black",
+      "failed_fg": "white",
+      "failed_bg": "warning_red",
+      "user_symbol": ""
+    },
+    "last_cmd_duration": { "fg": "green", "bg": "black", "time_icon": "" },
+    "git": {
+      "clean_fg": "white",
+      "clean_bg": "blue",
+      "dirty_fg": "white",
+      "dirty_bg": "bright_orange",
+      "notstaged_fg": "white",
+      "notstaged_bg": "mid_red",
+      "untracked_fg": "white",
+      "untracked_bg": "warning_red",
+      "staged_fg": "white",
+      "staged_bg": "forest_green",
+      "conflicted_fg": "white",
+      "conflicted_bg": "light_red",
+      "remote_fg": "light_grey",
+      "remote_bg": "mid_grey"
+    },
+    "pr": {
+      "draft_fg": "white",
+      "draft_bg": "mid_grey",
+      "open_fg": "white",
+      "open_bg": "forest_green",
+      "merged_fg": "white",
+      "merged_bg": "nice_purple",
+      "closed_fg": "white",
+      "closed_bg": "mid_red",
+      "status_success_fg": "light_green",
+      "status_failure_fg": "warning_red",
+      "status_pending_fg": "dark_yellow"
+    },
+    "python": {
+      "env_fg": "dark_grey",
+      "env_bg": "light_green",
+      "version_fg": "dark_grey",
+      "version_bg": "mid_green"
+    },
+    "node": { "fg": "white", "bg": "forest_green", "inactive_bg": "burgundy" },
+    "java": { "fg": 160, "bg": "white" },
+    "cargo": { "fg": "black", "bg": "burnt_orange" },
+    "ai_usage": {
+      "claude_fg": "black",
+      "claude_bg": "burnt_orange",
+      "codex_fg": "white",
+      "codex_bg": "forest_green",
+      "threshold_bg": "warning_red"
+    },
+    "os": { "fg": "white", "bg": "dark_grey" },
+    "memory_usage": { "fg": "white", "bg": "warning_red" },
+    "time": { "fg": "mid_grey", "bg": "dark_grey" },
+    "username": { "fg": "green", "bg": "black", "root_bg": "red" },
+    "hostname": { "fg": "grey", "bg": "dark_grey" },
+    "local_ip": { "fg": "white", "bg": "dark_grey" },
+    "battery": { "fg": "white", "bg": "warning_red" },
+    "sudo": { "fg": "white", "bg": "nice_purple" },
+    "update": { "fg": "white", "bg": "nice_purple" },
+    "error": { "fg": "white", "bg": "warning_red" },
+    "unknown": { "fg": "white", "bg": "warning_red" },
+    "exit_code": { "fg": "white", "bg": "red" }
+  }
+}

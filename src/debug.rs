@@ -280,7 +280,7 @@ impl Display for Age {
 }
 
 /// The bare name of a module type, e.g. `Git` for
-/// `superline::modules::git::Git<superline::themes::RainbowTheme>`.
+/// `superline::modules::git::Git<superline::themes::CustomTheme>`.
 pub fn type_label(name: &'static str) -> &'static str {
     let base = name.split('<').next().unwrap_or(name);
     base.rsplit("::").next().unwrap_or(base)
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn type_label_drops_path_and_theme_parameter() {
         assert_eq!(
-            type_label("superline::modules::git::Git<superline::themes::RainbowTheme>"),
+            type_label("superline::modules::git::Git<superline::themes::CustomTheme>"),
             "Git"
         );
         assert_eq!(type_label("superline::modules::cwd::Cwd"), "Cwd");

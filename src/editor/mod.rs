@@ -468,9 +468,14 @@ impl App {
                 choices[next].map(Value::from)
             }
             Kind::Str { .. } if target == Target::Settings && spec.key == schema::THEME.key => {
+                let dir = self.config_dir();
                 let current = value.as_ref().and_then(Value::as_str).unwrap_or_default();
+                let current = crate::themes::theme_path(dir, current);
                 let choices = &self.theme_choices;
-                let next = match choices.iter().position(|c| c == current) {
+                let next = match choices
+                    .iter()
+                    .position(|c| crate::themes::theme_path(dir, c) == current)
+                {
                     Some(i) if forward => (i + 1) % choices.len(),
                     Some(i) => (i + choices.len() - 1) % choices.len(),
                     None => 0,
@@ -1103,7 +1108,7 @@ impl App {
                     (_, Focus::Layout) if self.page == Page::Theme => &[
                         ("↑↓", "move"),
                         ("⏎", "edit"),
-                        ("n", "new theme"),
+                        ("n", "fork theme"),
                         ("u", "undo"),
                         ("s", "save"),
                         ("q", "quit"),
@@ -1315,7 +1320,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("← →", "step a colour by one code"),
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
-        ("n", "create a new custom theme file"),
+        ("n", "fork the theme into a new theme file"),
         ("", ""),
         ("Anywhere", ""),
         ("1  2  t", "Layout page / Theme page / switch"),
@@ -1371,25 +1376,36 @@ fn truncate_start(text: &str, width: usize) -> String {
     format!("…{kept}")
 }
 
-/// The built-in themes plus any theme files next to the config.
+/// The theme files next to the config, plus the bundled themes that aren't
+/// installed yet (choosing one installs it), by the name a config uses.
 fn theme_choices(config_path: &Path) -> Vec<String> {
-    let mut choices = vec!["rainbow".to_string(), "simple".to_string()];
-    let Some(dir) = config_path.parent() else {
-        return choices;
-    };
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return choices;
-    };
-    let mut themes: Vec<String> = entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
-        .filter(|path| is_theme_file(path))
-        .filter_map(|path| path.file_name()?.to_str().map(str::to_string))
+    let mut files: Vec<String> = crate::themes::BUNDLED_THEMES
+        .iter()
+        .map(|(file, _)| file.to_string())
         .collect();
-    themes.sort();
-    choices.extend(themes);
-    choices
+    let entries = config_path
+        .parent()
+        .and_then(|dir| std::fs::read_dir(dir).ok());
+    for entry in entries.into_iter().flatten().filter_map(Result::ok) {
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "json") && is_theme_file(&path) {
+            if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+                if !files.iter().any(|file| file == name) {
+                    files.push(name.to_string());
+                }
+            }
+        }
+    }
+    files.sort();
+    files.iter().map(|file| theme_name(file)).collect()
+}
+
+/// A theme file's name without `.json` when the config can leave it off.
+fn theme_name(file: &str) -> String {
+    match file.strip_suffix(".json") {
+        Some(stem) if !stem.is_empty() && Path::new(stem).extension().is_none() => stem.into(),
+        _ => file.into(),
+    }
 }
 
 fn is_theme_file(path: &Path) -> bool {
