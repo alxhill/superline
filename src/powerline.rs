@@ -9,12 +9,12 @@ use crate::config;
 use crate::config::{LineSegment, SegmentPadding, SeparatorStyle, TerminalRuntimeMetadata, Widget};
 use crate::debug;
 use crate::modules::{
-    Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes, LastCmdDuration,
-    LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text,
-    Time, Unknown, Usage, UsageWindows, Username,
+    Battery, Cargo, Cmd, Cwd, DefaultPadding, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes,
+    LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName,
+    Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
-use crate::themes::CompleteTheme;
+use crate::themes::{CompleteTheme, SimpleTheme};
 
 #[derive(Clone)]
 pub struct Style {
@@ -164,6 +164,11 @@ pub struct Powerline {
     /// The configured padding of the widget being drawn, which replaces the
     /// default each of its segments asks for.
     widget_padding: Option<SegmentPadding>,
+    /// The padding the module being drawn declares for its segments.
+    module_padding: SegmentPadding,
+    /// Set by [`default_padding`], which asks a widget's module for its
+    /// padding without drawing it.
+    probe: Option<Option<DefaultPadding>>,
 }
 
 impl Default for Powerline {
@@ -185,6 +190,8 @@ impl Powerline {
             direction: Direction::Left,
             last_padding: false,
             widget_padding: None,
+            module_padding: SegmentPadding::Large,
+            probe: None,
         }
     }
 
@@ -331,10 +338,10 @@ impl Powerline {
         };
     }
 
-    /// Adds a segment with a space on each side, unless the widget's padding
-    /// is configured.
+    /// Adds a segment with the padding its module declares, unless the
+    /// widget's padding is configured.
     pub fn add_segment<D: Display>(&mut self, seg: D, style: Style) {
-        self.push_segment(seg, style, SegmentPadding::Large, None);
+        self.push_segment(seg, style, self.module_padding, None);
     }
 
     /// Adds a segment with no padding, unless the widget's padding is
@@ -379,7 +386,7 @@ impl Powerline {
             }
             None => link,
         };
-        self.push_segment(seg, style, SegmentPadding::Large, Some(visible_width));
+        self.push_segment(seg, style, self.module_padding, Some(visible_width));
     }
 
     pub fn start_right(&mut self) {
@@ -389,8 +396,14 @@ impl Powerline {
     }
 
     pub fn add_module<M: Module>(&mut self, mut module: M) {
+        if let Some(probe) = &mut self.probe {
+            *probe = Some(module.default_padding());
+            return;
+        }
         let span = debug::span(debug::type_label(std::any::type_name::<M>()));
+        let outer = std::mem::replace(&mut self.module_padding, module.default_padding().padding);
         module.append_segments(self);
+        self.module_padding = outer;
         span.finish();
     }
 
@@ -596,9 +609,45 @@ impl Powerline {
     }
 }
 
+/// The padding a widget's module declares, as it would draw the widget. `None`
+/// for layout entries that draw no segment.
+pub fn default_padding(widget: &Widget) -> Option<DefaultPadding> {
+    if matches!(
+        widget.segment,
+        LineSegment::Separator(_) | LineSegment::Padding(_)
+    ) {
+        return None;
+    }
+    let mut probe = Powerline::new();
+    probe.probe = Some(None);
+    probe.add_conf_modules::<SimpleTheme>(std::slice::from_ref(widget), &NoRuntimeData);
+    probe.probe.flatten()
+}
+
+/// Stands in for the shell when a module is built but not drawn.
+struct NoRuntimeData;
+
+impl TerminalRuntimeMetadata for NoRuntimeData {
+    fn shell_name(&self) -> String {
+        String::new()
+    }
+
+    fn total_columns(&self) -> usize {
+        0
+    }
+
+    fn last_command_duration(&self) -> Option<Duration> {
+        None
+    }
+
+    fn last_command_status(&self) -> &str {
+        "0"
+    }
+}
+
 /// The `modules` key a widget is themed under, for the properties every
 /// module takes. `None` for layout entries that draw no segment.
-fn theme_module(segment: &LineSegment) -> Option<&'static str> {
+pub fn theme_module(segment: &LineSegment) -> Option<&'static str> {
     Some(match segment {
         LineSegment::Battery => "battery",
         LineSegment::SmallSpacer | LineSegment::LargeSpacer => "spacer",
@@ -793,6 +842,78 @@ mod tests {
         ] {
             assert_eq!(columns, 4 * 3 + 4);
         }
+    }
+
+    /// Draws a plain segment, one with its own padding, and a link.
+    struct Declares(DefaultPadding);
+
+    impl Module for Declares {
+        fn default_padding(&self) -> DefaultPadding {
+            self.0
+        }
+
+        fn append_segments(&mut self, powerline: &mut Powerline) {
+            let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+            powerline.add_segment("one", style.clone());
+            powerline.add_padded_segment("two", style.clone(), SegmentPadding::Right);
+            powerline.add_hyperlink_segment("#1", "https://example.com/1", style, None);
+        }
+    }
+
+    #[test]
+    fn segments_get_the_padding_their_module_declares() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        for (padding, before, after) in PADDINGS {
+            for side in 0..2 {
+                let mut powerline = flush_powerline();
+                if side == 1 {
+                    powerline.start_right();
+                }
+                powerline.add_module(Declares(padding.into()));
+                // Outside a module, a segment is large again.
+                powerline.add_segment("out", style.clone());
+
+                let (buffer, columns) = if side == 0 {
+                    (&powerline.left_buffer, powerline.left_columns)
+                } else {
+                    (&powerline.right_buffer, powerline.right_columns)
+                };
+                let expected = format!("{before}one{after}two {before}#1{after} out ");
+                assert_eq!(visible(buffer), expected, "{padding:?}");
+                assert_eq!(columns, expected.chars().count(), "{padding:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn widget_padding_wins_over_what_the_module_declares() {
+        let mut powerline = flush_powerline();
+        powerline.widget_padding = Some(SegmentPadding::Left);
+        powerline.add_module(Declares(SegmentPadding::Small.into()));
+        assert_eq!(visible(&powerline.left_buffer), " one two #1");
+    }
+
+    #[test]
+    fn default_padding_asks_the_module_without_drawing_it() {
+        let widget = |json: &str| serde_json::from_str::<Widget>(json).unwrap();
+        for (json, padding) in [
+            (r#"{"cwd":{"max_length":9,"wanted_seg_num":2}}"#, "left"),
+            (r#"{"last_cmd_duration":{"min_run_time":5}}"#, "left"),
+            (r#""cmd""#, "small"),
+            (r#""shell""#, "small"),
+            (r#""small_spacer""#, "small"),
+            (r#""large_spacer""#, "large"),
+            (r#"{"git":{"padding":"small"}}"#, "large"),
+            (r#""pr""#, "large"),
+            (r#"{"text":"hi"}"#, "large"),
+            (r#""python""#, "large; venv label right"),
+            (r#""future_widget""#, "large"),
+        ] {
+            let declared = default_padding(&widget(json)).map(|p| p.to_string());
+            assert_eq!(declared.as_deref(), Some(padding), "{json}");
+        }
+        assert_eq!(default_padding(&widget(r#"{"padding":2}"#)), None);
+        assert_eq!(default_padding(&widget(r#"{"separator":"round"}"#)), None);
     }
 
     #[test]

@@ -8,11 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::platform;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// How long a prompt waits for a stale kubeconfig to be re-read before
 /// serving the cached context. A local kubeconfig parses well within this, so
@@ -116,6 +117,10 @@ struct ContextDetails {
 }
 
 impl<S: KubernetesScheme> Module for Kubernetes<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let paths = kubeconfig_paths();
         if paths.is_empty() {

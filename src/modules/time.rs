@@ -3,10 +3,11 @@ use std::marker::PhantomData;
 use chrono::Local;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 pub struct Time<S: TimeScheme> {
     time_format: String,
@@ -45,6 +46,10 @@ impl<S: TimeScheme> Time<S> {
 }
 
 impl<S: TimeScheme> Module for Time<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let now = Local::now().format(&self.time_format).to_string();
         powerline.add_segment(now, Style::simple(S::time_fg(), S::time_bg()));

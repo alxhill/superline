@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::colors::Color;
-use crate::modules::Module;
+use crate::config::SegmentPadding;
+use crate::modules::{DefaultPadding, Module};
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -37,11 +38,15 @@ impl<S: SpacerScheme> Spacer<S> {
 }
 
 impl<S: SpacerScheme> Module for Spacer<S> {
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn default_padding(&self) -> DefaultPadding {
         if self.large {
-            powerline.add_segment("", Style::simple(S::color_fg(), S::color_bg()));
+            SegmentPadding::Large.into()
         } else {
-            powerline.add_short_segment("", Style::simple(S::color_fg(), S::color_bg()));
+            SegmentPadding::Small.into()
         }
+    }
+
+    fn append_segments(&mut self, powerline: &mut Powerline) {
+        powerline.add_segment("", Style::simple(S::color_fg(), S::color_bg()));
     }
 }

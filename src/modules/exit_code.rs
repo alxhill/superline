@@ -2,10 +2,11 @@ use std::env;
 use std::marker::PhantomData;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 pub struct ExitCode<S: ExitCodeScheme> {
     scheme: PhantomData<S>,
@@ -35,6 +36,10 @@ impl<S: ExitCodeScheme> ExitCode<S> {
 }
 
 impl<S: ExitCodeScheme> Module for ExitCode<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if let Some(exit_code) = env::args().nth(1).as_deref() {
             if exit_code != "0" {

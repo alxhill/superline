@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{platform, utils, Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// Displays the current username, using a distinct background for root.
 ///
@@ -54,6 +55,10 @@ impl<S: UserScheme> Username<S> {
 }
 
 impl<S: UserScheme> Module for Username<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if self.show_on_local || utils::is_remote_shell() {
             let bg = if platform::is_root() {

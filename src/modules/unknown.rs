@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::colors::Color;
-use crate::modules::Module;
+use crate::config::SegmentPadding;
+use crate::modules::{DefaultPadding, Module};
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -30,6 +31,10 @@ impl<S: UnknownScheme> Unknown<S> {
 }
 
 impl<S: UnknownScheme> Module for Unknown<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         powerline.add_segment(
             format!("unknown module: {}", self.name),

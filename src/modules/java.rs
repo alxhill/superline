@@ -4,8 +4,9 @@ use std::io::read_to_string;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
+use crate::config::SegmentPadding;
 use crate::mise;
-use crate::modules::Module;
+use crate::modules::{DefaultPadding, Module};
 use crate::themes::DefaultColors;
 use crate::{Color, Powerline, Style};
 
@@ -52,6 +53,10 @@ impl<S: JavaScheme> Java<S> {
 }
 
 impl<S: JavaScheme> Module for Java<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         // mise wins over sdkman: when a mise config declares java it is the tool
         // actually putting a JDK on the path, even in a repo that also keeps a

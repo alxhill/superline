@@ -91,7 +91,7 @@
       ["version_fg", "color", "Interpreter version shown next to an active venv.", "defaults.fg"],
       ["version_bg", "color", "Background of the version segment.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
-      ["padding", "choice: small, large, left, right", "Space around each segment's text: small for none, large for both sides, left or right for one side.", "large; right for the venv label"]
+      ["padding", "choice: small, large, left, right", "Space around each segment's text: small for none, large for both sides, left or right for one side.", "large; venv label right"]
     ]
   },
   "node": {

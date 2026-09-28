@@ -10,12 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
-use crate::config::{GitBackend, DEFAULT_GIT_STATUS_TIMEOUT_MS};
+use crate::config::{GitBackend, SegmentPadding, DEFAULT_GIT_STATUS_TIMEOUT_MS};
 use crate::debug;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 mod gitoxide;
 mod process;
@@ -494,6 +494,10 @@ impl Source for GitStatus {
 }
 
 impl<S: GitScheme> Module for Git<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let (git_dir, is_worktree) = match find_git_dir() {
             Some(result) => result,

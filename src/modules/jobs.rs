@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// Shows the number of running background jobs owned by the current shell.
 ///
@@ -43,6 +44,10 @@ impl<S: JobsScheme> Jobs<S> {
 }
 
 impl<S: JobsScheme> Module for Jobs<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if let Some(text) = display_text::<S>(self.count) {
             powerline.add_segment(text, Style::simple(S::jobs_fg(), S::jobs_bg()));

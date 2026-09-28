@@ -15,7 +15,7 @@ use crate::mise;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 pub struct Python<S: PythonScheme> {
     /// Whether to show the interpreter version.
@@ -67,6 +67,8 @@ const PYTHON_VERSION_CMD: &str =
 const PYTHON_LOGO: &str = "\u{e73c}";
 const SNAKE_ICON: &str = "\u{f150e}";
 const LOADING_MARKER: &str = "\u{2026}";
+/// The venv label differs from the module's other segments, which are `large`.
+const VENV_PADDING: SegmentPadding = SegmentPadding::Right;
 
 /// The version a virtual env was created from, read from the files the env
 /// tooling leaves behind, so the interpreter never has to start.
@@ -177,6 +179,13 @@ fn interpreter_for(venv: &Path) -> PathBuf {
 }
 
 impl<S: PythonScheme> Module for Python<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        DefaultPadding {
+            padding: SegmentPadding::Large,
+            exception: Some(("venv label", VENV_PADDING)),
+        }
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let venv = env::var("VIRTUAL_ENV")
             .or_else(|_| env::var("CONDA_ENV_PATH"))
@@ -204,7 +213,7 @@ impl<S: PythonScheme> Module for Python<S> {
             powerline.add_padded_segment(
                 label,
                 Style::simple(S::pyenv_fg(), S::pyenv_bg()),
-                SegmentPadding::Right,
+                VENV_PADDING,
             );
 
             if self.show_version {

@@ -125,7 +125,8 @@ prompt as you change them, and saves back to the same file:
 - `J`/`K` (or shift-arrows) move a widget, crossing between the left and right sides and between rows; on a row
   they move the whole row. `n` adds a row.
 - `Enter` opens a widget's options: `Enter` or `space` toggles and cycles values or types a new one, `←`/`→` cycle
-  choices, and `x` resets an option to its default.
+  choices, and `x` resets an option to its default. An unset `padding` shows what the widget gets instead: the theme's
+  padding for it, or the widget's own default, such as `left` for `cwd`. The Theme page shows the same defaults.
 - `2` (or `t`) switches to the Theme page, which edits the custom theme file the config names. Pick a module to see
   each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
   picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph

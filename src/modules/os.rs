@@ -2,10 +2,11 @@ use std::env;
 use std::marker::PhantomData;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// The operating-system families that the prompt can identify without
 /// consulting the filesystem or spawning a process.
@@ -136,6 +137,10 @@ impl<S: OsScheme> Os<S> {
 }
 
 impl<S: OsScheme> Module for Os<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         powerline.add_segment(
             S::os_symbol(self.kind),

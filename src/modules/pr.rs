@@ -7,10 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// Branches that never have a PR of their own - skip all work for these.
 const SKIP_BRANCHES: &[&str] = &["develop", "main", "master", "HEAD"];
@@ -168,6 +169,10 @@ impl Source for PrLookup {
 }
 
 impl<S: PrScheme> Module for Pr<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let Some((branch, repo_root)) = current_branch_and_root() else {
             return;

@@ -12,13 +12,15 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragra
 use ratatui::Frame;
 use serde_json::Value;
 
-use super::model::Target;
+use super::model::{SegPos, Target};
 use super::theme::{
     color_names, color_value, edit_text, parse_choice, parse_color, parse_color_list, step_choice,
     PropKind, PropSpec, ThemeDoc, ThemeEntry,
 };
 use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
+use crate::config::Widget;
+use crate::powerline::{default_padding, theme_module};
 
 /// Rows PageUp/PageDown move in the icon browser.
 const ICON_PAGE: usize = 10;
@@ -203,6 +205,22 @@ impl App {
                 self.set_status(error, true);
                 false
             }
+        }
+    }
+
+    /// What the widget at `pos` pads its text with while its `padding` is
+    /// unset, and where that comes from: the theme's padding for it, else the
+    /// padding the widget declares.
+    pub(super) fn padding_fallback(&self, pos: SegPos) -> Option<(&'static str, String)> {
+        let widget: Widget = serde_json::from_value(self.doc.segment(pos).clone()).ok()?;
+        let themed = theme_module(&widget.segment).and_then(|module| {
+            let doc = self.theme_doc()?;
+            let props = doc.props(&ThemeEntry::Module(module.to_string()));
+            props.into_iter().find(|(spec, _)| spec.key == "padding")?.1
+        });
+        match themed.as_ref().and_then(Value::as_str) {
+            Some(padding) => Some(("theme", padding.to_string())),
+            None => Some(("default", default_padding(&widget)?.to_string())),
         }
     }
 
@@ -861,12 +879,18 @@ fn prop_value_spans(
             spans
         }
         (PropKind::Str, Some(value)) => icon_spans(&edit_text(value), false),
-        (PropKind::Choice(_), Some(value)) => vec![Span::raw(edit_text(value)).yellow()],
+        (PropKind::Choice(_), Some(value)) if spec.fallback.is_empty() => {
+            vec![Span::raw(edit_text(value)).yellow()]
+        }
+        (PropKind::Choice(_), Some(value)) => vec![
+            Span::raw(edit_text(value)).yellow(),
+            Span::raw(format!("  (overrides default {})", spec.fallback)).dark_gray(),
+        ],
         (PropKind::Choice(_), None) if spec.fallback.is_empty() => {
             vec![Span::raw("unset").dark_gray()]
         }
         (PropKind::Choice(_), None) => {
-            vec![Span::raw(format!("{} (default)", spec.fallback)).dark_gray()]
+            vec![Span::raw(format!("default ({})", spec.fallback)).dark_gray()]
         }
         (PropKind::Str, None) => match glyphs::fallback_text(&spec.fallback) {
             Some(text) => icon_spans(&text, true),
@@ -955,6 +979,69 @@ mod tests {
         assert_eq!(app.theme_doc().unwrap().root()["modules"], json!({}));
         press(&mut app, KeyCode::Left);
         assert_eq!(padding(&app), json!("small"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn text(spans: &[Span]) -> String {
+        spans.iter().map(|span| span.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn padding_shows_the_default_it_falls_back_to() {
+        let dir = scratch_dir("defaults");
+        std::fs::write(
+            dir.join("theme.json"),
+            r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": { "git": { "padding": "small" } } }"#,
+        )
+        .unwrap();
+        let config = json!({ "theme": "theme.json", "rows": [{ "left": [
+            { "cwd": { "max_length": 60, "wanted_seg_num": 5 } },
+            "git",
+            { "python": { "padding": "small" } },
+        ] }] });
+        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        app.load_theme_slot();
+        let at = |index| SegPos {
+            row: 0,
+            side: Side::Left,
+            index,
+        };
+        let shown = |app: &App, index| {
+            let pos = at(index);
+            let options = app.doc.options(Target::Segment(pos));
+            let (spec, value) = options.iter().find(|(s, _)| s.key == "padding").unwrap();
+            text(&super::super::option_value_spans(
+                spec,
+                *value,
+                app.padding_fallback(pos),
+                false,
+            ))
+        };
+
+        // Layout page: the widget's own default, or the theme's padding for it.
+        assert_eq!(shown(&app, 0), "default (left)");
+        assert_eq!(shown(&app, 1), "theme (small)");
+        assert_eq!(
+            shown(&app, 2),
+            "small  (overrides default large; venv label right)"
+        );
+
+        // Theme page: the module's own default, from the same declaration.
+        let doc = app.theme_doc().unwrap();
+        let prop = |module: &str| {
+            let entry = ThemeEntry::Module(module.into());
+            let props = doc.props(&entry);
+            let (spec, value) = props.into_iter().find(|(s, _)| s.key == "padding").unwrap();
+            text(&prop_value_spans(doc, &entry, &spec, value.as_ref()))
+        };
+        assert_eq!(prop("cwd"), "default (left)");
+        assert_eq!(prop("git"), "small  (overrides default large)");
+        assert_eq!(prop("readonly"), "default (large)");
+        assert_eq!(
+            prop("spacer"),
+            "default (small for small_spacer, large for large_spacer)"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

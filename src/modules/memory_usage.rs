@@ -8,10 +8,11 @@
 use std::marker::PhantomData;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// The Nerd Font `memory` glyph.
 const MEMORY_ICON: &str = "\u{f035b}";
@@ -72,6 +73,10 @@ impl<S: MemoryUsageScheme> MemoryUsage<S> {
 }
 
 impl<S: MemoryUsageScheme> Module for MemoryUsage<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let Some(stats) = system_memory() else {
             return;
