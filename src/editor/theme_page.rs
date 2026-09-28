@@ -256,6 +256,7 @@ impl App {
         }
         let dir = self.path.parent().unwrap_or(Path::new(".")).to_path_buf();
         let theme = ThemeRef::File(dir.join(name));
+        let forking = self.theme_doc().is_some();
         let mut copied_from = None;
         let slot = match load_slot(&theme) {
             Slot::Missing => {
@@ -281,8 +282,12 @@ impl App {
             self.theme_choices.push(name.to_string());
         }
         self.changed();
-        self.theme.cursor = 0;
-        self.theme.prop_cursor = 0;
+        // A fork has the same modules, so the cursor stays on the one being
+        // edited.
+        if !(forking && copied_from.is_some()) {
+            self.theme.cursor = 0;
+            self.theme.prop_cursor = 0;
+        }
         self.set_status(
             match copied_from {
                 Some(source) => format!("Created {name} from {source} (s to save)"),
@@ -1025,6 +1030,7 @@ mod tests {
             json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
             &[],
         );
+        press(&mut app, KeyCode::Down);
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Right);
         assert_eq!(
@@ -1045,6 +1051,7 @@ mod tests {
 
         press(&mut app, KeyCode::Enter);
         assert_eq!(app.doc.root()["theme"], "theme.json");
+        assert_eq!(app.theme_entry(), Some(ThemeEntry::Module("cwd".into())));
         app.save();
         assert_eq!(read_json(&dir.join("theme.json")), builtin("rainbow"));
         assert_eq!(read_json(&dir.join("config.json"))["theme"], "theme.json");
