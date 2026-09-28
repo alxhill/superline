@@ -159,7 +159,7 @@ def fallback_html(fallback):
 
 def fill_theme_options(text):
     options = json.loads((HERE / "theme-options.json").read_text())
-    options.pop("_comment", None)
+    options = {name: spec for name, spec in options.items() if not name.startswith("_")}
     missing = set(options)
 
     def fill(match):

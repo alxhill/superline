@@ -1,5 +1,11 @@
 {
   "_comment": "Theme file properties per module, as read by src/themes/custom.rs. Each entry is [property, type, what it styles, fallback]. Fallbacks name the theme file's defaults.",
+  "_text_attributes": {
+    "_comment": "Every fg or <prefix>_fg color also takes these true/false properties, named bold or <prefix>_bold and so on, for the text drawn in that color. They default to false. The editor lists them after each such color, with these descriptions ({fg} is the color's property).",
+    "bold": "Draws the {fg} text in bold.",
+    "italic": "Draws the {fg} text in italics.",
+    "underline": "Underlines the {fg} text."
+  },
   "cwd": {
     "properties": [
       ["path_fg", "color", "Text of every path component.", "defaults.fg"],

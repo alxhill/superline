@@ -155,10 +155,11 @@ fn icon<S: UpdateScheme>() -> String {
     if icon.is_empty() {
         return String::new();
     }
+    let fg = FgColor::from(S::update_fg());
     format!(
-        "{bg}{fg} {icon} {reset} ",
+        "{bg}{fg} {icon} {attrs_off}{reset} ",
         bg = BgColor::from(S::update_bg()),
-        fg = FgColor::from(S::update_fg()),
+        attrs_off = fg.attrs_off(),
         reset = Reset,
     )
 }

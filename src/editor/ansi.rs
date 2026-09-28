@@ -125,6 +125,21 @@ mod tests {
     }
 
     #[test]
+    fn text_attributes_become_modifiers_until_turned_off() {
+        let lines = to_lines(
+            "\x1b[48;5;31m\x1b[38;5;15m\x1b[1;3;4m main \x1b[22;23;24m\x1b[38;5;31m\u{e0b0}\x1b[0m",
+        );
+        let spans = &lines[0].spans;
+        assert_eq!(spans[0].content, " main ");
+        assert_eq!(
+            spans[0].style.add_modifier,
+            Modifier::BOLD | Modifier::ITALIC | Modifier::UNDERLINED
+        );
+        assert_eq!(spans[1].content, "\u{e0b0}");
+        assert!(spans[1].style.add_modifier.is_empty());
+    }
+
+    #[test]
     fn hyperlinks_keep_only_their_label() {
         let lines = to_lines("\x1b]8;;https://example.com\x1b\\#12\x1b]8;;\x1b\\ done");
         let text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();

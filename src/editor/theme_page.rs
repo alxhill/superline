@@ -6,16 +6,17 @@ use std::path::{Path, PathBuf};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 use serde_json::Value;
 
 use super::model::Target;
+use super::theme::TextSample;
 use super::theme::{
-    color_names, color_value, edit_text, parse_color, parse_color_list, PropKind, PropSpec,
-    ThemeDoc, ThemeEntry,
+    color_names, color_value, edit_text, parse_bool, parse_color, parse_color_list, PropKind,
+    PropSpec, ThemeDoc, ThemeEntry,
 };
 use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
@@ -300,6 +301,7 @@ impl App {
                     PropKind::Color => parse_color(text),
                     PropKind::ColorList => parse_color_list(text),
                     PropKind::Str => Ok(Value::from(text)),
+                    PropKind::Bool => parse_bool(text),
                 };
                 match parsed {
                     Ok(value) => self.set_theme_prop(Some(value)),
@@ -404,6 +406,18 @@ impl App {
                             prefer_name: value.as_ref().is_some_and(Value::is_string),
                         };
                         self.preview_stale = true;
+                    }
+                    KeyCode::Enter
+                    | KeyCode::Char(' ')
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Char('h')
+                    | KeyCode::Char('l')
+                        if spec.kind == PropKind::Bool =>
+                    {
+                        // Off is the default, so switching off removes the key.
+                        let on = value.as_ref().and_then(Value::as_bool).unwrap_or(false);
+                        self.set_theme_prop((!on).then_some(Value::Bool(true)));
                     }
                     KeyCode::Enter | KeyCode::Char(' ') if spec.kind == PropKind::Str => {
                         let current = value
@@ -770,6 +784,16 @@ impl App {
                 spans.push(Span::raw(buffer.clone()).underlined());
             } else {
                 spans.extend(prop_value_spans(doc, &entry, spec, value.as_ref()));
+                // The preview only draws the text when the prompt shows it
+                // (git's unstaged count only in a repo with unstaged changes),
+                // so the switch under the cursor draws a sample of it.
+                if let Some(sample) = doc
+                    .text_sample(&entry, &spec.key)
+                    .filter(|_| selected && spec.kind == PropKind::Bool)
+                {
+                    spans.push(Span::raw("  "));
+                    spans.push(text_sample_span(&sample));
+                }
             }
             lines.push(Line::from(spans));
         }
@@ -894,6 +918,33 @@ fn icon_spans(text: &str, default: bool) -> Vec<Span<'static>> {
     ]
 }
 
+/// Columns a switch's value is padded to: `false (default)`.
+const BOOL_WIDTH: usize = 15;
+
+/// Sample text in a text colour, on its background, with its bold, italic
+/// and underline switches applied.
+fn text_sample_span(sample: &TextSample) -> Span<'static> {
+    let mut style = Style::new();
+    if let Some(fg) = sample.fg {
+        style = style.fg(Color::Indexed(fg));
+    }
+    if let Some(bg) = sample.bg {
+        style = style.bg(Color::Indexed(bg));
+    }
+    for (on, modifier) in [
+        (sample.attrs.bold, Modifier::BOLD),
+        (sample.attrs.italic, Modifier::ITALIC),
+        (sample.attrs.underline, Modifier::UNDERLINED),
+    ] {
+        if on {
+            style = style.add_modifier(modifier);
+        }
+    }
+    Span::styled(TEXT_SAMPLE, style)
+}
+
+const TEXT_SAMPLE: &str = " Sample 123 ";
+
 fn prop_value_spans(
     doc: &ThemeDoc,
     entry: &ThemeEntry,
@@ -919,6 +970,13 @@ fn prop_value_spans(
             None if spec.fallback.is_empty() => vec![Span::raw("unset").dark_gray()],
             None => vec![Span::raw(format!("default: {}", spec.fallback)).dark_gray()],
         },
+        // Padded so the sample drawn after a switch stays put when it flips.
+        (PropKind::Bool, Some(value)) => {
+            vec![Span::raw(format!("{:BOOL_WIDTH$}", edit_text(value))).yellow()]
+        }
+        (PropKind::Bool, None) => {
+            vec![Span::raw(format!("{:BOOL_WIDTH$}", "false (default)")).dark_gray()]
+        }
         (_, Some(value)) => vec![
             swatch(doc.resolve(entry, spec, Some(value))),
             Span::raw(format!(" {}", edit_text(value))).yellow(),
@@ -945,6 +1003,7 @@ mod tests {
     use crate::editor::model::{Document, Entry};
     use crate::editor::Page;
     use ratatui::backend::TestBackend;
+    use ratatui::crossterm::event::KeyModifiers;
     use ratatui::Terminal;
     use serde_json::json;
 
@@ -1122,5 +1181,105 @@ mod tests {
             serde_json::from_str::<Value>(custom).unwrap()
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn space_switches_a_text_attribute_on_and_off() {
+        let dir = std::env::temp_dir().join(format!("superline-theme-page-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("theme.json"),
+            r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": {} }"#,
+        )
+        .unwrap();
+        let config = json!({ "theme": "theme.json", "rows": [{ "left": ["read_only"] }] });
+        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        app.load_theme_slot();
+
+        let entries = app.theme_doc().unwrap().entries();
+        app.theme.cursor = entries
+            .iter()
+            .position(|e| e.label() == "readonly")
+            .unwrap();
+        app.theme.focus = Focus::Options;
+        app.theme.prop_cursor = 1;
+        assert_eq!(app.theme_prop().unwrap().1.key, "bold");
+
+        let space = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+        app.on_theme_key(space);
+        let modules = |app: &App| app.theme_doc().unwrap().root()["modules"].clone();
+        assert_eq!(modules(&app), json!({ "readonly": { "bold": true } }));
+        app.on_theme_key(space);
+        assert_eq!(modules(&app), json!({}));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_switch_under_the_cursor_draws_a_sample_of_its_text() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let dir = std::env::temp_dir().join(format!(
+            "superline-theme-page-sample-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("theme.json"),
+            r#"{
+                "defaults": { "fg": 15, "bg": 0 },
+                "modules": { "git": { "notstaged_fg": 229, "notstaged_bg": 166 } }
+            }"#,
+        )
+        .unwrap();
+        let config = json!({ "theme": "theme.json", "rows": [{ "left": ["read_only"] }] });
+        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        app.load_theme_slot();
+
+        let doc = app.theme_doc().unwrap();
+        let entries = doc.entries();
+        let git = entries.iter().position(|e| e.label() == "git").unwrap();
+        let bold = doc
+            .props(&entries[git])
+            .iter()
+            .position(|(spec, _)| spec.key == "notstaged_bold")
+            .unwrap();
+        app.theme.cursor = git;
+        app.theme.prop_cursor = bold;
+        app.theme.focus = Focus::Options;
+
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        app.on_theme_key(key(KeyCode::Char(' ')));
+        app.on_theme_key(key(KeyCode::Down));
+        app.on_theme_key(key(KeyCode::Char(' ')));
+        assert_eq!(app.theme_prop().unwrap().1.key, "notstaged_italic");
+
+        let mut terminal = Terminal::new(TestBackend::new(90, 60)).unwrap();
+        terminal
+            .draw(|frame| app.draw_theme_props(frame, frame.area()))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> = (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect()
+            })
+            .collect();
+        let sampled: Vec<usize> = (0..rows.len())
+            .filter(|y| rows[*y].contains(TEXT_SAMPLE.trim()))
+            .collect();
+        assert_eq!(sampled.len(), 1, "{rows:#?}");
+        let row = &rows[sampled[0]];
+        assert!(row.contains("notstaged_italic"), "{row}");
+
+        let x = row[..row.find(TEXT_SAMPLE.trim()).unwrap()].chars().count() as u16;
+        let cell = &buffer[(x, sampled[0] as u16)];
+        assert_eq!(cell.fg, Color::Indexed(229));
+        assert_eq!(cell.bg, Color::Indexed(166));
+        assert_eq!(cell.modifier, Modifier::BOLD | Modifier::ITALIC);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

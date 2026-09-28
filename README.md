@@ -131,8 +131,11 @@ prompt as you change them, and saves back to the same file:
   each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
   picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
-  property. `n` copies the theme into a new theme file next to the config and points the config at it. `1` returns
-  to the layout, where Settings picks another theme file.
+  property. Each text colour is followed by its `bold`, `italic` and `underline` switches, which `Enter` or `space`
+  turns on and off. The switch under the cursor shows a sample of its text, since the preview only draws text the
+  prompt shows in the current directory (git's unstaged count needs unstaged changes). `n` copies the theme into a
+  new theme file next to the config and points the config at it. `1` returns to the layout, where Settings picks
+  another theme file.
 - `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
   and `?` lists every key.
 
@@ -593,6 +596,11 @@ old theme keys, `nvm` and `py`.
 Colors are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-color code from
 `0` to `255`. [`themes/rainbow.json`](themes/rainbow.json) is a full example, and `src/themes/custom.rs` lists every
 module name and property.
+
+Every text color (`fg`, or a property ending in `_fg`) can also make its text bold, italic or underlined, with
+`true`/`false` properties named the same way: `bold`, `italic` and `underline` go with `fg`, and `clean_bold`,
+`clean_italic` and `clean_underline` with `clean_fg`. So `"git": { "clean_bold": true }` draws the branch name in
+bold while the working tree is clean. Separators and the rest of the prompt are never affected.
 
 ## Commands
 

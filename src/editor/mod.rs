@@ -1352,6 +1352,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
             "edit a module; ⏎ opens the colour picker or icon browser",
         ),
         ("← →", "step a colour by one code"),
+        ("⏎  space", "switch bold, italic or underline on or off"),
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
         ("n", "fork the theme into a new theme file"),
