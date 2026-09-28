@@ -6,15 +6,15 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::colors::Color;
 use crate::config;
-use crate::config::{LineSegment, SeparatorStyle, TerminalRuntimeMetadata};
+use crate::config::{LineSegment, SegmentPadding, SeparatorStyle, TerminalRuntimeMetadata, Widget};
 use crate::debug;
 use crate::modules::{
-    Battery, Cargo, Cmd, Cwd, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes, LastCmdDuration,
-    LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text,
-    Time, Unknown, Usage, UsageWindows, Username,
+    Battery, Cargo, Cmd, Cwd, DefaultPadding, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes,
+    LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName,
+    Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
-use crate::themes::CompleteTheme;
+use crate::themes::{CompleteTheme, DefaultColors};
 
 #[derive(Clone)]
 pub struct Style {
@@ -32,6 +32,25 @@ impl Style {
             bg: bg.into(),
             sep_fg: BgColor::from(bg).transpose(),
         }
+    }
+}
+
+/// Spaces drawn on each side of a segment's text.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+struct Padding {
+    left: usize,
+    right: usize,
+}
+
+impl From<SegmentPadding> for Padding {
+    fn from(padding: SegmentPadding) -> Padding {
+        let (left, right) = match padding {
+            SegmentPadding::Small => (0, 0),
+            SegmentPadding::Large => (1, 1),
+            SegmentPadding::Left => (1, 0),
+            SegmentPadding::Right => (0, 1),
+        };
+        Padding { left, right }
     }
 }
 
@@ -144,6 +163,14 @@ pub struct Powerline {
     separator: Separator,
     direction: Direction,
     last_padding: bool,
+    /// The configured padding of the widget being drawn, which replaces the
+    /// default each of its segments asks for.
+    widget_padding: Option<SegmentPadding>,
+    /// The padding the module being drawn declares for its segments.
+    module_padding: SegmentPadding,
+    /// Set by [`default_padding`], which asks a widget's module for its
+    /// padding without drawing it.
+    probe: Option<Option<DefaultPadding>>,
 }
 
 impl Default for Powerline {
@@ -164,6 +191,9 @@ impl Powerline {
             separator: Separator::Chevron,
             direction: Direction::Left,
             last_padding: false,
+            widget_padding: None,
+            module_padding: SegmentPadding::Large,
+            probe: None,
         }
     }
 
@@ -197,7 +227,7 @@ impl Powerline {
         &mut self,
         seg: D,
         style: Style,
-        spaces: bool,
+        padding: Padding,
         visible_width: Option<usize>,
     ) -> fmt::Result {
         // write the last style's separator on the new style's background
@@ -230,17 +260,21 @@ impl Powerline {
         }
 
         let orig_len = self.left_buffer.len();
-        if spaces {
-            write!(self.left_buffer, " {} ", seg)?;
-        } else {
-            write!(self.left_buffer, "{}", seg)?;
-        };
+        write!(
+            self.left_buffer,
+            "{:left$}{}{:right$}",
+            "",
+            seg,
+            "",
+            left = padding.left,
+            right = padding.right
+        )?;
 
         // Count terminal cells, so wide characters take two columns. When the
         // segment carries invisible escapes (e.g. a hyperlink) the caller
         // passes the real visible width instead.
         self.left_columns += visible_width
-            .map(|width| width + if spaces { 2 } else { 0 })
+            .map(|width| width + padding.left + padding.right)
             .unwrap_or_else(|| self.left_buffer[orig_len..].width());
 
         // Text attributes end with the segment, before any separator.
@@ -254,7 +288,7 @@ impl Powerline {
         &mut self,
         seg: D,
         style: Style,
-        spaces: bool,
+        padding: Padding,
         visible_width: Option<usize>,
     ) -> fmt::Result {
         // write the separator directly onto the current background
@@ -274,17 +308,21 @@ impl Powerline {
         write!(self.right_buffer, "{}", style.fg)?;
 
         let orig_len = self.right_buffer.len();
-        if spaces {
-            write!(self.right_buffer, " {} ", seg)?;
-        } else {
-            write!(self.right_buffer, "{}", seg)?;
-        };
+        write!(
+            self.right_buffer,
+            "{:left$}{}{:right$}",
+            "",
+            seg,
+            "",
+            left = padding.left,
+            right = padding.right
+        )?;
 
         // Count terminal cells, so wide characters take two columns. When the
         // segment carries invisible escapes (e.g. a hyperlink) the caller
         // passes the real visible width instead.
         self.right_columns += visible_width
-            .map(|width| width + if spaces { 2 } else { 0 })
+            .map(|width| width + padding.left + padding.right)
             .unwrap_or_else(|| self.right_buffer[orig_len..].width());
 
         // Text attributes end with the segment, before any separator.
@@ -294,18 +332,41 @@ impl Powerline {
         Ok(())
     }
 
-    pub fn add_segment<D: Display>(&mut self, seg: D, style: Style) {
+    fn push_segment<D: Display>(
+        &mut self,
+        seg: D,
+        style: Style,
+        default: SegmentPadding,
+        visible_width: Option<usize>,
+    ) {
+        let padding = self.widget_padding.unwrap_or(default).into();
         let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, true, None),
-            Direction::Right => self.write_segment_right(seg, style, true, None),
+            Direction::Left => self.write_segment(seg, style, padding, visible_width),
+            Direction::Right => self.write_segment_right(seg, style, padding, visible_width),
         };
     }
 
+    /// Adds a segment with the padding its module declares, unless the
+    /// widget's padding is configured.
+    pub fn add_segment<D: Display>(&mut self, seg: D, style: Style) {
+        self.push_segment(seg, style, self.module_padding, None);
+    }
+
+    /// Adds a segment with no padding, unless the widget's padding is
+    /// configured.
     pub fn add_short_segment<D: Display>(&mut self, seg: D, style: Style) {
-        let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, false, None),
-            Direction::Right => self.write_segment_right(seg, style, false, None),
-        };
+        self.push_segment(seg, style, SegmentPadding::Small, None);
+    }
+
+    /// Adds a segment with `default` padding around its text, unless the
+    /// widget's padding is configured.
+    pub fn add_padded_segment<D: Display>(
+        &mut self,
+        seg: D,
+        style: Style,
+        default: SegmentPadding,
+    ) {
+        self.push_segment(seg, style, default, None);
     }
 
     /// Adds a segment whose text is an OSC 8 terminal hyperlink, optionally
@@ -343,10 +404,7 @@ impl Powerline {
             }
             None => link,
         };
-        let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, true, Some(visible_width)),
-            Direction::Right => self.write_segment_right(seg, style, true, Some(visible_width)),
-        };
+        self.push_segment(seg, style, self.module_padding, Some(visible_width));
     }
 
     pub fn start_right(&mut self) {
@@ -356,17 +414,28 @@ impl Powerline {
     }
 
     pub fn add_module<M: Module>(&mut self, mut module: M) {
+        if let Some(probe) = &mut self.probe {
+            *probe = Some(module.default_padding());
+            return;
+        }
         let span = debug::span(debug::type_label(std::any::type_name::<M>()));
+        let outer = std::mem::replace(&mut self.module_padding, module.default_padding().padding);
         module.append_segments(self);
+        self.module_padding = outer;
         span.finish();
     }
 
     fn add_conf_modules<T: CompleteTheme>(
         &mut self,
-        modules: &Vec<LineSegment>,
+        widgets: &[Widget],
         runtime_data: &impl TerminalRuntimeMetadata,
     ) {
-        for module in modules {
+        for widget in widgets {
+            // The config's padding wins over the theme's.
+            self.widget_padding = widget
+                .padding
+                .or_else(|| theme_module(&widget.segment).and_then(T::padding));
+            let module = &widget.segment;
             match module {
                 LineSegment::Battery => self.add_module(Battery::<T>::new()),
                 LineSegment::SmallSpacer => self.add_module(Spacer::<T>::small()),
@@ -469,6 +538,7 @@ impl Powerline {
                 LineSegment::Unknown { name } => self.add_module(Unknown::<T>::new(name.clone())),
             };
         }
+        self.widget_padding = None;
     }
 
     pub fn add_padding(&mut self, len: usize) {
@@ -559,6 +629,132 @@ impl Powerline {
     }
 }
 
+/// The padding a widget's module declares, as it would draw the widget. `None`
+/// for layout entries that draw no segment.
+pub fn default_padding(widget: &Widget) -> Option<DefaultPadding> {
+    if matches!(
+        widget.segment,
+        LineSegment::Separator(_) | LineSegment::Padding(_)
+    ) {
+        return None;
+    }
+    let mut probe = Powerline::new();
+    probe.probe = Some(None);
+    probe.add_conf_modules::<ProbeTheme>(std::slice::from_ref(widget), &NoRuntimeData);
+    probe.probe.flatten()
+}
+
+/// Every scheme's defaults, for modules that are built but not drawn.
+struct ProbeTheme;
+
+impl DefaultColors for ProbeTheme {
+    fn default_bg() -> Color {
+        Color::from_u8(0)
+    }
+
+    fn default_fg() -> Color {
+        Color::from_u8(15)
+    }
+}
+
+macro_rules! probe_schemes {
+    ($($scheme:path),* $(,)?) => {
+        $(impl $scheme for ProbeTheme {})*
+    };
+}
+
+probe_schemes!(
+    crate::modules::BatteryScheme,
+    crate::modules::CargoScheme,
+    crate::modules::CmdScheme,
+    crate::modules::ErrorMessageScheme,
+    crate::modules::ExitCodeScheme,
+    crate::modules::GitScheme,
+    crate::modules::HostScheme,
+    crate::modules::JavaScheme,
+    crate::modules::JobsScheme,
+    crate::modules::KubernetesScheme,
+    crate::modules::LastCmdDurationScheme,
+    crate::modules::LocalIpScheme,
+    crate::modules::MemoryUsageScheme,
+    crate::modules::NodeScheme,
+    crate::modules::OsScheme,
+    crate::modules::PrScheme,
+    crate::modules::PythonScheme,
+    crate::modules::ReadOnlyScheme,
+    crate::modules::ShellScheme,
+    crate::modules::SpacerScheme,
+    crate::modules::SudoScheme,
+    crate::modules::TimeScheme,
+    crate::modules::UnknownScheme,
+    crate::modules::UsageScheme,
+    crate::modules::UserScheme,
+    crate::update::UpdateScheme,
+);
+
+impl crate::modules::CwdScheme for ProbeTheme {
+    fn path_bg_colors() -> Vec<Color> {
+        vec![Self::default_bg()]
+    }
+}
+
+impl CompleteTheme for ProbeTheme {}
+
+/// Stands in for the shell when a module is built but not drawn.
+struct NoRuntimeData;
+
+impl TerminalRuntimeMetadata for NoRuntimeData {
+    fn shell_name(&self) -> String {
+        String::new()
+    }
+
+    fn total_columns(&self) -> usize {
+        0
+    }
+
+    fn last_command_duration(&self) -> Option<Duration> {
+        None
+    }
+
+    fn last_command_status(&self) -> &str {
+        "0"
+    }
+}
+
+/// The `modules` key a widget is themed under, for the properties every
+/// module takes. `None` for layout entries that draw no segment.
+pub fn theme_module(segment: &LineSegment) -> Option<&'static str> {
+    Some(match segment {
+        LineSegment::Battery => "battery",
+        LineSegment::SmallSpacer | LineSegment::LargeSpacer => "spacer",
+        LineSegment::Separator(_) | LineSegment::Padding(_) => return None,
+        LineSegment::Cwd { .. } => "cwd",
+        LineSegment::ReadOnly => "readonly",
+        LineSegment::Git { .. } => "git",
+        LineSegment::Pr { .. } => "pr",
+        LineSegment::Python { .. } => "python",
+        LineSegment::Node { .. } => "node",
+        LineSegment::Java { .. } => "java",
+        LineSegment::Cargo { .. } => "cargo",
+        LineSegment::Kubernetes => "kubernetes",
+        LineSegment::Host | LineSegment::Hostname => "hostname",
+        LineSegment::Jobs => "jobs",
+        LineSegment::LocalIp => "local_ip",
+        LineSegment::MemoryUsage { .. } => "memory_usage",
+        LineSegment::Os => "os",
+        LineSegment::Sudo => "sudo",
+        LineSegment::Shell => "shell",
+        LineSegment::Time { .. } => "time",
+        LineSegment::Text(_) => "text",
+        LineSegment::AiUsage { .. } => "ai_usage",
+        LineSegment::User | LineSegment::Username => "username",
+        LineSegment::Cmd => "cmd",
+        LineSegment::LastCmdDuration { .. } => "last_cmd_duration",
+        LineSegment::Error { .. } => "error",
+        LineSegment::Unknown { .. } => "unknown",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -626,6 +822,220 @@ mod tests {
         // " データ " and " 日本語 ": three double-width characters plus padding
         assert_eq!(powerline.left_columns, 8);
         assert_eq!(powerline.right_columns, 8);
+    }
+
+    fn flush_powerline() -> Powerline {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.set_separator(Separator::None);
+        powerline
+    }
+
+    /// The text a terminal shows for `buffer`, without its colour and link
+    /// escapes.
+    fn visible(buffer: &str) -> String {
+        let mut out = String::new();
+        let mut chars = buffer.chars().peekable();
+        while let Some(c) = chars.next() {
+            match (c, chars.peek()) {
+                ('\x1b', Some('[')) => {
+                    chars.find(|c| c.is_ascii_alphabetic());
+                }
+                ('\x1b', Some(']')) => {
+                    while let Some(c) = chars.next() {
+                        if c == '\x1b' && chars.next() == Some('\\') {
+                            break;
+                        }
+                    }
+                }
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    /// Each padding with the spaces it draws before and after the text.
+    const PADDINGS: [(SegmentPadding, &str, &str); 4] = [
+        (SegmentPadding::Small, "", ""),
+        (SegmentPadding::Large, " ", " "),
+        (SegmentPadding::Left, " ", ""),
+        (SegmentPadding::Right, "", " "),
+    ];
+
+    #[test]
+    fn widget_padding_replaces_every_segment_default_on_both_sides() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        for (padding, before, after) in PADDINGS {
+            let mut powerline = flush_powerline();
+            powerline.widget_padding = Some(padding);
+            for side in 0..2 {
+                if side == 1 {
+                    powerline.start_right();
+                }
+                powerline.add_segment("one", style.clone());
+                powerline.add_short_segment("two", style.clone());
+                powerline.add_padded_segment("six", style.clone(), SegmentPadding::Left);
+                powerline.add_padded_segment("ten", style.clone(), SegmentPadding::Right);
+            }
+
+            let expected: String = ["one", "two", "six", "ten"]
+                .map(|text| format!("{before}{text}{after}"))
+                .concat();
+            let columns = 4 * (3 + before.len() + after.len());
+            assert_eq!(visible(&powerline.left_buffer), expected, "{padding:?}");
+            assert_eq!(visible(&powerline.right_buffer), expected, "{padding:?}");
+            assert_eq!(powerline.left_columns, columns, "{padding:?}");
+            assert_eq!(powerline.right_columns, columns, "{padding:?}");
+        }
+    }
+
+    #[test]
+    fn padded_segment_matches_text_padded_by_hand() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let mut padded = flush_powerline();
+        let mut by_hand = flush_powerline();
+        for side in 0..2 {
+            if side == 1 {
+                padded.start_right();
+                by_hand.start_right();
+            }
+            for (padding, before, after) in PADDINGS {
+                padded.add_padded_segment("env", style.clone(), padding);
+                by_hand.add_short_segment(format!("{before}env{after}"), style.clone());
+            }
+        }
+
+        assert_eq!(padded.left_buffer, by_hand.left_buffer);
+        assert_eq!(padded.right_buffer, by_hand.right_buffer);
+        assert_eq!(visible(&padded.left_buffer), "env env  envenv ");
+        // "env" four times, plus a space for small, two for large, and one
+        // each for left and right.
+        for columns in [
+            padded.left_columns,
+            padded.right_columns,
+            by_hand.left_columns,
+            by_hand.right_columns,
+        ] {
+            assert_eq!(columns, 4 * 3 + 4);
+        }
+    }
+
+    /// Draws a plain segment, one with its own padding, and a link.
+    struct Declares(DefaultPadding);
+
+    impl Module for Declares {
+        fn default_padding(&self) -> DefaultPadding {
+            self.0
+        }
+
+        fn append_segments(&mut self, powerline: &mut Powerline) {
+            let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+            powerline.add_segment("one", style.clone());
+            powerline.add_padded_segment("two", style.clone(), SegmentPadding::Right);
+            powerline.add_hyperlink_segment("#1", "https://example.com/1", style, None);
+        }
+    }
+
+    #[test]
+    fn segments_get_the_padding_their_module_declares() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        for (padding, before, after) in PADDINGS {
+            for side in 0..2 {
+                let mut powerline = flush_powerline();
+                if side == 1 {
+                    powerline.start_right();
+                }
+                powerline.add_module(Declares(padding.into()));
+                // Outside a module, a segment is large again.
+                powerline.add_segment("out", style.clone());
+
+                let (buffer, columns) = if side == 0 {
+                    (&powerline.left_buffer, powerline.left_columns)
+                } else {
+                    (&powerline.right_buffer, powerline.right_columns)
+                };
+                let expected = format!("{before}one{after}two {before}#1{after} out ");
+                assert_eq!(visible(buffer), expected, "{padding:?}");
+                assert_eq!(columns, expected.chars().count(), "{padding:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn widget_padding_wins_over_what_the_module_declares() {
+        let mut powerline = flush_powerline();
+        powerline.widget_padding = Some(SegmentPadding::Left);
+        powerline.add_module(Declares(SegmentPadding::Small.into()));
+        assert_eq!(visible(&powerline.left_buffer), " one two #1");
+    }
+
+    #[test]
+    fn default_padding_asks_the_module_without_drawing_it() {
+        let widget = |json: &str| serde_json::from_str::<Widget>(json).unwrap();
+        for (json, padding) in [
+            (r#"{"cwd":{"max_length":9,"wanted_seg_num":2}}"#, "left"),
+            (r#"{"last_cmd_duration":{"min_run_time":5}}"#, "left"),
+            (r#""cmd""#, "small"),
+            (r#""shell""#, "small"),
+            (r#""small_spacer""#, "small"),
+            (r#""large_spacer""#, "large"),
+            (r#"{"git":{"padding":"small"}}"#, "large"),
+            (r#""pr""#, "large"),
+            (r#"{"text":"hi"}"#, "large"),
+            (r#""python""#, "large; venv label right"),
+            (r#""future_widget""#, "large"),
+        ] {
+            let declared = default_padding(&widget(json)).map(|p| p.to_string());
+            assert_eq!(declared.as_deref(), Some(padding), "{json}");
+        }
+        assert_eq!(default_padding(&widget(r#"{"padding":2}"#)), None);
+        assert_eq!(default_padding(&widget(r#"{"separator":"round"}"#)), None);
+    }
+
+    #[test]
+    fn default_segment_padding_is_unchanged() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let mut powerline = flush_powerline();
+        powerline.add_segment("one", style.clone());
+        powerline.add_short_segment("two", style.clone());
+        powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, None);
+        assert_eq!(visible(&powerline.left_buffer), " one two #12 ");
+        assert_eq!(powerline.left_columns, 5 + 3 + 5);
+    }
+
+    #[test]
+    fn hyperlink_width_includes_the_widget_padding() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let marker = Some(("●", Color::from_u8(2)));
+        let cases = PADDINGS
+            .map(|(padding, before, after)| (Some(padding), before, after))
+            .into_iter()
+            .chain([(None, " ", " ")]);
+        for (padding, before, after) in cases {
+            let mut powerline = flush_powerline();
+            powerline.widget_padding = padding;
+            powerline.add_hyperlink_segment(
+                "#12",
+                "https://example.com/pr/12",
+                style.clone(),
+                marker,
+            );
+            powerline.start_right();
+            powerline.add_hyperlink_segment(
+                "#12",
+                "https://example.com/pr/12",
+                style.clone(),
+                marker,
+            );
+
+            // "#12" plus a space and the marker glyph is five cells.
+            let expected = format!("{before}#12 ●{after}");
+            let width = 5 + before.len() + after.len();
+            assert_eq!(visible(&powerline.left_buffer), expected, "{padding:?}");
+            assert_eq!(visible(&powerline.right_buffer), expected, "{padding:?}");
+            assert_eq!(powerline.left_columns, width, "{padding:?}");
+            assert_eq!(powerline.right_columns, width, "{padding:?}");
+        }
     }
 
     const BOLD_UNDERLINE: TextAttrs = TextAttrs {

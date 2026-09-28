@@ -4,10 +4,11 @@ use std::net::Ipv4Addr;
 use if_addrs::{get_if_addrs, IfAddr, Interface};
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// Displays the primary non-loopback IPv4 address without opening a socket or
 /// sending anything over the network.
@@ -40,6 +41,10 @@ impl<S: LocalIpScheme> LocalIp<S> {
 }
 
 impl<S: LocalIpScheme> Module for LocalIp<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if let Some(ip) = current_local_ipv4() {
             powerline.add_segment(ip, Style::simple(S::local_ip_fg(), S::local_ip_bg()));

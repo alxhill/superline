@@ -4,11 +4,12 @@ use battery::units::{energy::watt_hour, ratio::percent};
 use battery::{Manager, State};
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// Battery status is intentionally shown only when the aggregate charge is
 /// low enough to need attention. This keeps the prompt quiet for the common
@@ -74,6 +75,10 @@ impl<S: BatteryScheme> Battery<S> {
 }
 
 impl<S: BatteryScheme> Module for Battery<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if let Some(status) = self.status {
             powerline.add_segment(

@@ -10,12 +10,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::mise;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 pub struct Python<S: PythonScheme> {
     /// Whether to show the interpreter version.
@@ -77,6 +78,8 @@ impl<S: PythonScheme> Python<S> {
 const PYTHON_VERSION_CMD: &str =
     r#"from sys import version_info as v; print(f"{v.major}.{v.minor}.{v.micro}")"#;
 const LOADING_MARKER: &str = "\u{2026}";
+/// The venv label differs from the module's other segments, which are `large`.
+const VENV_PADDING: SegmentPadding = SegmentPadding::Right;
 
 /// The version a virtual env was created from, read from the files the env
 /// tooling leaves behind, so the interpreter never has to start.
@@ -187,6 +190,13 @@ fn interpreter_for(venv: &Path) -> PathBuf {
 }
 
 impl<S: PythonScheme> Module for Python<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        DefaultPadding {
+            padding: SegmentPadding::Large,
+            exception: Some(("venv label", VENV_PADDING)),
+        }
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let venv = env::var("VIRTUAL_ENV")
             .or_else(|_| env::var("CONDA_ENV_PATH"))
@@ -209,9 +219,10 @@ impl<S: PythonScheme> Module for Python<S> {
             let venv_name: &str = if self.show_venv { &venv_name } else { "" };
             let label = join_non_empty([pylogo.as_str(), venv_name]);
             if !label.is_empty() {
-                powerline.add_short_segment(
-                    format!("{label} "),
+                powerline.add_padded_segment(
+                    label,
                     Style::simple(S::pyenv_fg(), S::pyenv_bg()),
+                    VENV_PADDING,
                 );
             }
 

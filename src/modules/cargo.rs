@@ -4,8 +4,9 @@ use std::marker::PhantomData;
 use std::path::Path;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::mise;
-use crate::modules::Module;
+use crate::modules::{DefaultPadding, Module};
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -52,6 +53,10 @@ impl<S: CargoScheme> Cargo<S> {
 }
 
 impl<S: CargoScheme> Module for Cargo<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if let Ok(cwd) = env::current_dir() {
             if cwd.join("Cargo.toml").exists() {

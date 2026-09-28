@@ -4,11 +4,12 @@ use std::marker::PhantomData;
 use std::path::{PathBuf, MAIN_SEPARATOR, MAIN_SEPARATOR_STR};
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::platform;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 pub struct Cwd<S: CwdScheme> {
     max_length: usize,
@@ -58,7 +59,7 @@ impl<S: CwdScheme> Cwd<S> {
 macro_rules! rainbow_segment {
     ($powerline:ident, $iter_var:ident, $value:expr) => {
         let r_col = S::path_bg_colors()[$iter_var % S::path_bg_colors().len()];
-        $powerline.add_short_segment(format!(" {}", $value), Style::simple(S::path_fg(), r_col));
+        $powerline.add_segment($value, Style::simple(S::path_fg(), r_col));
         $iter_var = $iter_var.wrapping_add(1);
     };
 }
@@ -98,6 +99,10 @@ fn resolve_cwd(
 }
 
 impl<S: CwdScheme> Module for Cwd<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Left.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let current_dir = resolve_cwd(
             self.resolve_symlinks,

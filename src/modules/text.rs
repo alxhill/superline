@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 
+use crate::config::SegmentPadding;
 use crate::terminal::{Shell, SHELL};
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// Adds literal, user-supplied text to the prompt.
 ///
@@ -27,6 +28,10 @@ impl<S: DefaultColors> Text<S> {
 }
 
 impl<S: DefaultColors> Module for Text<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         powerline.add_segment(
             escape_for_shell(&sanitize(&self.text), SHELL.get()),

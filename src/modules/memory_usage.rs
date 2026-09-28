@@ -8,11 +8,12 @@
 use std::marker::PhantomData;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// A fraction of a percent is too noisy to call out in a prompt. Round-down
 /// percentage formatting means this also keeps a displayed `0%` out of the
@@ -77,6 +78,10 @@ impl<S: MemoryUsageScheme> MemoryUsage<S> {
 }
 
 impl<S: MemoryUsageScheme> Module for MemoryUsage<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let Some(stats) = system_memory() else {
             return;

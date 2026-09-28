@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{platform, Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 pub struct ReadOnly<S>(PhantomData<S>);
 
@@ -36,6 +37,10 @@ impl<S: ReadOnlyScheme> ReadOnly<S> {
 }
 
 impl<S: ReadOnlyScheme> Module for ReadOnly<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let symbol = S::readonly_symbol();
         if !symbol.is_empty() && platform::cwd_is_readonly() {

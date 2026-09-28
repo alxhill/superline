@@ -16,13 +16,13 @@ use serde_json::{json, Value};
 
 use crate::cache::{Cached, Lookup, Source};
 use crate::colors::Color;
-use crate::config::{UsageDisplay, UsageProvider};
+use crate::config::{SegmentPadding, UsageDisplay, UsageProvider};
 use crate::platform::resolve_binary;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 const BAR_WIDTH: usize = 5;
 const BAR_LEFT_CAP: char = '▗';
@@ -325,6 +325,10 @@ impl Source for UsageLookup {
 }
 
 impl<S: UsageScheme> Module for Usage<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if !self.windows.any_enabled() && !self.show_session_time_remaining {
             return;

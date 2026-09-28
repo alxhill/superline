@@ -986,14 +986,7 @@ impl App {
                 let segment = self.doc.segment(pos);
                 let (name, _) = describe(segment);
                 let intro = match widget_spec(segment) {
-                    Some(spec) => {
-                        let mut intro = vec![Line::from(spec.summary).italic()];
-                        if spec.options().is_empty() {
-                            intro.push(Line::default());
-                            intro.push(Line::from("No options.").dark_gray());
-                        }
-                        intro
-                    }
+                    Some(spec) => vec![Line::from(spec.summary).italic()],
                     None => vec![Line::from(
                         "superline does not recognise this widget. It is kept exactly as written.",
                     )
@@ -1041,7 +1034,15 @@ impl App {
                     cursor_position = Some((x, (first_option_line + i) as u16));
                     spans.push(Span::raw(buffer.clone()).underlined());
                 }
-                _ => spans.extend(option_value_spans(spec, *value, selected)),
+                _ => {
+                    let fallback = match target {
+                        Some(Target::Segment(pos)) if spec.key == schema::WIDGET_PADDING.key => {
+                            self.padding_fallback(pos)
+                        }
+                        _ => None,
+                    };
+                    spans.extend(option_value_spans(spec, *value, fallback, selected))
+                }
             }
             lines.push(Line::from(spans));
         }
@@ -1183,22 +1184,28 @@ impl App {
     }
 }
 
+/// An option's value, or what applies without one. `fallback` is where an
+/// unset value comes from and what it is, such as `("default", "left")`.
 fn option_value_spans(
     spec: &OptionSpec,
     value: Option<&Value>,
+    fallback: Option<(&'static str, String)>,
     selected: bool,
 ) -> Vec<Span<'static>> {
     let cyclable = matches!(spec.kind, Kind::Bool { .. } | Kind::Choice { .. });
-    let (text, style) = match (value, spec.default_value()) {
-        (Some(value), _) => (show_value(value), Style::new().fg(Color::Yellow)),
-        (None, Some(default)) => (
+    let (text, style) = match (value, spec.default_value(), &fallback) {
+        (Some(value), _, _) => (show_value(value), Style::new().fg(Color::Yellow)),
+        (None, Some(default), _) => (
             format!("{} (default)", show_value(&default)),
             Style::new().dark_gray(),
         ),
-        (None, None) if spec.required => ("missing".into(), Style::new().red()),
-        (None, None) => ("unset".into(), Style::new().dark_gray()),
+        (None, None, Some((source, fallback))) => {
+            (format!("{source} ({fallback})"), Style::new().dark_gray())
+        }
+        (None, None, None) if spec.required => ("missing".into(), Style::new().red()),
+        (None, None, None) => ("unset".into(), Style::new().dark_gray()),
     };
-    if selected && cyclable {
+    let mut spans = if selected && cyclable {
         vec![
             Span::raw("‹ ").dark_gray(),
             Span::styled(text, style),
@@ -1206,7 +1213,11 @@ fn option_value_spans(
         ]
     } else {
         vec![Span::styled(text, style)]
+    };
+    if let (Some(_), Some((source, fallback))) = (value, fallback) {
+        spans.push(Span::raw(format!("  (overrides {source} {fallback})")).dark_gray());
     }
+    spans
 }
 
 fn is_layout(spec: &WidgetSpec) -> bool {
@@ -1369,6 +1380,10 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("⏎  space", "switch bold, italic or underline on or off"),
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
+        (
+            "⏎  ← →",
+            "cycle a padding through small, large, left and right",
+        ),
         ("n", "fork the theme into a new theme file"),
         ("⏎ on a list", "edit each colour: ⏎ pick, ← → step, i type"),
         (

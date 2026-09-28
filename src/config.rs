@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 pub const DEFAULT_GIT_STATUS_TIMEOUT_MS: u64 = 250;
@@ -57,8 +57,130 @@ impl UpdateConfig {
 // single line of a command terminal
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandLine {
-    pub left: Vec<LineSegment>,
-    pub right: Option<Vec<LineSegment>>,
+    pub left: Vec<Widget>,
+    pub right: Option<Vec<Widget>>,
+}
+
+/// One entry of a row: the widget, plus the options every widget takes. These
+/// are written among the widget's own options, as in
+/// `{ "git": { "padding": "small" } }`.
+#[derive(Debug, PartialEq)]
+pub struct Widget {
+    pub segment: LineSegment,
+    /// Space around the text of the widget's segments. Overrides the theme's
+    /// `padding` for the module, which overrides the widget's own spacing.
+    pub padding: Option<SegmentPadding>,
+}
+
+/// Where a segment gets a space beside its text. Written in the config and
+/// theme as its lowercase name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SegmentPadding {
+    /// No space on either side.
+    Small,
+    /// A space on each side.
+    Large,
+    /// A space before the text only.
+    Left,
+    /// A space after the text only.
+    Right,
+}
+
+impl SegmentPadding {
+    pub const ALL: [SegmentPadding; 4] = [
+        SegmentPadding::Small,
+        SegmentPadding::Large,
+        SegmentPadding::Left,
+        SegmentPadding::Right,
+    ];
+
+    /// How each value is written, in the order of [`SegmentPadding::ALL`].
+    pub const NAMES: &'static [&'static str] = &["small", "large", "left", "right"];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            SegmentPadding::Small => "small",
+            SegmentPadding::Large => "large",
+            SegmentPadding::Left => "left",
+            SegmentPadding::Right => "right",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<SegmentPadding> {
+        SegmentPadding::ALL.into_iter().find(|p| p.name() == name)
+    }
+}
+
+impl<'de> Deserialize<'de> for SegmentPadding {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        value
+            .as_str()
+            .and_then(SegmentPadding::from_name)
+            .ok_or_else(|| {
+                de::Error::custom(format!(
+                    "expected one of {}, got {value}",
+                    SegmentPadding::NAMES.join(", ")
+                ))
+            })
+    }
+}
+
+impl From<LineSegment> for Widget {
+    fn from(segment: LineSegment) -> Self {
+        Widget {
+            segment,
+            padding: None,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Widget {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let mut value = Value::deserialize(deserializer)?;
+        let padding = match options_mut(&mut value).and_then(|options| options.remove("padding")) {
+            Some(padding) => Some(
+                SegmentPadding::deserialize(padding)
+                    .map_err(|e| de::Error::custom(format!("padding: {e}")))?,
+            ),
+            None => None,
+        };
+        let segment = LineSegment::deserialize(value).map_err(de::Error::custom)?;
+        Ok(Widget { segment, padding })
+    }
+}
+
+impl Serialize for Widget {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let Some(padding) = self.padding else {
+            return self.segment.serialize(serializer);
+        };
+        let mut value = serde_json::to_value(&self.segment).map_err(ser::Error::custom)?;
+        if let Value::String(name) = &value {
+            value = serde_json::json!({ name: {} });
+        }
+        options_mut(&mut value)
+            .ok_or_else(|| ser::Error::custom("this widget takes no padding"))?
+            .insert("padding".into(), padding.name().into());
+        value.serialize(serializer)
+    }
+}
+
+/// The options object of a segment written as `{ "name": { ... } }`.
+fn options_mut(value: &mut Value) -> Option<&mut serde_json::Map<String, Value>> {
+    match value {
+        Value::Object(map) if map.len() == 1 => map.values_mut().next()?.as_object_mut(),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -420,6 +542,18 @@ impl<'de> Deserialize<'de> for LineSegment {
             }
         }
 
+        // `{ "battery": {} }` is the object form of a segment without options.
+        if let Value::Object(map) = &value {
+            if let Some((name, Value::Object(options))) = map.iter().next() {
+                if map.len() == 1 && options.is_empty() && is_known_segment_name(name) {
+                    let name = Value::String(name.clone());
+                    if let Ok(segment) = serde_json::from_value::<KnownLineSegment>(name) {
+                        return Ok(segment.into());
+                    }
+                }
+            }
+        }
+
         match serde_json::from_value::<KnownLineSegment>(value.clone()) {
             Ok(segment) => Ok(segment.into()),
             Err(err) => match segment_name(&value) {
@@ -542,6 +676,10 @@ pub enum SeparatorStyle {
     None,
 }
 
+fn widgets(segments: Vec<LineSegment>) -> Vec<Widget> {
+    segments.into_iter().map(Widget::from).collect()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -549,7 +687,7 @@ impl Default for Config {
             update: UpdateConfig::default(),
             rows: vec![
                 CommandLine {
-                    left: vec![
+                    left: widgets(vec![
                         LineSegment::Padding(2),
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::ReadOnly,
@@ -602,18 +740,18 @@ impl Default for Config {
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
                         },
-                    ],
-                    right: Some(vec![LineSegment::Sudo, LineSegment::Battery]),
+                    ]),
+                    right: Some(widgets(vec![LineSegment::Sudo, LineSegment::Battery])),
                 },
                 CommandLine {
-                    left: vec![
+                    left: widgets(vec![
                         LineSegment::Shell,
                         LineSegment::LastCmdDuration { min_run_time: 50 },
                         LineSegment::Jobs,
                         LineSegment::Cmd,
                         LineSegment::Padding(1),
-                    ],
-                    right: Some(vec![
+                    ]),
+                    right: Some(widgets(vec![
                         LineSegment::Separator(SeparatorStyle::Round),
                         LineSegment::Node { version: true },
                         LineSegment::Java {
@@ -626,7 +764,7 @@ impl Default for Config {
                         },
                         LineSegment::Cargo { version: true },
                         LineSegment::Padding(0),
-                    ]),
+                    ])),
                 },
             ],
         }
@@ -1048,6 +1186,103 @@ mod tests {
             LineSegment::Unknown {
                 name: "future_module".to_string()
             }
+        );
+    }
+
+    #[test]
+    fn every_widget_takes_padding_among_its_options() {
+        let cases = [
+            (
+                r#"{"git":{"padding":"small","backend":"cli"}}"#,
+                LineSegment::Git {
+                    status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                    backend: GitBackend::Cli,
+                    worktrees: true,
+                },
+                Some(SegmentPadding::Small),
+            ),
+            (
+                r#"{"battery":{"padding":"large"}}"#,
+                LineSegment::Battery,
+                Some(SegmentPadding::Large),
+            ),
+            (
+                r#"{"sdkman":{"padding":"left","jdk":false}}"#,
+                LineSegment::Java {
+                    version: true,
+                    jdk: false,
+                },
+                Some(SegmentPadding::Left),
+            ),
+            (
+                r#"{"cmd":{"padding":"right"}}"#,
+                LineSegment::Cmd,
+                Some(SegmentPadding::Right),
+            ),
+            (r#"{"battery":{}}"#, LineSegment::Battery, None),
+            (r#""battery""#, LineSegment::Battery, None),
+            (r#"{"padding":3}"#, LineSegment::Padding(3), None),
+            (
+                r#"{"future_module":{"padding":"left"}}"#,
+                LineSegment::Unknown {
+                    name: "future_module".to_string(),
+                },
+                Some(SegmentPadding::Left),
+            ),
+        ];
+
+        for (json, segment, padding) in cases {
+            let parsed: Widget =
+                serde_json::from_str(json).unwrap_or_else(|e| panic!("{json} should parse: {e}"));
+            assert_eq!(parsed, Widget { segment, padding }, "{json}");
+        }
+    }
+
+    #[test]
+    fn padding_must_be_one_of_the_four_choices() {
+        for json in [
+            r#"{"git":{"padding":0}}"#,
+            r#"{"git":{"padding":1}}"#,
+            r#"{"git":{"padding":"Large"}}"#,
+            r#"{"battery":{"padding":"wide"}}"#,
+            r#"{"battery":{"padding":null}}"#,
+        ] {
+            let err = serde_json::from_str::<Widget>(json).expect_err(json);
+            assert!(
+                err.to_string()
+                    .contains("padding: expected one of small, large, left, right"),
+                "{json}: {err}"
+            );
+        }
+        assert!(serde_json::from_str::<Widget>(r#"{"cwd":{"padding":"large"}}"#).is_err());
+    }
+
+    #[test]
+    fn padding_round_trips() {
+        for json in [
+            r#"{"battery":{"padding":"small"}}"#,
+            r#"{"git":{"status_timeout_ms":250,"backend":"auto","padding":"right"}}"#,
+            r#""git""#,
+        ] {
+            let parsed: Widget = serde_json::from_str(json).unwrap();
+            let written = serde_json::to_value(&parsed).unwrap();
+            let reparsed: Widget = serde_json::from_value(written).unwrap();
+            assert_eq!(parsed, reparsed, "{json}");
+        }
+        for padding in SegmentPadding::ALL {
+            let written = serde_json::to_value(Widget {
+                segment: LineSegment::Battery,
+                padding: Some(padding),
+            })
+            .unwrap();
+            assert_eq!(
+                written,
+                serde_json::json!({ "battery": { "padding": padding.name() } })
+            );
+        }
+        assert_eq!(
+            SegmentPadding::ALL.map(SegmentPadding::name),
+            SegmentPadding::NAMES
         );
     }
 

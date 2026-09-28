@@ -9,6 +9,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::colors::{Color, TextAttrs};
+use crate::config::SegmentPadding;
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
@@ -100,6 +101,9 @@ impl CustomThemeImpl {
                     Some(ThemePropertyKind::Color) => validate_color_value(&path, value)?,
                     Some(ThemePropertyKind::ColorList) => validate_color_list(&path, value)?,
                     Some(ThemePropertyKind::String) => validate_string(&path, value)?,
+                    Some(ThemePropertyKind::Choice(variants)) => {
+                        validate_choice(&path, value, variants)?
+                    }
                     Some(ThemePropertyKind::Bool) => validate_bool(&path, value)?,
                     None => {}
                 }
@@ -195,6 +199,14 @@ impl CustomTheme {
             .map(|s| s.to_string())
     }
 
+    pub fn get_padding(module: &str, property: &str) -> Option<SegmentPadding> {
+        let theme = THEME.get().expect("custom theme not set");
+        theme
+            .get_property(module, property)
+            .and_then(Value::as_str)
+            .and_then(SegmentPadding::from_name)
+    }
+
     /// The attributes set for the text drawn in `fg_property`, e.g.
     /// `clean_bold` for `clean_fg`. Each is read from the first of `modules`
     /// that sets it, so a renamed module's old key still counts.
@@ -216,7 +228,18 @@ impl DefaultColors for CustomTheme {
     }
 }
 
-impl CompleteTheme for CustomTheme {}
+impl CompleteTheme for CustomTheme {
+    fn padding(module: &str) -> Option<SegmentPadding> {
+        // Also read from the key a renamed module used to be themed under.
+        let old_module = match module {
+            "java" => Some("sdkman"),
+            "node" => Some("nvm"),
+            "python" => Some("py"),
+            _ => None,
+        };
+        Self::get_padding(module, "padding").or_else(|| Self::get_padding(old_module?, "padding"))
+    }
+}
 
 /// A string property such as an icon, falling back to `default` when the
 /// theme does not set it. An empty string is kept, so a theme can hide the
@@ -645,6 +668,8 @@ pub(crate) enum ThemePropertyKind {
     Color,
     ColorList,
     String,
+    /// One of a fixed set of strings.
+    Choice(&'static [&'static str]),
     Bool,
 }
 
@@ -681,7 +706,9 @@ fn is_text_attribute(property: &str) -> bool {
 }
 
 pub(crate) fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
-    if property == "bg_colors" || property.ends_with("_colors") {
+    if property == "padding" {
+        Some(ThemePropertyKind::Choice(SegmentPadding::NAMES))
+    } else if property == "bg_colors" || property.ends_with("_colors") {
         Some(ThemePropertyKind::ColorList)
     } else if property == "icon"
         || property == "symbol"
@@ -740,6 +767,16 @@ fn validate_string(path: &str, value: &Value) -> Result<(), String> {
         .ok_or_else(|| format!("expected string at {path}"))
 }
 
+fn validate_choice(path: &str, value: &Value, variants: &[&str]) -> Result<(), String> {
+    match value.as_str() {
+        Some(choice) if variants.contains(&choice) => Ok(()),
+        _ => Err(format!(
+            "expected one of {} at {path}, got {value}",
+            variants.join(", ")
+        )),
+    }
+}
+
 fn validate_bool(path: &str, value: &Value) -> Result<(), String> {
     value
         .as_bool()
@@ -786,6 +823,38 @@ mod tests {
             Some(ThemePropertyKind::String)
         );
         assert_eq!(infer_theme_property_kind("display_name"), None);
+    }
+
+    #[test]
+    fn padding_is_one_of_the_four_choices() {
+        assert_eq!(
+            infer_theme_property_kind("padding"),
+            Some(ThemePropertyKind::Choice(&[
+                "small", "large", "left", "right"
+            ]))
+        );
+        let theme = |padding: Value| {
+            serde_json::json!({
+                "defaults": { "fg": 15, "bg": 0 },
+                "modules": { "git": { "padding": padding } }
+            })
+        };
+        for good in ["small", "large", "left", "right"] {
+            assert!(validate_theme(&theme(good.into())).is_ok(), "{good}");
+        }
+        for bad in [
+            Value::from(0),
+            Value::from(1),
+            Value::from("wide"),
+            Value::from("Small"),
+            Value::Null,
+        ] {
+            let err = validate_theme(&theme(bad.clone())).unwrap_err();
+            assert!(
+                err.contains("expected one of small, large, left, right at modules.git.padding"),
+                "{bad}: {err}"
+            );
+        }
     }
 
     #[test]

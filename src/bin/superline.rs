@@ -813,8 +813,10 @@ fn fallback_config(error: &PowerlineError) -> Config {
 
 fn prepend_error_module(conf: &mut Config, message: String) {
     if let Some(first_row) = conf.rows.first_mut() {
-        first_row.left.insert(0, LineSegment::Error { message });
-        first_row.left.insert(1, LineSegment::Padding(1));
+        first_row
+            .left
+            .insert(0, LineSegment::Error { message }.into());
+        first_row.left.insert(1, LineSegment::Padding(1).into());
     }
 }
 

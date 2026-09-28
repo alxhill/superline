@@ -6,11 +6,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{Cached, Lookup, Source};
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::platform;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 /// How long a cached sudo credential check remains useful.
 const CACHE_TTL: Duration = Duration::from_secs(10);
@@ -97,6 +98,10 @@ impl Source for SudoLookup {
 }
 
 impl<S: SudoScheme> Module for Sudo<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let symbol = S::sudo_symbol();
         if !symbol.is_empty() && matches!(Cached::new(SudoLookup).load(), Lookup::Ready(true)) {

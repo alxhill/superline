@@ -237,6 +237,22 @@
             }
           ]
         }
+      },
+      {
+        "name": "padded",
+        "label": "A space on both sides of each component",
+        "fixture": "deep",
+        "row": {
+          "left": [
+            {
+              "cwd": {
+                "max_length": 60,
+                "wanted_seg_num": 5,
+                "padding": "large"
+              }
+            }
+          ]
+        }
       }
     ]
   },

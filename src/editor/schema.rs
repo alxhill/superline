@@ -4,6 +4,8 @@
 
 use serde_json::{json, Value};
 
+use crate::config::SegmentPadding;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Kind {
     Bool {
@@ -126,7 +128,8 @@ impl OptionSpec {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Shape {
-    /// No options: written as a bare string.
+    /// No options of its own: written as a bare string, or as an object when
+    /// it sets [`WIDGET_PADDING`].
     Unit,
     /// Named options: `{ "name": { ... } }`, or a bare string when every
     /// option has a default.
@@ -152,6 +155,12 @@ impl WidgetSpec {
             Shape::Object(options) => options,
             Shape::Value(option) => std::slice::from_ref(option),
         }
+    }
+
+    /// Whether the widget takes [`WIDGET_PADDING`]. A single-value widget has
+    /// nowhere to write it.
+    pub fn takes_padding(&self) -> bool {
+        !matches!(self.shape, Shape::Value(_))
     }
 
     /// The JSON a newly added widget starts with: required options get a
@@ -227,6 +236,16 @@ const PADDING_VALUE: OptionSpec = required(
         max: 500,
     },
     "Gap width in cells. Ends the current block and clears the background.",
+);
+
+/// Taken by every widget that has named options (or none), after its own.
+pub const WIDGET_PADDING: OptionSpec = opt(
+    "padding",
+    Kind::Choice {
+        variants: SegmentPadding::NAMES,
+        default: None,
+    },
+    "Space beside the widget's text: small for none, large for one on each side, left or right for one on that side only. Unset: the theme's padding for it, else the widget's own.",
 );
 
 const TEXT_VALUE: OptionSpec = required(
@@ -637,6 +656,35 @@ mod tests {
         assert_eq!(find("host").unwrap().name, "hostname");
         assert_eq!(find("sdkman").unwrap().name, "java");
         assert!(find("future_widget").is_none());
+    }
+
+    #[test]
+    fn padding_is_a_choice_of_the_values_the_config_takes() {
+        assert_eq!(
+            WIDGET_PADDING.kind,
+            Kind::Choice {
+                variants: &["small", "large", "left", "right"],
+                default: None,
+            }
+        );
+        assert_eq!(WIDGET_PADDING.parse("left"), Ok(Some(json!("left"))));
+        assert_eq!(WIDGET_PADDING.parse(""), Ok(None));
+        assert!(WIDGET_PADDING.parse("2").is_err());
+    }
+
+    #[test]
+    fn padding_is_offered_to_every_widget_with_an_options_object() {
+        assert!(find("battery").unwrap().takes_padding());
+        assert!(find("git").unwrap().takes_padding());
+        assert!(!find("text").unwrap().takes_padding());
+        assert!(!find("padding").unwrap().takes_padding());
+        for spec in WIDGETS {
+            assert!(
+                spec.options().iter().all(|o| o.key != WIDGET_PADDING.key),
+                "{} lists padding itself",
+                spec.name
+            );
+        }
     }
 
     #[test]

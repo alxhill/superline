@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 
 use crate::colors::Color;
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 pub struct Cmd<S: CmdScheme> {
     status: String,
@@ -49,6 +50,10 @@ impl<S: CmdScheme> Cmd<S> {
 }
 
 impl<S: CmdScheme> Module for Cmd<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Small.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let user_symbol = if crate::platform::is_root() {
             S::cmd_root_symbol()
@@ -60,6 +65,6 @@ impl<S: CmdScheme> Module for Cmd<S> {
             non_zero_code => (non_zero_code, S::cmd_failed_fg(), S::cmd_failed_bg()),
         };
 
-        powerline.add_short_segment(symbol, Style::simple(fg, bg));
+        powerline.add_segment(symbol, Style::simple(fg, bg));
     }
 }

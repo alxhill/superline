@@ -1,8 +1,9 @@
+use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::{Color, Powerline, Style};
 use std::marker::PhantomData;
 
-use super::Module;
+use super::{DefaultPadding, Module};
 
 pub struct ShellName<S: ShellScheme> {
     name: String,
@@ -29,8 +30,12 @@ impl<S: ShellScheme> ShellName<S> {
 }
 
 impl<S: ShellScheme> Module for ShellName<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Small.into()
+    }
+
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_short_segment(
+        powerline.add_segment(
             &self.name,
             Style::simple(S::shellname_fg(), S::shellname_bg()),
         );
