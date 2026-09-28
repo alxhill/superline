@@ -24,6 +24,9 @@ macro_rules! define_colors {
             })
         }
 
+        /// Every named colour, in definition order.
+        pub const NAMED_COLORS: &[(&str, Color)] = &[$((stringify!($name), Color($code))),*];
+
         impl Color {
             pub fn from_name(name: &str) -> Option<Color> {
                 color_map().get(name).copied()

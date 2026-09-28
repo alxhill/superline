@@ -432,45 +432,47 @@ fn segment_name(value: &Value) -> Option<String> {
     }
 }
 
+/// Every name (and alias) a segment can be written with.
+pub(crate) const KNOWN_SEGMENT_NAMES: &[&str] = &[
+    "battery",
+    "small_spacer",
+    "large_spacer",
+    "separator",
+    "cwd",
+    "read_only",
+    "git",
+    "pr",
+    "python",
+    "python_env",
+    "node",
+    "nvm",
+    "java",
+    "sdkman",
+    "cargo",
+    "kubernetes",
+    "host",
+    "hostname",
+    "jobs",
+    "local_ip",
+    "localip",
+    "memory_usage",
+    "os",
+    "sudo",
+    "shell",
+    "time",
+    "text",
+    "ai_usage",
+    "user",
+    "username",
+    "cmd",
+    "last_cmd_duration",
+    "padding",
+    "error",
+    "unknown",
+];
+
 fn is_known_segment_name(name: &str) -> bool {
-    matches!(
-        name,
-        "battery"
-            | "small_spacer"
-            | "large_spacer"
-            | "separator"
-            | "cwd"
-            | "read_only"
-            | "git"
-            | "pr"
-            | "python"
-            | "python_env"
-            | "node"
-            | "nvm"
-            | "java"
-            | "sdkman"
-            | "cargo"
-            | "kubernetes"
-            | "host"
-            | "hostname"
-            | "jobs"
-            | "local_ip"
-            | "localip"
-            | "memory_usage"
-            | "os"
-            | "sudo"
-            | "shell"
-            | "time"
-            | "text"
-            | "ai_usage"
-            | "user"
-            | "username"
-            | "cmd"
-            | "last_cmd_duration"
-            | "padding"
-            | "error"
-            | "unknown"
-    )
+    KNOWN_SEGMENT_NAMES.contains(&name)
 }
 
 /// Which backend produces the `git` module's status. See `src/modules/git.rs`

@@ -118,6 +118,25 @@ On first run superline writes a default config to `$HOME/.config/superline/confi
 next prompt - no reload needed. [`example_config.json`](example_config.json) shows a complete setup and
 `src/config.rs` is the authoritative definition of every option.
 
+Run `superline config` to edit it in the terminal. The editor lists every row's widgets, shows a live preview of the
+prompt as you change them, and saves back to the same file:
+
+- `a` adds a widget below the cursor from a filterable list, `d` removes one and `c` duplicates it.
+- `J`/`K` (or shift-arrows) move a widget, crossing between the left and right sides and between rows; on a row
+  they move the whole row. `n` adds a row.
+- `Enter` opens a widget's options: `Enter` or `space` toggles and cycles values or types a new one, `←`/`→` cycle
+  choices, and `x` resets an option to its default.
+- `2` (or `t`) switches to the Theme page, which edits the custom theme file the config names. Pick a module to see
+  each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
+  picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
+  (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
+  property. On a built-in theme, `n` creates a new theme file from the example theme and points the config at it.
+  `1` returns to the layout.
+- `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
+  and `?` lists every key.
+
+Widgets superline doesn't recognise, and options or theme properties the editor doesn't know, are kept as written.
+
 A config has a `theme` and a list of `rows`:
 
 ```json
@@ -540,7 +559,7 @@ one is pinned.
 
 `theme` is `"rainbow"`, `"simple"`, or a path to a theme JSON file. Paths starting with `/` are absolute; anything
 else is resolved relative to the config directory (`$HOME/.config/superline/`). If a custom theme fails to load,
-superline falls back to `rainbow`.
+superline falls back to `rainbow`. The Theme page of `superline config` edits a custom theme with a live preview.
 
 A theme file has two keys, `defaults` and `modules`:
 
@@ -574,7 +593,7 @@ module name and property.
 |---------|--------------|
 | `superline install <shell>` | Append the prompt loader to the shell's config file. |
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
-| `superline config` | Open the config file in `$EDITOR`. |
+| `superline config` | Edit the config in an interactive terminal editor with a live prompt preview. `--config <path>` edits another file. |
 | `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
 | `superline upgrade [VERSION]` | Replace the binary with the latest (or given) release's prebuilt one. `--check` only reports whether one is available. Also available as `superline update`. |
 
