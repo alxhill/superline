@@ -582,9 +582,10 @@ A theme file has two keys, `defaults` and `modules`:
 
 - **defaults** - the `fg` and `bg` used for anything a module doesn't set.
 - **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colors (`git` has
-  `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`,
-  `readonly.symbol`, `kubernetes.icon`, and `mise_icon` on the language modules - set a marker to `""` to hide it).
-  Anything omitted falls back to `defaults`.
+  `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array). Every icon a widget draws is a string property
+  that defaults to its usual glyph (`cmd.user_symbol`, `git.branch_icon`, `git.staged_icon`, `battery.charging_icon`,
+  `python.icon`, `mise_icon` on the language modules, and so on) - set one to `""` to hide it along with the space
+  beside it. Anything omitted falls back to `defaults`.
 
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
 old theme keys, `nvm` and `py`.

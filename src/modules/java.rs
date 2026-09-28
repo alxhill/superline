@@ -18,6 +18,8 @@ pub struct Java<S> {
 }
 
 pub trait JavaScheme: DefaultColors {
+    const JAVA_ICON: &'static str = "\u{f0176}";
+
     fn java_fg() -> Color {
         Self::default_fg()
     }
@@ -27,7 +29,7 @@ pub trait JavaScheme: DefaultColors {
     }
 
     fn icon() -> &'static str {
-        "\u{f0176}"
+        Self::JAVA_ICON
     }
 
     /// Marks a version that came from a mise config rather than `.sdkmanrc`.
@@ -69,7 +71,9 @@ impl<S: JavaScheme> Module for Java<S> {
                 self.show_jdk.then(|| distro_name(&distribution)).as_deref(),
             );
 
-            powerline.add_segment(label, Style::simple(S::java_fg(), S::java_bg()));
+            if !label.is_empty() {
+                powerline.add_segment(label, Style::simple(S::java_fg(), S::java_bg()));
+            }
         }
     }
 }

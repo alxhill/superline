@@ -30,6 +30,8 @@ pub struct Sudo<S: SudoScheme> {
 }
 
 pub trait SudoScheme: DefaultColors {
+    const SUDO_SYMBOL: &'static str = "⚿";
+
     fn sudo_fg() -> Color {
         Self::default_fg()
     }
@@ -39,7 +41,7 @@ pub trait SudoScheme: DefaultColors {
     }
 
     fn sudo_symbol() -> &'static str {
-        "⚿"
+        Self::SUDO_SYMBOL
     }
 }
 
@@ -96,8 +98,9 @@ impl Source for SudoLookup {
 
 impl<S: SudoScheme> Module for Sudo<S> {
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        if matches!(Cached::new(SudoLookup).load(), Lookup::Ready(true)) {
-            powerline.add_segment(S::sudo_symbol(), Style::simple(S::sudo_fg(), S::sudo_bg()));
+        let symbol = S::sudo_symbol();
+        if !symbol.is_empty() && matches!(Cached::new(SudoLookup).load(), Lookup::Ready(true)) {
+            powerline.add_segment(symbol, Style::simple(S::sudo_fg(), S::sudo_bg()));
         }
     }
 }

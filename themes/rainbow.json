@@ -5,7 +5,7 @@
       "path_fg": "white",
       "bg_colors": ["red", "orange", "yellow", "green", "blue", "nice_purple"]
     },
-    "readonly": { "fg": 254, "bg": 124, "symbol": "󰈡" },
+    "readonly": { "fg": 254, "bg": 124, "icon": "󰈡" },
     "cmd": {
       "passed_fg": "green",
       "passed_bg": "black",
