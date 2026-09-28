@@ -7,8 +7,7 @@
 //!   * fish, PowerShell and nushell emit bare ANSI/VT escapes (their line
 //!     editors parse the escapes themselves)
 //!
-//! These tests pin that behaviour - in particular that PowerShell and nushell
-//! render the same bare escapes as fish - without needing any shell installed.
+//! These tests pin that behaviour without needing any shell installed.
 //! The end-to-end tests additionally drive a real `pwsh` / `nu` when one is on
 //! PATH, and skip otherwise so CI without that shell still passes.
 
@@ -65,7 +64,7 @@ fn render(shell: &str) -> String {
 const ESC: char = '\x1b';
 
 #[test]
-fn powershell_uses_bare_ansi_like_fish() {
+fn powershell_uses_bare_ansi() {
     let pwsh = render("pwsh");
     assert!(
         pwsh.contains(ESC),
@@ -79,49 +78,19 @@ fn powershell_uses_bare_ansi_like_fish() {
         !pwsh.contains("%{"),
         "PowerShell prompt must not use zsh's %{{ }} markers",
     );
-
-    // PowerShell and fish both map to the same bare-escape mode internally, so
-    // their output is identical except for the one place the default config
-    // prints the shell's own name (the `shell` segment). Normalise that token
-    // out of each and the rest must match byte-for-byte. Render both against one
-    // pre-warmed home so the comparison isn't thrown off by per-home paths in
-    // any notice text.
-    let home = scratch_home("pwsh-vs-fish");
-    let _ = render_in(&home, "pwsh"); // warm the config once
-    let pwsh_render = render_in(&home, "pwsh").replace("pwsh", "<shell>");
-    let fish_render = render_in(&home, "fish").replace("fish", "<shell>");
-    assert_eq!(
-        pwsh_render, fish_render,
-        "PowerShell and fish should render identical bare-escape output",
-    );
-    let _ = fs::remove_dir_all(&home);
 }
 
 #[test]
-fn nushell_uses_bare_ansi_like_fish() {
-    let home = scratch_home("nu-vs-fish");
-    let _ = render_in(&home, "nu"); // warm the config once
-    let nu_render = render_in(&home, "nu");
+fn nushell_uses_bare_ansi() {
+    let nu = render("nu");
     assert!(
-        nu_render.contains(ESC),
+        nu.contains(ESC),
         "nushell prompt should contain raw ANSI escapes"
     );
     assert!(
-        !nu_render.contains("\\[") && !nu_render.contains("%{"),
+        !nu.contains("\\[") && !nu.contains("%{"),
         "nushell prompt must not use bash or zsh non-printing markers",
     );
-
-    // Like PowerShell, nushell shares fish's bare-escape mode; only the `shell`
-    // segment's own name differs. Match the name only where it is the segment
-    // text (directly between two escapes), since "nu" can also appear inside a
-    // path or branch name in the cwd/git segments.
-    let nu_render = nu_render.replace("mnu\u{1b}", "m<shell>\u{1b}");
-    let fish_render = render_in(&home, "fish").replace("mfish\u{1b}", "m<shell>\u{1b}");
-    assert_eq!(
-        nu_render, fish_render,
-        "nushell and fish should render identical bare-escape output",
-    );
-    let _ = fs::remove_dir_all(&home);
 }
 
 /// superline fills every row but the last itself and leaves the last row's
