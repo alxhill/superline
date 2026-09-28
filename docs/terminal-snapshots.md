@@ -227,6 +227,12 @@ scripts/site-screenshots/generate.sh          # every scene
 scripts/site-screenshots/generate.sh pr usage # just these
 ```
 
+The `editor` scene records GIFs of `superline config` instead
+(`site/img/editor-*.gif`): each opens the editor off camera on
+`configs/editor.json`, types the keys in the tape, and quits to the saved
+prompt. Rerun it with `scripts/site-screenshots/generate.sh editor` after a
+change to the editor's layout or keys.
+
 The [configuration reference](https://alxhill.github.io/superline/config.html)
 is driven by `scripts/site-screenshots/components.json`. Each entry lists a
 component's example variants: the row (or whole config) to render, the fixture

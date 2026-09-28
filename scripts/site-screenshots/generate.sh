@@ -140,6 +140,55 @@ EOF
   uv run --quiet --with pillow python "$here/trim.py" "$out/$name.png"
 }
 
+# Records one scene to site/img/<name>.gif at the size the site shows it.
+# Takes the same arguments as `capture`, plus HIDDEN: optional tape commands
+# run off camera just before the recording starts.
+record() {
+  local name=$1 cols=$2 rows=$3 config=$4 dir=$5
+  local home="$work/$name/home"
+  local tape="$work/$name/scene.tape"
+  local body
+  body=$(cat)
+
+  mkdir -p "$home/.config/superline" "$home/$dir"
+  cp "$config" "$home/.config/superline/config.json"
+  "$repo/target/release/superline" init fish >"$home/superline-init.fish"
+
+  cat >"$tape" <<EOF
+Output "$work/$name/$name.gif"
+Set Shell fish
+Set Columns $cols
+Set Rows $rows
+Set FontSize 14
+Set FontFamily "MesloLGS Nerd Font, Symbols Nerd Font Mono"
+Set Padding 16
+Set CursorBlink false
+Set WaitTimeout 30s
+Set TypingSpeed 70ms
+Set Theme $(cat "$here/theme.json")
+
+Hide
+Wait+Line />/
+Type@2ms "set -gx HOME '$home'; set -gx XDG_CONFIG_HOME '$home/.config'; set -gx XDG_CACHE_HOME '$home/.cache'; set -gx SHELL (command -s fish); set -gx PATH '$here/bin' '$repo/target/release' \$PATH; source '$home/superline-init.fish'; cd '$home/$dir'; ${PRE:-true}"
+Enter
+Sleep 1.5s
+Type "clear"
+Enter
+Sleep 1s
+${HIDDEN:-}
+Show
+$body
+Sleep 3s
+EOF
+  echo "recording $name"
+  if ! (cd "$work/$name" && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$vhs" "$tape" >"$work/$name/vhs.log" 2>&1); then
+    tail -30 "$work/$name/vhs.log" >&2
+    return 1
+  fi
+  [[ -s "$work/$name/$name.gif" ]] || { echo "no recording for $name" >&2; return 1; }
+  cp "$work/$name/$name.gif" "$out/$name.gif"
+}
+
 source "$here/scenes.sh"
 
 scenes=("$@")

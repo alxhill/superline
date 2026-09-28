@@ -114,13 +114,14 @@ Windows captures for every pull request.
 
 ## Configuration
 
-On first run superline writes a default config to `$HOME/.config/superline/config.json`, and the `rainbow` theme it
-names to `rainbow.json` next to it. Edits take effect on the next prompt - no reload needed.
-[`example_config.json`](example_config.json) shows a complete setup and `src/config.rs` is the authoritative
-definition of every option.
+Run `superline config` to set up the prompt in the terminal. The editor lists every row's widgets, shows a live
+preview of the prompt as you change them, and saves back to `$HOME/.config/superline/config.json`, which superline
+writes with the default config on first run, along with the `rainbow` theme it names as `rainbow.json` next to it.
+Saved changes take effect on the next prompt - no reload needed.
 
-Run `superline config` to edit it in the terminal. The editor lists every row's widgets, shows a live preview of the
-prompt as you change them, and saves back to the same file:
+![Adding widgets in superline config](https://raw.githubusercontent.com/alxhill/superline/main/site/img/editor-widgets.gif)
+
+The keys:
 
 - `a` adds a widget below the cursor from a filterable list, `d` removes one and `c` duplicates it.
 - `J`/`K` (or shift-arrows) move a widget, crossing between the left and right sides and between rows; on a row
@@ -143,8 +144,12 @@ prompt as you change them, and saves back to the same file:
   and `?` lists every key.
 
 Widgets superline doesn't recognise, and options or theme properties the editor doesn't know, are kept as written.
+The [editor guide](https://alxhill.github.io/superline/config.html#editor) on the website shows each page in action.
 
-A config has a `theme` and a list of `rows`:
+To edit the JSON by hand instead, [`example_config.json`](example_config.json) shows a complete setup,
+`src/config.rs` is the authoritative definition of every option, and the
+[configuration reference](https://alxhill.github.io/superline/config.html#reference) documents each one with
+examples. A config has a `theme` and a list of `rows`:
 
 ```json
 {

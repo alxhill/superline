@@ -1,8 +1,9 @@
 # Scene definitions for generate.sh. Each `scene_<name>` builds its fixture
-# under "$work/<name>/home" and calls `capture` with the tape body on stdin.
+# under "$work/<name>/home" and calls `capture` (or `record` for a GIF) with
+# the tape body on stdin.
 # shellcheck shell=bash
 
-ALL_SCENES=(hero git pr languages status usage themes separators widgets components)
+ALL_SCENES=(hero git pr languages status usage themes separators widgets components editor)
 
 configs="$here/configs"
 
@@ -175,6 +176,113 @@ YAML
 Type "sleep 60 &; sleep 60 &"
 Enter
 Sleep 1.5s
+TAPE
+}
+
+# A dirty Rust project with seeded AI usage for the editor recordings.
+editor_fixture() {
+  local home="$work/$1/home" dir="$work/$1/home/code/superline"
+  git_repo_with_upstream "$dir" 1 0 main
+  rust_project "$dir"
+  echo "changed" >>"$dir/README.md"
+  seed_usage "$home"
+}
+
+# GIFs of `superline config`: adding and moving widgets, changing a widget's
+# options, and editing a theme with the colour picker. Each starts with the
+# editor open and ends by quitting to the prompt it saved.
+scene_editor() {
+  local open='Type "superline config"
+Enter
+Wait+Screen /t switches/
+Sleep 2s'
+  editor_fixture editor-widgets
+  HIDDEN="$open" record editor-widgets 120 24 "$configs/editor.json" code/superline <<'TAPE'
+Sleep 1.2s
+# Down to git, then add ai_usage after it.
+Type@350ms "jjjj"
+Sleep 800ms
+Type "a"
+Sleep 1s
+Type@300ms "ai"
+Sleep 1.2s
+Enter
+Sleep 2s
+# Down to cargo on the right, add time after it, and move it up.
+Type@350ms "jj"
+Sleep 800ms
+Type "a"
+Sleep 800ms
+Type@250ms "time"
+Sleep 1.2s
+Enter
+Sleep 2s
+Type "K"
+Sleep 2s
+Type "s"
+Sleep 2s
+Type "q"
+TAPE
+
+  editor_fixture editor-options
+  jq '.rows[0].left += [{ "ai_usage": { "provider": "claude" } }]' "$configs/editor.json" >"$work/editor-options.json"
+  HIDDEN="$open" record editor-options 120 24 "$work/editor-options.json" code/superline <<'TAPE'
+Sleep 1.2s
+# Down to ai_usage and into its options: provider to codex and back.
+Type@350ms "jjjjj"
+Sleep 800ms
+Enter
+Sleep 1.2s
+Right
+Sleep 2s
+Left
+Sleep 1.5s
+# Turn on fable, then step display through bar, capped_bar, block, sparkline.
+Type@350ms "jjj"
+Sleep 800ms
+Enter
+Sleep 2s
+Down
+Sleep 1s
+Right@1.6s 4
+Sleep 1.5s
+Escape
+Sleep 600ms
+Type "s"
+Sleep 2s
+Type "q"
+TAPE
+
+  # Tall enough that the colour picker opens below the preview.
+  editor_fixture editor-theme
+  HIDDEN="$open" record editor-theme 120 40 "$configs/editor.json" code/superline <<'TAPE'
+Sleep 1.2s
+# Theme page: create theme.json from the example theme.
+Type "2"
+Sleep 1.8s
+Type "n"
+Sleep 1.5s
+Enter
+Sleep 2s
+# Down to git, open dirty_bg in the picker and walk from 202 to 98.
+Type@250ms "jjjjjjj"
+Sleep 800ms
+Enter
+Sleep 1s
+Type@350ms "jjj"
+Sleep 800ms
+Enter
+Sleep 1.5s
+Right@600ms 4
+Up@600ms 3
+Sleep 1.2s
+Enter
+Sleep 2s
+Escape
+Sleep 600ms
+Type "s"
+Sleep 2s
+Type "q"
 TAPE
 }
 
