@@ -117,7 +117,7 @@ pub fn notice<S: UpdateScheme>(auto: bool) -> Option<String> {
         .map(|error| format!(" (auto-upgrade failed: {error})"))
         .unwrap_or_default();
     Some(format!(
-        "{} superline {link} available: {command}{failure}",
+        "{}superline {link} available: {command}{failure}",
         icon::<S>(),
         link = Hyperlink {
             url: &release.url,
@@ -138,7 +138,7 @@ fn upgraded_notice<S: UpdateScheme>() -> Option<String> {
     };
     std::fs::remove_file(cached.path()?).ok()?;
     Some(format!(
-        "{} superline upgraded from v{from} to {link}",
+        "{}superline upgraded from v{from} to {link}",
         icon::<S>(),
         link = Hyperlink {
             url: &url,
@@ -148,13 +148,18 @@ fn upgraded_notice<S: UpdateScheme>() -> Option<String> {
 }
 
 /// The icon that opens every notice, followed by a reset so the text after
-/// it is in the terminal's default colours.
+/// it is in the terminal's default colours, and the space before that text.
+/// An empty icon leaves nothing at all.
 fn icon<S: UpdateScheme>() -> String {
+    let icon = S::update_icon();
+    if icon.is_empty() {
+        return String::new();
+    }
+    let fg = FgColor::from(S::update_fg());
     format!(
-        "{bg}{fg} {icon} {reset}",
+        "{bg}{fg} {icon} {attrs_off}{reset} ",
         bg = BgColor::from(S::update_bg()),
-        fg = FgColor::from(S::update_fg()),
-        icon = S::update_icon(),
+        attrs_off = fg.attrs_off(),
         reset = Reset,
     )
 }

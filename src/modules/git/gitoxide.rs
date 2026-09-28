@@ -86,6 +86,7 @@ pub fn run_git(path: &Path) -> GitStats {
         }
     }
 
+    let worktrees = super::linked_worktrees(path);
     GitStats {
         untracked,
         staged,
@@ -96,6 +97,8 @@ pub fn run_git(path: &Path) -> GitStats {
         remote,
         remote_url,
         branch_name,
+        worktrees: worktrees.count,
+        worktree_index: worktrees.index,
     }
 }
 

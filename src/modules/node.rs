@@ -16,6 +16,8 @@ pub struct Node<S> {
 }
 
 pub trait NodeScheme: DefaultColors {
+    const NODE_ICON: &'static str = "\u{ed0d}";
+
     fn node_fg() -> Color {
         Self::default_fg()
     }
@@ -29,7 +31,7 @@ pub trait NodeScheme: DefaultColors {
     }
 
     fn icon() -> &'static str {
-        "\u{ed0d}"
+        Self::NODE_ICON
     }
 
     /// Marks a version that came from a mise config rather than nvm.
@@ -75,33 +77,24 @@ impl<S: NodeScheme> Module for Node<S> {
             .and_then(read_to_string)
             .ok();
 
-        match (
+        let segment = match (
             nvm_current_version,
             mise::tool_version("node"),
             nvmrc_version,
         ) {
             // todo: handle the case where active version != .nvmrc
-            (Some(version), _, _) => {
-                powerline.add_segment(
-                    self.label("", version.trim()),
-                    Style::simple(S::node_fg(), S::node_bg()),
-                );
-            }
+            (Some(version), _, _) => Some((self.label("", version.trim()), S::node_bg())),
             // A mise config manages node for this directory, so its version is
             // the one in effect even though nvm never activated it.
-            (None, Some(version), _) => {
-                powerline.add_segment(
-                    self.label(S::mise_icon(), version),
-                    Style::simple(S::node_fg(), S::node_bg()),
-                );
-            }
+            (None, Some(version), _) => Some((self.label(S::mise_icon(), version), S::node_bg())),
             (None, None, Some(nvmrc)) => {
-                powerline.add_segment(
-                    self.label("", nvmrc.trim()),
-                    Style::simple(S::node_fg(), S::node_inactive_bg()),
-                );
+                Some((self.label("", nvmrc.trim()), S::node_inactive_bg()))
             }
-            _ => {}
+            _ => None,
+        };
+
+        if let Some((label, bg)) = segment.filter(|(label, _)| !label.is_empty()) {
+            powerline.add_segment(label, Style::simple(S::node_fg(), bg));
         }
     }
 }

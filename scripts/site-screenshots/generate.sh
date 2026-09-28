@@ -70,7 +70,7 @@ git_repo_with_upstream() {
     git -C "$dir" fetch --quiet
     rm -rf "$other"
   fi
-  for i in $(seq "$ahead"); do
+  for ((i = 1; i <= ahead; i++)); do
     git -C "$dir" commit --quiet --allow-empty -m "local $i"
   done
 }

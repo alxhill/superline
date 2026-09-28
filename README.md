@@ -27,7 +27,7 @@ configurable modules and themes.
 - **Never blocks**: slow lookups (git status on big repos, PR status, AI usage) are refreshed in the background and
   served from a cache.
 - **Flexible layout**: multiple rows, each with an optional right-aligned side.
-- **Themeable**: two built-in themes, or point at your own theme JSON file.
+- **Themeable**: themes are JSON files. Start from one of the two that come with superline, or write your own.
 - **Any shell**: fish, zsh, bash, PowerShell and nushell are all supported by `superline install`.
 
 ## Installation
@@ -116,7 +116,8 @@ Windows captures for every pull request.
 
 Run `superline config` to set up the prompt in the terminal. The editor lists every row's widgets, shows a live
 preview of the prompt as you change them, and saves back to `$HOME/.config/superline/config.json`, which superline
-writes with the default config on first run. Saved changes take effect on the next prompt - no reload needed.
+writes with the default config on first run, along with the `rainbow` theme it names as `rainbow.json` next to it.
+Saved changes take effect on the next prompt - no reload needed.
 
 ![Adding widgets in superline config](https://raw.githubusercontent.com/alxhill/superline/main/site/img/editor-widgets.gif)
 
@@ -127,12 +128,18 @@ The keys:
   they move the whole row. `n` adds a row.
 - `Enter` opens a widget's options: `Enter` or `space` toggles and cycles values or types a new one, `←`/`→` cycle
   choices, and `x` resets an option to its default.
-- `2` (or `t`) switches to the Theme page, which edits the custom theme file the config names. Pick a module to see
+- `2` (or `t`) switches to the Theme page, which edits the theme file the config names. Pick a module to see
   each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
   picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
-  property. On a built-in theme, `n` creates a new theme file from the example theme and points the config at it.
-  `1` returns to the layout.
+  property. Each text colour is followed by its `bold`, `italic` and `underline` switches, which `Enter` or `space`
+  turns on and off. The switch under the cursor shows a sample of its text, since the preview only draws text the
+  prompt shows in the current directory (git's unstaged count needs unstaged changes). `n` copies the theme into a
+  new theme file next to the config and points the config at it. `1` returns to the layout, where Settings picks
+  another theme file.
+- `Enter` on a colour list such as `cwd.bg_colors` shows its colours one per line with a swatch. `Enter` picks a colour
+  in the picker, `←`/`→` step it and `i` types it; `a`/`I` add a colour after or before it, `d` deletes it, `c` copies
+  it and `J`/`K` (or shift-arrows) move it. `i` on the list's own row still types the whole list.
 - `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
   and `?` lists every key.
 
@@ -309,7 +316,7 @@ operating system cannot provide a memory reading.
 Shows a compact Nerd Font icon for the current operating-system family. It
 recognizes Linux, macOS, Windows, Android and the common BSD/Unix targets
 without reading distro files or spawning a command, so it adds no prompt
-latency. The built-in themes use the Linux, Apple and Windows icons; custom
+latency. The bundled themes use the Linux, Apple and Windows icons; other
 themes may override the colors and symbol in their os module.
 
 ```json
@@ -404,12 +411,18 @@ A detached HEAD shows the short commit hash. When that commit is the tip of a br
 `git worktree add --detach`, or `git checkout origin/main`) the branch follows it, as `1a2b3c4 → main`; local
 branches take precedence over remote-tracking ones, and `main`/`master` over other names.
 
+When the repo has linked worktrees (`git worktree add`), their count follows the branch. Inside a linked worktree
+it reads `index/count` instead, such as `3/15`, so worktrees can be told apart: they are numbered in
+`git worktree list` order, which puts the main checkout first and sorts the linked ones by path. Worktrees whose
+directory has been deleted are left out of both numbers unless locked. The theme's `git.worktree_icon` sets the
+icon in front (`""` shows just the numbers), and `"worktrees": false` turns it off.
+
 Status collection waits up to `status_timeout_ms` (250 by default). If it takes longer, the last cached result is
 shown while a refresh continues in the background for the next prompt. Before anything is cached the segment shows
 `loading…`.
 
 ```json
-{ "git": { "status_timeout_ms": 250, "backend": "auto" } }
+{ "git": { "status_timeout_ms": 250, "backend": "auto", "worktrees": true } }
 ```
 
 Status is produced by one of two backends, chosen with `backend`:
@@ -562,9 +575,14 @@ one is pinned.
 
 ### Themes
 
-`theme` is `"rainbow"`, `"simple"`, or a path to a theme JSON file. Paths starting with `/` are absolute; anything
-else is resolved relative to the config directory (`$HOME/.config/superline/`). If a custom theme fails to load,
-superline falls back to `rainbow`. The Theme page of `superline config` edits a custom theme with a live preview.
+`theme` is a path to a theme JSON file, and `.json` is optional: `"rainbow"` is `rainbow.json`. Paths starting with
+`/` are absolute; anything else is resolved relative to the config directory (`$HOME/.config/superline/`). If the
+theme fails to load, superline falls back to `rainbow`.
+
+superline comes with two themes, [`rainbow`](themes/rainbow.json) and [`simple`](themes/simple.json). When the config
+names one of them and its file isn't in the config directory yet, superline writes it there, so it can be edited like
+any other theme file; an existing file is never replaced. Delete it to get the original back. The Theme page of
+`superline config` edits a theme file with a live preview.
 
 A theme file has two keys, `defaults` and `modules`:
 
@@ -581,16 +599,22 @@ A theme file has two keys, `defaults` and `modules`:
 
 - **defaults** - the `fg` and `bg` used for anything a module doesn't set.
 - **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colors (`git` has
-  `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`,
-  `kubernetes.icon`, and `mise_icon` on the language modules - set a marker to `""` to hide it). Anything omitted falls back to
-  `defaults`.
+  `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array). Every icon a widget draws is a string property
+  that defaults to its usual glyph (`cmd.user_symbol`, `git.branch_icon`, `git.staged_icon`, `battery.charging_icon`,
+  `python.icon`, `mise_icon` on the language modules, and so on) - set one to `""` to hide it along with the space
+  beside it. Anything omitted falls back to `defaults`.
 
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
 old theme keys, `nvm` and `py`.
 
 Colors are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-color code from
-`0` to `255`. [`example_theme.json`](example_theme.json) covers every module, and `src/themes/custom.rs` lists every
+`0` to `255`. [`themes/rainbow.json`](themes/rainbow.json) is a full example, and `src/themes/custom.rs` lists every
 module name and property.
+
+Every text color (`fg`, or a property ending in `_fg`) can also make its text bold, italic or underlined, with
+`true`/`false` properties named the same way: `bold`, `italic` and `underline` go with `fg`, and `clean_bold`,
+`clean_italic` and `clean_underline` with `clean_fg`. So `"git": { "clean_bold": true }` draws the branch name in
+bold while the working tree is clean. Separators and the rest of the prompt are never affected.
 
 ## Commands
 
@@ -642,20 +666,24 @@ program. `examples/minimalistic.rs` and `examples/rainbow.rs` are complete, runn
 use superline::modules::*;
 use superline::powerline::{PowerlineRightBuilder, PowerlineShellBuilder};
 use superline::terminal::Shell;
-use superline::themes::SimpleTheme;
+use superline::themes::CustomTheme;
 
 fn main() {
+    // Any theme file, such as a copy of themes/simple.json.
+    CustomTheme::load("simple.json").expect("the theme loads");
+
     superline::Powerline::builder()
         .set_shell(Shell::Bare)
-        .add_module(Cwd::<SimpleTheme>::new(45, 4, false))
-        .add_module(Git::<SimpleTheme>::new())
-        .add_module(ReadOnly::<SimpleTheme>::new())
-        .add_module(Cmd::<SimpleTheme>::new("0"))
+        .add_module(Cwd::<CustomTheme>::new(45, 4, false))
+        .add_module(Git::<CustomTheme>::new())
+        .add_module(ReadOnly::<CustomTheme>::new())
+        .add_module(Cmd::<CustomTheme>::new("0"))
         .render(0);
 }
 ```
 
-Themes are types that implement each module's `*Scheme` trait, so a custom theme is just a struct with a few impls:
+`CustomTheme` reads its colours from the loaded theme file. A theme can also be a type that implements each module's
+`*Scheme` trait, so a theme compiled into the program is just a struct with a few impls:
 
 ```rust
 use superline::modules::*;
