@@ -4,6 +4,7 @@
 mod ansi;
 mod glyphs;
 mod json;
+mod list_editor;
 mod model;
 mod picker;
 mod preview;
@@ -83,6 +84,8 @@ enum InputPurpose {
     ThemeProperty,
     /// The file name of a new custom theme.
     NewTheme,
+    /// One colour of a colour list on the Theme page.
+    ListItem,
 }
 
 enum Mode {
@@ -1109,6 +1112,17 @@ impl App {
                         ("q", "quit"),
                         ("?", "help"),
                     ],
+                    (_, Focus::Options) if self.page == Page::Theme && self.color_list_open() => &[
+                        ("↑↓", "select"),
+                        ("⏎", "pick"),
+                        ("←→", "step"),
+                        ("a/I", "add/insert"),
+                        ("d", "delete"),
+                        ("J/K", "move"),
+                        ("c", "copy"),
+                        ("i", "type"),
+                        ("esc", "back"),
+                    ],
                     (_, Focus::Options) if self.page == Page::Theme => &[
                         ("↑↓", "select"),
                         ("⏎", "change"),
@@ -1316,6 +1330,11 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
         ("n", "create a new custom theme file"),
+        ("⏎ on a list", "edit each colour: ⏎ pick, ← → step, i type"),
+        (
+            "a I d J K c",
+            "add after / insert before / delete / move / copy",
+        ),
         ("", ""),
         ("Anywhere", ""),
         ("1  2  t", "Layout page / Theme page / switch"),

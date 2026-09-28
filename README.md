@@ -132,6 +132,9 @@ prompt as you change them, and saves back to the same file:
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
   property. On a built-in theme, `n` creates a new theme file from the example theme and points the config at it.
   `1` returns to the layout.
+- `Enter` on a colour list such as `cwd.bg_colors` shows its colours one per line with a swatch. `Enter` picks a colour
+  in the picker, `←`/`→` step it and `i` types it; `a`/`I` add a colour after or before it, `d` deletes it, `c` copies
+  it and `J`/`K` (or shift-arrows) move it. `i` on the list's own row still types the whole list.
 - `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
   and `?` lists every key.
 
