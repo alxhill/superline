@@ -53,10 +53,12 @@ ureq = { version = "3.4", default-features = false, features = [
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
 tar = { version = "0.4.46", default-features = false }
 # The `superline config` editor. Its crossterm backend is re-exported as
-# `ratatui::crossterm`.
+# `ratatui::crossterm`. `unstable-rendered-line-info` counts the rows wrapped
+# text takes up, to scroll it.
 ratatui = { version = "0.30", default-features = false, features = [
     "crossterm",
     "layout-cache",
+    "unstable-rendered-line-info",
 ] }
 
 # Unix-only: the `users` crate wraps libc's passwd/uid APIs, and `libc::access`

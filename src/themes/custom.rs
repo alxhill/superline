@@ -16,9 +16,13 @@ use crate::modules::{
     ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme,
     UserScheme,
 };
-use crate::themes::{CompleteTheme, DefaultColors};
+use crate::themes::{
+    bundled_theme, install_theme, theme_path, CompleteTheme, DefaultColors, RAINBOW,
+};
 use crate::update::UpdateScheme;
 
+/// The theme prompts are drawn with: a theme file, loaded once per process by
+/// [`CustomTheme::load`] or [`CustomTheme::load_for_config`].
 #[derive(Clone)]
 pub struct CustomTheme;
 
@@ -140,6 +144,33 @@ impl CustomTheme {
         // }
     }
 
+    /// Loads the theme file a config's `theme` value names (see
+    /// [`theme_path`]), first installing a bundled theme's file the config
+    /// directory is missing.
+    pub fn load_for_config(config_dir: &Path, theme: &str) -> Result<(), CustomThemeError> {
+        let path = theme_path(config_dir, theme);
+        if let Some(bundled) = bundled_theme(config_dir, &path) {
+            if install_theme(&path, bundled).is_err() {
+                // A config directory that can't be written still gets its prompt.
+                Self::set_bundled(bundled);
+                return Ok(());
+            }
+        }
+        Self::load(&path)
+    }
+
+    /// Loads the bundled rainbow theme, which a prompt falls back to when its
+    /// config or theme can't be loaded.
+    pub fn load_fallback() {
+        Self::set_bundled(RAINBOW);
+    }
+
+    fn set_bundled(text: &str) {
+        let theme: CustomThemeImpl =
+            serde_json::from_str(text).expect("bundled themes are valid theme files");
+        let _ = THEME.set(theme);
+    }
+
     pub fn get_color(module: &str, color: &str) -> Option<Color> {
         let theme = THEME.get().expect("custom theme not set");
         theme.get_property(module, color).and_then(color_from_value)
@@ -187,21 +218,39 @@ impl DefaultColors for CustomTheme {
 
 impl CompleteTheme for CustomTheme {}
 
+/// A string property such as an icon, falling back to `default` when the
+/// theme does not set it. An empty string is kept, so a theme can hide the
+/// icon.
+fn icon_from_json(module: &str, property: &str, default: &'static str) -> &'static str {
+    CustomTheme::get_str(module, property)
+        .map(|str| str.leak() as &'static str)
+        .unwrap_or(default)
+}
+
 /// Per-module override of the marker shown next to a mise-managed version,
 /// falling back to the shared default when the theme does not set one.
 fn mise_icon_from_json(module: &str) -> &'static str {
-    CustomTheme::get_str(module, "mise_icon")
+    icon_from_json(module, "mise_icon", crate::mise::DEFAULT_ICON)
+}
+
+/// Like [`icon_from_json`], also checking the key a renamed module used to be
+/// themed under.
+fn icon_from_json_or(
+    module: &str,
+    old_module: &str,
+    property: &str,
+    default: &'static str,
+) -> &'static str {
+    CustomTheme::get_str(module, property)
+        .or_else(|| CustomTheme::get_str(old_module, property))
         .map(|str| str.leak() as &'static str)
-        .unwrap_or(crate::mise::DEFAULT_ICON)
+        .unwrap_or(default)
 }
 
 /// Like [`mise_icon_from_json`], also checking the key a renamed module used
 /// to be themed under.
 fn mise_icon_from_json_or(module: &str, old_module: &str) -> &'static str {
-    CustomTheme::get_str(module, "mise_icon")
-        .or_else(|| CustomTheme::get_str(old_module, "mise_icon"))
-        .map(|str| str.leak() as &'static str)
-        .unwrap_or(crate::mise::DEFAULT_ICON)
+    icon_from_json_or(module, old_module, "mise_icon", crate::mise::DEFAULT_ICON)
 }
 
 macro_rules! color_from_json {
@@ -217,9 +266,40 @@ macro_rules! color_from_json {
     };
 }
 
+/// Defines an icon getter that reads `$module.$property` and falls back to the
+/// scheme's `$default` constant.
+macro_rules! icon_from_json {
+    ($function:ident, $module:ident, $property:ident, $default:ident) => {
+        fn $function() -> &'static str {
+            icon_from_json(stringify!($module), stringify!($property), Self::$default)
+        }
+    };
+}
+
 impl BatteryScheme for CustomTheme {
     color_from_json!(battery_fg, battery, fg, alert_fg);
     color_from_json!(battery_bg, battery, bg, alert_bg);
+
+    icon_from_json!(battery_full_icon, battery, full_icon, BATTERY_FULL_ICON);
+    icon_from_json!(
+        battery_charging_icon,
+        battery,
+        charging_icon,
+        BATTERY_CHARGING_ICON
+    );
+    icon_from_json!(
+        battery_discharging_icon,
+        battery,
+        discharging_icon,
+        BATTERY_DISCHARGING_ICON
+    );
+    icon_from_json!(
+        battery_unknown_icon,
+        battery,
+        unknown_icon,
+        BATTERY_UNKNOWN_ICON
+    );
+    icon_from_json!(battery_empty_icon, battery, empty_icon, BATTERY_EMPTY_ICON);
 }
 
 impl JavaScheme for CustomTheme {
@@ -240,6 +320,10 @@ impl JavaScheme for CustomTheme {
 
     fn mise_icon() -> &'static str {
         mise_icon_from_json("java")
+    }
+
+    fn icon() -> &'static str {
+        icon_from_json_or("java", "sdkman", "icon", Self::JAVA_ICON)
     }
 }
 
@@ -268,6 +352,10 @@ impl NodeScheme for CustomTheme {
     fn mise_icon() -> &'static str {
         mise_icon_from_json_or("node", "nvm")
     }
+
+    fn icon() -> &'static str {
+        icon_from_json_or("node", "nvm", "icon", Self::NODE_ICON)
+    }
 }
 
 impl CargoScheme for CustomTheme {
@@ -277,6 +365,8 @@ impl CargoScheme for CustomTheme {
     fn mise_icon() -> &'static str {
         mise_icon_from_json("cargo")
     }
+
+    icon_from_json!(icon, cargo, icon, CARGO_ICON);
 }
 
 impl ErrorMessageScheme for CustomTheme {
@@ -293,11 +383,7 @@ impl UpdateScheme for CustomTheme {
     color_from_json!(update_fg, update, fg, default_fg);
     color_from_json!(update_bg, update, bg, default_bg);
 
-    fn update_icon() -> &'static str {
-        Self::get_str("update", "icon")
-            .map(|str| str.leak() as &'static str)
-            .unwrap_or(Self::DEFAULT_ICON)
-    }
+    icon_from_json!(update_icon, update, icon, DEFAULT_ICON);
 }
 
 impl CmdScheme for CustomTheme {
@@ -308,11 +394,8 @@ impl CmdScheme for CustomTheme {
     color_from_json!(cmd_failed_bg, cmd, failed_bg, default_fg);
     color_from_json!(cmd_failed_fg, cmd, failed_fg, default_bg);
 
-    fn cmd_user_symbol() -> &'static str {
-        Self::get_str("cmd", "user_symbol")
-            .map(|str| str.leak() as &'static str)
-            .unwrap_or(Self::DEFAULT_USER_SYMBOL)
-    }
+    icon_from_json!(cmd_user_symbol, cmd, user_symbol, DEFAULT_USER_SYMBOL);
+    icon_from_json!(cmd_root_symbol, cmd, root_symbol, DEFAULT_ROOT_SYMBOL);
 }
 
 impl CwdScheme for CustomTheme {
@@ -320,17 +403,17 @@ impl CwdScheme for CustomTheme {
     fn path_bg_colors() -> Vec<Color> {
         Self::get_colors("cwd", "bg_colors").unwrap_or(vec![Self::default_bg()])
     }
+
+    icon_from_json!(cwd_home_icon, cwd, home_icon, CWD_HOME_ICON);
+    icon_from_json!(cwd_root_icon, cwd, root_icon, CWD_ROOT_ICON);
+    icon_from_json!(cwd_ellipsis_icon, cwd, ellipsis_icon, CWD_ELLIPSIS_ICON);
 }
 
 impl LastCmdDurationScheme for CustomTheme {
     color_from_json!(time_bg, last_cmd_duration, bg, default_bg);
     color_from_json!(time_fg, last_cmd_duration, fg, default_fg);
 
-    fn time_icon() -> &'static str {
-        Self::get_str("last_cmd_duration", "time_icon")
-            .map(|str| str.leak() as &'static str)
-            .unwrap_or(Self::DEFAULT_TIME_ICON)
-    }
+    icon_from_json!(time_icon, last_cmd_duration, time_icon, DEFAULT_TIME_ICON);
 }
 
 impl ExitCodeScheme for CustomTheme {
@@ -353,6 +436,22 @@ impl GitScheme for CustomTheme {
     color_from_json!(git_repo_clean_fg, git, clean_fg, default_fg);
     color_from_json!(git_repo_dirty_bg, git, dirty_bg, default_bg);
     color_from_json!(git_repo_dirty_fg, git, dirty_fg, default_fg);
+
+    icon_from_json!(git_branch_icon, git, branch_icon, DEFAULT_BRANCH_ICON);
+    icon_from_json!(
+        git_linked_worktree_icon,
+        git,
+        linked_worktree_icon,
+        DEFAULT_LINKED_WORKTREE_ICON
+    );
+    icon_from_json!(git_detached_icon, git, detached_icon, DEFAULT_DETACHED_ICON);
+    icon_from_json!(git_notstaged_icon, git, notstaged_icon, NOT_STAGED_SYMBOL);
+    icon_from_json!(git_untracked_icon, git, untracked_icon, UNTRACKED_SYMBOL);
+    icon_from_json!(git_staged_icon, git, staged_icon, STAGED_SYMBOL);
+    icon_from_json!(git_conflicted_icon, git, conflicted_icon, CONFLICTED_SYMBOL);
+    icon_from_json!(git_remote_icon, git, remote_icon, DEFAULT_REMOTE_ICON);
+    icon_from_json!(git_ahead_icon, git, ahead_icon, DEFAULT_AHEAD_ICON);
+    icon_from_json!(git_behind_icon, git, behind_icon, DEFAULT_BEHIND_ICON);
 }
 
 impl PrScheme for CustomTheme {
@@ -369,17 +468,8 @@ impl PrScheme for CustomTheme {
     color_from_json!(pr_status_failure_fg, pr, status_failure_fg, default_fg);
     color_from_json!(pr_status_pending_fg, pr, status_pending_fg, default_fg);
 
-    fn pr_icon() -> &'static str {
-        Self::get_str("pr", "icon")
-            .map(|str| str.leak() as &'static str)
-            .unwrap_or("\u{ea64}")
-    }
-
-    fn pr_status_icon() -> &'static str {
-        Self::get_str("pr", "status_icon")
-            .map(|str| str.leak() as &'static str)
-            .unwrap_or("\u{25cf}")
-    }
+    icon_from_json!(pr_icon, pr, icon, PR_ICON);
+    icon_from_json!(pr_status_icon, pr, status_icon, PR_STATUS_ICON);
 }
 
 impl PythonScheme for CustomTheme {
@@ -414,11 +504,26 @@ impl PythonScheme for CustomTheme {
     fn mise_icon() -> &'static str {
         mise_icon_from_json_or("python", "py")
     }
+
+    fn python_icon() -> &'static str {
+        icon_from_json_or("python", "py", "icon", Self::PYTHON_ICON)
+    }
+
+    fn python_pyproject_icon() -> &'static str {
+        icon_from_json_or(
+            "python",
+            "py",
+            "pyproject_icon",
+            Self::PYTHON_PYPROJECT_ICON,
+        )
+    }
 }
 
 impl ReadOnlyScheme for CustomTheme {
     color_from_json!(readonly_fg, readonly, fg, default_fg);
     color_from_json!(readonly_bg, readonly, bg, default_bg);
+
+    icon_from_json!(readonly_symbol, readonly, icon, READONLY_ICON);
 }
 
 impl SpacerScheme for CustomTheme {
@@ -434,28 +539,22 @@ impl HostScheme for CustomTheme {
 impl JobsScheme for CustomTheme {
     color_from_json!(jobs_bg, jobs, bg, default_bg);
     color_from_json!(jobs_fg, jobs, fg, default_fg);
+
+    icon_from_json!(jobs_symbol, jobs, icon, JOBS_ICON);
 }
 
 impl KubernetesScheme for CustomTheme {
     color_from_json!(kubernetes_bg, kubernetes, bg, default_bg);
     color_from_json!(kubernetes_fg, kubernetes, fg, default_fg);
 
-    fn kubernetes_icon() -> &'static str {
-        Self::get_str("kubernetes", "icon")
-            .map(|str| str.leak() as &'static str)
-            .unwrap_or("\u{f10fe}")
-    }
+    icon_from_json!(kubernetes_icon, kubernetes, icon, KUBERNETES_ICON);
 }
 
 impl SudoScheme for CustomTheme {
     color_from_json!(sudo_bg, sudo, bg, default_bg);
     color_from_json!(sudo_fg, sudo, fg, default_fg);
 
-    fn sudo_symbol() -> &'static str {
-        Self::get_str("sudo", "symbol")
-            .map(|str| str.leak() as &'static str)
-            .unwrap_or("⚿")
-    }
+    icon_from_json!(sudo_symbol, sudo, symbol, SUDO_SYMBOL);
 }
 
 impl LocalIpScheme for CustomTheme {
@@ -478,6 +577,8 @@ impl OsScheme for CustomTheme {
 impl MemoryUsageScheme for CustomTheme {
     color_from_json!(memory_usage_fg, memory_usage, fg, default_fg);
     color_from_json!(memory_usage_bg, memory_usage, bg, default_bg);
+
+    icon_from_json!(memory_usage_icon, memory_usage, icon, MEMORY_USAGE_ICON);
 }
 
 impl ShellScheme for CustomTheme {
@@ -502,6 +603,28 @@ impl UsageScheme for CustomTheme {
     color_from_json!(codex_usage_bg, ai_usage, codex_bg, default_bg);
     color_from_json!(codex_usage_fg, ai_usage, codex_fg, default_fg);
     color_from_json!(usage_threshold_bg, ai_usage, threshold_bg, alert_bg);
+
+    icon_from_json!(claude_usage_icon, ai_usage, claude_icon, CLAUDE_USAGE_ICON);
+    icon_from_json!(codex_usage_icon, ai_usage, codex_icon, CODEX_USAGE_ICON);
+    icon_from_json!(
+        usage_loading_icon,
+        ai_usage,
+        loading_icon,
+        USAGE_LOADING_ICON
+    );
+    icon_from_json!(
+        usage_not_installed_icon,
+        ai_usage,
+        not_installed_icon,
+        USAGE_NOT_INSTALLED_ICON
+    );
+    icon_from_json!(
+        usage_logged_out_icon,
+        ai_usage,
+        logged_out_icon,
+        USAGE_LOGGED_OUT_ICON
+    );
+    icon_from_json!(usage_reset_icon, ai_usage, reset_icon, USAGE_RESET_ICON);
 }
 
 /// Checks a theme file's contents the way [`CustomTheme::load`] does.
