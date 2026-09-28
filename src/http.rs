@@ -7,6 +7,7 @@
 //! request is retried against the Mozilla roots bundled into the binary.
 //! Proxies are read from `HTTPS_PROXY` and friends, as ureq does by default.
 
+use std::io::{self, Read};
 use std::time::Duration;
 
 use ureq::tls::{RootCerts, TlsConfig};
@@ -24,10 +25,34 @@ pub(crate) fn get(
     timeout: Duration,
     limit: u64,
 ) -> Result<Vec<u8>, Error> {
-    match get_with(RootCerts::PlatformVerifier, url, headers, timeout, limit) {
-        Err(Error::Tls(_) | Error::Rustls(_)) => {
-            get_with(RootCerts::WebPki, url, headers, timeout, limit)
-        }
+    download(url, headers, timeout, limit, |_| {})
+}
+
+/// Like [`get`], calling `progress` with the number of bytes received so far
+/// as the body arrives.
+pub(crate) fn download(
+    url: &str,
+    headers: &[(&str, &str)],
+    timeout: Duration,
+    limit: u64,
+    mut progress: impl FnMut(u64),
+) -> Result<Vec<u8>, Error> {
+    match get_with(
+        RootCerts::PlatformVerifier,
+        url,
+        headers,
+        timeout,
+        limit,
+        &mut progress,
+    ) {
+        Err(Error::Tls(_) | Error::Rustls(_)) => get_with(
+            RootCerts::WebPki,
+            url,
+            headers,
+            timeout,
+            limit,
+            &mut progress,
+        ),
         result => result,
     }
 }
@@ -38,6 +63,7 @@ fn get_with(
     headers: &[(&str, &str)],
     timeout: Duration,
     limit: u64,
+    progress: &mut dyn FnMut(u64),
 ) -> Result<Vec<u8>, Error> {
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(timeout))
@@ -50,10 +76,29 @@ fn get_with(
     for (name, value) in headers {
         request = request.header(*name, *value);
     }
-    request
-        .call()?
-        .body_mut()
-        .with_config()
-        .limit(limit)
-        .read_to_vec()
+    let mut response = request.call()?;
+    let mut body = Counting {
+        reader: response.body_mut().with_config().limit(limit).reader(),
+        received: 0,
+        progress,
+    };
+    let mut bytes = Vec::new();
+    body.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// Reports how much has been read through it after every read.
+struct Counting<'a, R> {
+    reader: R,
+    received: u64,
+    progress: &'a mut dyn FnMut(u64),
+}
+
+impl<R: Read> Read for Counting<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let read = self.reader.read(buf)?;
+        self.received += read as u64;
+        (self.progress)(self.received);
+        Ok(read)
+    }
 }

@@ -1,7 +1,7 @@
 extern crate superline;
 
 use std::fs::{create_dir_all, File, OpenOptions};
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -14,7 +14,7 @@ use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadat
 use superline::debug;
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError};
-use superline::upgrade::{self, Installation, UpgradeError};
+use superline::upgrade::{self, Installation, Step, UpgradeError};
 use superline::{update, Powerline};
 
 const FISH_CONF: &str = r#"
@@ -440,13 +440,54 @@ fn upgrade_binary(args: UpgradeArgs) -> Result<(), UpgradeError> {
         "Upgrading superline {current} -> {version} ({})",
         installation.target()
     );
-    installation.install(&release)?;
+    let mut steps = StepPrinter {
+        tty: io::stdout().is_terminal(),
+        download: None,
+    };
+    let installed = installation.install(&release, |step| steps.print(step));
+    steps.end_download();
+    installed?;
     println!(
         "Installed superline {version} to {}\nRelease notes: {}",
         installation.exe().display(),
         release.url
     );
     Ok(())
+}
+
+/// Prints each step of `superline upgrade` on its own line. On a terminal the
+/// download line counts up in place; elsewhere it is printed once the
+/// download ends.
+struct StepPrinter {
+    tty: bool,
+    /// How far the download has got, until it ends.
+    download: Option<String>,
+}
+
+impl StepPrinter {
+    fn print(&mut self, step: Step) {
+        let line = format!("  {step}");
+        if let Step::Downloading { .. } = step {
+            if self.tty && self.download.as_ref() != Some(&line) {
+                print!("\r{line}");
+                let _ = io::stdout().flush();
+            }
+            self.download = Some(line);
+        } else {
+            self.end_download();
+            println!("{line}");
+        }
+    }
+
+    /// Finishes the download line, so what follows starts on a line of its
+    /// own.
+    fn end_download(&mut self) {
+        match self.download.take() {
+            Some(_) if self.tty => println!(),
+            Some(line) => println!("{line}"),
+            None => {}
+        }
+    }
 }
 
 fn install(args: InstallArgs) {

@@ -84,10 +84,11 @@ cargo install superline
 ```
 
 Once a day superline checks for a new release. A prebuilt binary (from cargo-binstall, the releases page, or
-`superline upgrade`) installs it in the background and says so on the next prompt. Anything else prints a notice above
-the prompt instead: a binary built from source keeps doing so until `superline upgrade` swaps in the prebuilt one, and
-Homebrew installs update with `brew upgrade superline`. Set `"update": {"auto": false}` in the config to only be
-notified, or `"update": {"disable": true}` to turn the check off entirely.
+`superline upgrade`) installs it in the background, showing how far it has got above each prompt drawn meanwhile, and
+says so once the new version is running. Anything else prints a notice above the prompt instead: a binary built from
+source keeps doing so until `superline upgrade` swaps in the prebuilt one, and Homebrew installs update with
+`brew upgrade superline`. Set `"update": {"auto": false}` in the config to only be notified, or
+`"update": {"disable": true}` to turn the check off entirely.
 
 
 ### 3. Hook it into your shell

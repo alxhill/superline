@@ -189,29 +189,7 @@ impl<S: Source> Cached<S> {
 
     /// Reads the cache without triggering a refresh.
     pub fn read(&self) -> Option<Entry<S::Value>> {
-        let path = self.path.as_ref()?;
-
-        // Windows can briefly deny access while another writer replaces the
-        // cache entry. A short retry keeps that filesystem-level transition
-        // from looking like a missing or corrupt cache value.
-        for attempt in 0..3 {
-            let file = match File::open(path) {
-                Ok(file) => file,
-                Err(_) if attempt < 2 => {
-                    thread::sleep(Duration::from_millis(1));
-                    continue;
-                }
-                Err(_) => return None,
-            };
-
-            match serde_json::from_reader(file) {
-                Ok(entry) => return Some(entry),
-                Err(_) if attempt < 2 => thread::sleep(Duration::from_millis(1)),
-                Err(_) => return None,
-            }
-        }
-
-        None
+        read_entry(self.path.as_ref()?)
     }
 
     /// Serves the cached value and refreshes it in the background when it is
@@ -417,32 +395,61 @@ impl<S: Source> Cached<S> {
     }
 
     fn write(&self, value: &S::Value) {
-        let Some(path) = &self.path else {
-            return;
-        };
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
+        if let Some(path) = &self.path {
+            write_entry(path, value);
         }
+    }
+}
 
-        // Write to a temp file and rename so a concurrent reader never sees a
-        // half-written cache. The temp file is unique to this writer: a timed
-        // load can leave an in-process worker and a detached child writing
-        // the same entry at once, and a shared temp path lets one truncate the
-        // other's finished write just before it is renamed into place.
-        let tmp = path.with_extension(format!(
-            "{}-{}.tmp",
-            std::process::id(),
-            WRITE_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        let Ok(mut file) = File::create(&tmp) else {
-            return;
+/// Reads an [`Entry`] written by [`write_entry`].
+pub(crate) fn read_entry<V: DeserializeOwned>(path: &Path) -> Option<Entry<V>> {
+    // Windows can briefly deny access while another writer replaces the
+    // cache entry. A short retry keeps that filesystem-level transition
+    // from looking like a missing or corrupt cache value.
+    for attempt in 0..3 {
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(_) if attempt < 2 => {
+                thread::sleep(Duration::from_millis(1));
+                continue;
+            }
+            Err(_) => return None,
         };
-        let written =
-            serde_json::to_writer(&mut file, &Entry::now(value)).is_ok() && file.flush().is_ok();
-        drop(file);
-        if !written || fs::rename(&tmp, path).is_err() {
-            let _ = fs::remove_file(&tmp);
+
+        match serde_json::from_reader(file) {
+            Ok(entry) => return Some(entry),
+            Err(_) if attempt < 2 => thread::sleep(Duration::from_millis(1)),
+            Err(_) => return None,
         }
+    }
+
+    None
+}
+
+/// Stores `value` at `path` as an [`Entry`] fetched now.
+pub(crate) fn write_entry<V: Serialize>(path: &Path, value: &V) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    // Write to a temp file and rename so a concurrent reader never sees a
+    // half-written cache. The temp file is unique to this writer: a timed
+    // load can leave an in-process worker and a detached child writing
+    // the same entry at once, and a shared temp path lets one truncate the
+    // other's finished write just before it is renamed into place.
+    let tmp = path.with_extension(format!(
+        "{}-{}.tmp",
+        std::process::id(),
+        WRITE_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let Ok(mut file) = File::create(&tmp) else {
+        return;
+    };
+    let written =
+        serde_json::to_writer(&mut file, &Entry::now(value)).is_ok() && file.flush().is_ok();
+    drop(file);
+    if !written || fs::rename(&tmp, path).is_err() {
+        let _ = fs::remove_file(&tmp);
     }
 }
 

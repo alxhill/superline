@@ -8,20 +8,22 @@
 //! moved over the running binary.
 //!
 //! With `update.auto` on, [`AutoUpgrade`] runs the same install from the
-//! detached refresh child once the daily check finds a newer release.
+//! detached refresh child once the daily check finds a newer release, and
+//! records its [`Progress`] for the prompts drawn meanwhile.
 
 use std::ffi::OsStr;
+use std::fmt;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::cache::Source;
+use crate::cache::{write_entry, Cached, Source};
 use crate::update::{github_api, is_newer, parse_version, CURRENT_VERSION, REPO};
 
 const BIN_NAME: &str = if cfg!(windows) {
@@ -32,6 +34,11 @@ const BIN_NAME: &str = if cfg!(windows) {
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 /// The archives are around 3 MB; this only guards against a runaway response.
 const DOWNLOAD_LIMIT: u64 = 64 * 1024 * 1024;
+/// How often an automatic upgrade records how much it has downloaded.
+const DOWNLOAD_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+/// No step of an automatic upgrade outlasts the download's timeout, so
+/// progress this old was left behind by an upgrade that died partway.
+pub(crate) const PROGRESS_TIMEOUT: Duration = Duration::from_secs(DOWNLOAD_TIMEOUT.as_secs() + 60);
 
 #[derive(Debug, Error)]
 pub enum UpgradeError {
@@ -74,6 +81,14 @@ impl UpgradeError {
                 | UpgradeError::Download(_)
         )
     }
+
+    /// Why a transient failure is retried, short enough for a prompt notice.
+    fn retry_reason(&self) -> String {
+        match self {
+            UpgradeError::MissingAsset { .. } => "its binaries are still uploading".to_string(),
+            error => error.to_string(),
+        }
+    }
 }
 
 /// A published release and its downloadable archives.
@@ -93,6 +108,9 @@ struct Asset {
     /// `sha256:<hex>`. Older assets predate GitHub computing digests.
     #[serde(default)]
     digest: Option<String>,
+    /// In bytes.
+    #[serde(default)]
+    size: Option<u64>,
 }
 
 impl Release {
@@ -197,8 +215,13 @@ impl Installation {
     }
 
     /// Downloads `release`'s archive for this platform and moves its binary
-    /// over the running one.
-    pub fn install(&self, release: &Release) -> Result<(), UpgradeError> {
+    /// over the running one, calling `report` as each step starts and as the
+    /// download arrives.
+    pub fn install(
+        &self,
+        release: &Release,
+        mut report: impl FnMut(Step),
+    ) -> Result<(), UpgradeError> {
         let name = asset_name(release.version(), self.target);
         let asset = release
             .assets
@@ -210,13 +233,17 @@ impl Installation {
             })?;
 
         check_writable(&self.exe)?;
-        let archive = crate::http::get(
+        let total = asset.size;
+        report(Step::Downloading { received: 0, total });
+        let archive = crate::http::download(
             &asset.browser_download_url,
             &[],
             DOWNLOAD_TIMEOUT,
             DOWNLOAD_LIMIT,
+            |received| report(Step::Downloading { received, total }),
         )
         .map_err(|error| UpgradeError::Download(error.to_string()))?;
+        report(Step::Verifying);
         if let Some(expected) = asset.digest.as_deref().and_then(sha256_hex) {
             let actual = hex(&Sha256::digest(&archive));
             if actual != expected {
@@ -230,8 +257,49 @@ impl Installation {
         let binary = staging.path().join(BIN_NAME);
         extract_binary(&archive[..], &binary)?;
         check_runs(&binary, release.version())?;
+        report(Step::Installing);
         replace(&self.exe, &binary)
     }
+}
+
+/// A step of [`Installation::install`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Step {
+    /// `received` bytes of the archive have arrived, out of `total` when
+    /// GitHub reports its size.
+    Downloading { received: u64, total: Option<u64> },
+    /// Checking the archive against its checksum and test-running the binary
+    /// in it.
+    Verifying,
+    /// Moving the new binary over the running one.
+    Installing,
+}
+
+impl fmt::Display for Step {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Step::Downloading {
+                received,
+                total: Some(total),
+            } if total > 0 => write!(
+                f,
+                "downloading {}/{} MB ({}%)",
+                megabytes(received),
+                megabytes(total),
+                (received.min(total) * 100) / total
+            ),
+            Step::Downloading { received, .. } => {
+                write!(f, "downloading {} MB", megabytes(received))
+            }
+            Step::Verifying => f.write_str("verifying the download"),
+            Step::Installing => f.write_str("installing"),
+        }
+    }
+}
+
+fn megabytes(bytes: u64) -> String {
+    format!("{:.1}", bytes as f64 / 1_000_000.0)
 }
 
 /// Whether this binary installs new releases itself when `update.auto` is on.
@@ -249,6 +317,69 @@ pub fn auto_upgrades() -> bool {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AutoUpgrade {
     pub tag: String,
+}
+
+/// Where an automatic upgrade has got to. The refresh child keeps it in the
+/// file at [`progress_path`] while it works, and removes it once the outcome
+/// is cached.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Progress {
+    FindingRelease,
+    Step(Step),
+    /// The attempt hit a failure that may clear up by itself, such as the
+    /// release's binaries still uploading, and is tried again after
+    /// [`AutoUpgrade::REFRESH_INTERVAL`].
+    Retrying {
+        reason: String,
+    },
+}
+
+impl fmt::Display for Progress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Progress::FindingRelease => f.write_str("looking up the release"),
+            Progress::Step(step) => step.fmt(f),
+            Progress::Retrying { reason } => write!(f, "retrying later: {reason}"),
+        }
+    }
+}
+
+/// The progress file for the [`AutoUpgrade`] cache entry at `cache_path`.
+pub fn progress_path(cache_path: &Path) -> PathBuf {
+    cache_path.with_extension("progress")
+}
+
+/// Records an automatic upgrade's [`Progress`], at most once every
+/// [`DOWNLOAD_PROGRESS_INTERVAL`] while it downloads.
+struct ProgressFile {
+    path: Option<PathBuf>,
+    last_download: Option<Instant>,
+}
+
+impl ProgressFile {
+    fn report(&mut self, progress: Progress) {
+        let Some(path) = &self.path else {
+            return;
+        };
+        if let Progress::Step(Step::Downloading { .. }) = progress {
+            let now = Instant::now();
+            if self
+                .last_download
+                .is_some_and(|last| now - last < DOWNLOAD_PROGRESS_INTERVAL)
+            {
+                return;
+            }
+            self.last_download = Some(now);
+        }
+        write_entry(path, &progress);
+    }
+
+    fn clear(&self) {
+        if let Some(path) = &self.path {
+            let _ = fs::remove_file(path);
+        }
+    }
 }
 
 /// How an automatic upgrade went.
@@ -284,19 +415,36 @@ impl Source for AutoUpgrade {
     }
 
     fn fetch(&self) -> Option<AutoUpgradeOutcome> {
+        let mut progress = ProgressFile {
+            path: Cached::new(self.clone()).path().map(progress_path),
+            last_download: None,
+        };
+        progress.report(Progress::FindingRelease);
         let result = find_release(Some(&self.tag)).and_then(|release| {
-            Installation::current()?.install(&release)?;
+            Installation::current()?
+                .install(&release, |step| progress.report(Progress::Step(step)))?;
             Ok(release.url)
         });
         match result {
-            Ok(url) => Some(AutoUpgradeOutcome::Installed {
-                from: CURRENT_VERSION.to_string(),
-                url,
-            }),
-            Err(error) if error.is_transient() => None,
-            Err(error) => Some(AutoUpgradeOutcome::Failed {
-                error: error.to_string(),
-            }),
+            Ok(url) => {
+                progress.clear();
+                Some(AutoUpgradeOutcome::Installed {
+                    from: CURRENT_VERSION.to_string(),
+                    url,
+                })
+            }
+            Err(error) if error.is_transient() => {
+                progress.report(Progress::Retrying {
+                    reason: error.retry_reason(),
+                });
+                None
+            }
+            Err(error) => {
+                progress.clear();
+                Some(AutoUpgradeOutcome::Failed {
+                    error: error.to_string(),
+                })
+            }
         }
     }
 }
@@ -586,7 +734,9 @@ mod tests {
             mac.digest.as_deref().and_then(sha256_hex),
             Some("3034cab47b317173f9a938076167dcd1a060e2f1563c98dd2fe3d41953b37bac")
         );
+        assert_eq!(mac.size, Some(2606303));
         assert_eq!(release.assets[1].digest, None);
+        assert_eq!(release.assets[1].size, None);
 
         assert!(parse_release(br#"{"tag_name":"nightly","html_url":"x"}"#).is_none());
         assert!(parse_release(br#"{"message":"Not Found"}"#).is_none());
@@ -666,6 +816,65 @@ mod tests {
             }
             .cache_id(),
             "v0.21.0"
+        );
+    }
+
+    #[test]
+    fn steps_describe_how_far_the_install_has_got() {
+        let downloading = |received, total| Step::Downloading { received, total };
+        assert_eq!(
+            downloading(0, Some(2_606_303)).to_string(),
+            "downloading 0.0/2.6 MB (0%)"
+        );
+        assert_eq!(
+            downloading(1_200_000, Some(2_606_303)).to_string(),
+            "downloading 1.2/2.6 MB (46%)"
+        );
+        assert_eq!(
+            downloading(2_606_303, Some(2_606_303)).to_string(),
+            "downloading 2.6/2.6 MB (100%)"
+        );
+        assert_eq!(
+            downloading(1_200_000, None).to_string(),
+            "downloading 1.2 MB"
+        );
+        assert_eq!(downloading(0, Some(0)).to_string(), "downloading 0.0 MB");
+        assert_eq!(Step::Verifying.to_string(), "verifying the download");
+        assert_eq!(
+            Progress::FindingRelease.to_string(),
+            "looking up the release"
+        );
+        assert_eq!(Progress::Step(Step::Installing).to_string(), "installing");
+    }
+
+    #[test]
+    fn progress_round_trips_through_its_file() {
+        let progress = Progress::Step(Step::Downloading {
+            received: 1_200_000,
+            total: Some(2_606_303),
+        });
+        let json = serde_json::to_string(&progress).unwrap();
+        assert_eq!(
+            json,
+            r#"{"step":{"downloading":{"received":1200000,"total":2606303}}}"#
+        );
+        assert_eq!(serde_json::from_str::<Progress>(&json).unwrap(), progress);
+        assert_eq!(
+            progress_path(Path::new("/cache/superline/auto-upgrade-v0.21.0.json")),
+            Path::new("/cache/superline/auto-upgrade-v0.21.0.progress")
+        );
+    }
+
+    #[test]
+    fn missing_binaries_are_retried_with_a_short_reason() {
+        let missing = UpgradeError::MissingAsset {
+            tag: "v0.21.0".into(),
+            asset: "superline-0.21.0-aarch64-apple-darwin.tar.gz".into(),
+        };
+        assert_eq!(missing.retry_reason(), "its binaries are still uploading");
+        assert_eq!(
+            UpgradeError::Download("timed out".into()).retry_reason(),
+            "download failed: timed out"
         );
     }
 

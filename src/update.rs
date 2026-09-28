@@ -8,7 +8,8 @@
 //! marker file the cache uses to rate-limit refreshes.
 //!
 //! With `update.auto` on, a prebuilt binary installs the release itself
-//! instead (see [`crate::upgrade::AutoUpgrade`]), and the binary it installs
+//! instead (see [`crate::upgrade::AutoUpgrade`]). Every prompt drawn while
+//! the install runs says how far it has got, and the binary it installs
 //! announces the upgrade on its first prompt.
 
 use std::path::{Path, PathBuf};
@@ -16,12 +17,15 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{claim_slot, Cached, Lookup, Source};
+use crate::cache::{claim_slot, read_entry, Cached, Entry, Lookup, Source};
 use crate::colors::Color;
 use crate::platform::resolve_binary;
 use crate::terminal::{BgColor, FgColor, Hyperlink, Reset};
 use crate::themes::DefaultColors;
-use crate::upgrade::{auto_upgrades, is_homebrew, release_target, AutoUpgrade, AutoUpgradeOutcome};
+use crate::upgrade::{
+    auto_upgrades, is_homebrew, progress_path, release_target, AutoUpgrade, AutoUpgradeOutcome,
+    Progress, PROGRESS_TIMEOUT,
+};
 
 pub(crate) const REPO: &str = "alxhill/superline";
 pub(crate) const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -82,8 +86,9 @@ impl Source for UpdateLookup {
 /// and the notice has not been shown in the last day. Reading the cache also
 /// schedules the daily background check.
 ///
-/// With `auto` on, the notice instead announces an upgrade that just
-/// finished, and gives way to the install when one can run.
+/// With `auto` on, the notice instead follows an upgrade that can run: it
+/// says one is starting, how far it has got on every prompt while it runs,
+/// and that it finished on the new binary's first prompt.
 pub fn notice<S: UpdateScheme>(auto: bool) -> Option<String> {
     if auto {
         if let Some(notice) = upgraded_notice::<S>() {
@@ -96,14 +101,47 @@ pub fn notice<S: UpdateScheme>(auto: bool) -> Option<String> {
     if !is_newer(&release.version, CURRENT_VERSION) {
         return None;
     }
+    let link = Hyperlink {
+        url: &release.url,
+        label: &release.version,
+    };
 
     let mut failure = None;
     if auto && auto_upgrades() {
         let upgrade = Cached::new(AutoUpgrade {
             tag: release.version.clone(),
         });
-        match auto_upgrade_state(upgrade.load()) {
-            AutoUpgradeState::Running => return None,
+        let lookup = upgrade.load();
+        let progress = upgrade
+            .path()
+            .and_then(|path| read_entry(&progress_path(path)));
+        match auto_upgrade_state(lookup, progress) {
+            AutoUpgradeState::Starting => {
+                return Some(format!(
+                    "{}superline {link} available, upgrading from v{CURRENT_VERSION} in the background",
+                    icon::<S>(),
+                ));
+            }
+            AutoUpgradeState::Running(progress) => {
+                return Some(format!(
+                    "{}superline upgrading to {link}: {progress}",
+                    icon::<S>(),
+                ));
+            }
+            AutoUpgradeState::Retrying { reason, retry_in } => {
+                if !claim_slot(
+                    &retry_marker(upgrade.path()?),
+                    AutoUpgrade::REFRESH_INTERVAL,
+                ) {
+                    return None;
+                }
+                return Some(format!(
+                    "{}superline {link} available, retrying the upgrade in {}: {reason}",
+                    icon::<S>(),
+                    minutes(retry_in),
+                ));
+            }
+            AutoUpgradeState::Hidden => return None,
             AutoUpgradeState::Failed(error) => failure = Some(error),
             AutoUpgradeState::Unavailable => {}
         }
@@ -119,10 +157,6 @@ pub fn notice<S: UpdateScheme>(auto: bool) -> Option<String> {
     Some(format!(
         "{}superline {link} available: {command}{failure}",
         icon::<S>(),
-        link = Hyperlink {
-            url: &release.url,
-            label: &release.version,
-        },
     ))
 }
 
@@ -166,22 +200,69 @@ fn icon<S: UpdateScheme>() -> String {
 
 #[derive(Debug, PartialEq)]
 enum AutoUpgradeState {
-    /// An install is in flight, or finished and this prompt is still the old
-    /// binary's; either way the next prompt knows more.
-    Running,
+    /// The install was just handed to the refresh child, which has not
+    /// reported any progress yet.
+    Starting,
+    /// The install is partway through.
+    Running(Progress),
+    /// The last attempt hit a failure that may clear up by itself, and the
+    /// next one starts after `retry_in`.
+    Retrying { reason: String, retry_in: Duration },
+    /// Nothing worth saying: the install finished and this prompt is still
+    /// the old binary's, or it died partway and waits to be retried.
+    Hidden,
     /// The last attempt failed in a way retrying soon will not fix.
     Failed(String),
     /// This installation cannot upgrade itself.
     Unavailable,
 }
 
-fn auto_upgrade_state(lookup: Lookup<AutoUpgradeOutcome>) -> AutoUpgradeState {
-    match lookup {
-        Lookup::Loading | Lookup::Ready(AutoUpgradeOutcome::Installed { .. }) => {
-            AutoUpgradeState::Running
+/// Reads the state of an upgrade from its cached outcome and, while it has
+/// none, from the progress the refresh child records.
+fn auto_upgrade_state(
+    lookup: Lookup<AutoUpgradeOutcome>,
+    progress: Option<Entry<Progress>>,
+) -> AutoUpgradeState {
+    let progress = progress.map(|entry| (entry.age(), entry.value));
+    match (lookup, progress) {
+        (Lookup::Ready(AutoUpgradeOutcome::Installed { .. }), _) => AutoUpgradeState::Hidden,
+        // A failed upgrade is retried a day later, and that attempt's
+        // progress is newer news than the failure.
+        (_, Some((age, progress @ (Progress::FindingRelease | Progress::Step(_)))))
+            if age < PROGRESS_TIMEOUT =>
+        {
+            AutoUpgradeState::Running(progress)
         }
-        Lookup::Ready(AutoUpgradeOutcome::Failed { error }) => AutoUpgradeState::Failed(error),
-        Lookup::Unavailable => AutoUpgradeState::Unavailable,
+        (Lookup::Ready(AutoUpgradeOutcome::Failed { error }), _) => AutoUpgradeState::Failed(error),
+        (Lookup::Unavailable, _) => AutoUpgradeState::Unavailable,
+        (Lookup::Loading, None) => AutoUpgradeState::Starting,
+        // The refresh slot is claimed before the progress is first written,
+        // so once the progress is older than the slot it has been released,
+        // and loading the upgrade has just started the next attempt.
+        (Lookup::Loading, Some((age, _))) if age >= AutoUpgrade::REFRESH_INTERVAL => {
+            AutoUpgradeState::Starting
+        }
+        (Lookup::Loading, Some((age, Progress::Retrying { reason }))) => {
+            AutoUpgradeState::Retrying {
+                reason,
+                retry_in: AutoUpgrade::REFRESH_INTERVAL.saturating_sub(age),
+            }
+        }
+        (Lookup::Loading, Some(_)) => AutoUpgradeState::Hidden,
+    }
+}
+
+/// Records when a retried upgrade was last announced, so each retry is
+/// announced once.
+fn retry_marker(cache_path: &Path) -> PathBuf {
+    cache_path.with_extension("retry-shown")
+}
+
+/// `duration` in whole minutes, rounded up.
+fn minutes(duration: Duration) -> String {
+    match duration.as_secs().div_ceil(60).max(1) {
+        1 => "a minute".to_string(),
+        minutes => format!("{minutes} minutes"),
     }
 }
 
@@ -296,6 +377,7 @@ fn parse_release(json: &[u8]) -> Option<Release> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::upgrade::Step;
 
     #[test]
     fn versions_parse_with_or_without_a_prefix_and_suffix() {
@@ -335,29 +417,131 @@ mod tests {
         assert!(parse_release(b"<html>").is_none());
     }
 
+    fn progress(age: Duration, progress: Progress) -> Option<Entry<Progress>> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        Some(Entry {
+            fetched_at: now - age.as_secs(),
+            value: progress,
+        })
+    }
+
+    const DOWNLOADING: Progress = Progress::Step(Step::Downloading {
+        received: 1_200_000,
+        total: Some(2_600_000),
+    });
+
     #[test]
-    fn a_running_or_finished_auto_upgrade_hides_the_notice() {
+    fn an_upgrade_is_starting_until_the_child_reports() {
         assert_eq!(
-            auto_upgrade_state(Lookup::Loading),
-            AutoUpgradeState::Running
+            auto_upgrade_state(Lookup::Loading, None),
+            AutoUpgradeState::Starting
+        );
+    }
+
+    #[test]
+    fn a_running_upgrade_shows_its_latest_progress() {
+        assert_eq!(
+            auto_upgrade_state(
+                Lookup::Loading,
+                progress(Duration::from_secs(2), DOWNLOADING)
+            ),
+            AutoUpgradeState::Running(DOWNLOADING)
         );
         assert_eq!(
-            auto_upgrade_state(Lookup::Ready(AutoUpgradeOutcome::Installed {
-                from: "0.20.2".into(),
-                url: "x".into(),
-            })),
-            AutoUpgradeState::Running
+            auto_upgrade_state(
+                Lookup::Loading,
+                progress(Duration::ZERO, Progress::FindingRelease)
+            ),
+            AutoUpgradeState::Running(Progress::FindingRelease)
+        );
+        // The daily retry of a failed upgrade.
+        assert_eq!(
+            auto_upgrade_state(
+                Lookup::Ready(AutoUpgradeOutcome::Failed {
+                    error: "no space left".into(),
+                }),
+                progress(Duration::ZERO, Progress::Step(Step::Verifying))
+            ),
+            AutoUpgradeState::Running(Progress::Step(Step::Verifying))
+        );
+    }
+
+    #[test]
+    fn a_finished_or_failed_upgrade_ignores_its_progress() {
+        assert_eq!(
+            auto_upgrade_state(
+                Lookup::Ready(AutoUpgradeOutcome::Installed {
+                    from: "0.20.2".into(),
+                    url: "x".into(),
+                }),
+                progress(Duration::ZERO, DOWNLOADING)
+            ),
+            AutoUpgradeState::Hidden
         );
         assert_eq!(
-            auto_upgrade_state(Lookup::Ready(AutoUpgradeOutcome::Failed {
-                error: "no space left".into(),
-            })),
+            auto_upgrade_state(
+                Lookup::Ready(AutoUpgradeOutcome::Failed {
+                    error: "no space left".into(),
+                }),
+                None
+            ),
             AutoUpgradeState::Failed("no space left".into())
         );
         assert_eq!(
-            auto_upgrade_state(Lookup::Unavailable),
+            auto_upgrade_state(Lookup::Unavailable, None),
             AutoUpgradeState::Unavailable
         );
+    }
+
+    #[test]
+    fn a_transient_failure_says_when_it_is_retried() {
+        let retrying = Progress::Retrying {
+            reason: "its binaries are still uploading".into(),
+        };
+        assert_eq!(
+            auto_upgrade_state(
+                Lookup::Loading,
+                progress(Duration::from_secs(15 * 60), retrying.clone())
+            ),
+            AutoUpgradeState::Retrying {
+                reason: "its binaries are still uploading".into(),
+                retry_in: Duration::from_secs(45 * 60),
+            }
+        );
+        // Once the retry is due, loading the upgrade has just started it.
+        assert_eq!(
+            auto_upgrade_state(
+                Lookup::Loading,
+                progress(AutoUpgrade::REFRESH_INTERVAL, retrying)
+            ),
+            AutoUpgradeState::Starting
+        );
+    }
+
+    #[test]
+    fn an_upgrade_that_died_waits_quietly_for_its_retry() {
+        assert_eq!(
+            auto_upgrade_state(Lookup::Loading, progress(PROGRESS_TIMEOUT, DOWNLOADING)),
+            AutoUpgradeState::Hidden
+        );
+        assert_eq!(
+            auto_upgrade_state(
+                Lookup::Loading,
+                progress(AutoUpgrade::REFRESH_INTERVAL, DOWNLOADING)
+            ),
+            AutoUpgradeState::Starting
+        );
+    }
+
+    #[test]
+    fn retry_delays_round_up_to_whole_minutes() {
+        assert_eq!(minutes(Duration::from_secs(45 * 60)), "45 minutes");
+        assert_eq!(minutes(Duration::from_secs(44 * 60 + 1)), "45 minutes");
+        assert_eq!(minutes(Duration::from_secs(30)), "a minute");
+        assert_eq!(minutes(Duration::ZERO), "a minute");
     }
 
     #[test]
