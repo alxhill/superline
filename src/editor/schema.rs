@@ -245,7 +245,7 @@ pub const WIDGET_PADDING: OptionSpec = opt(
         variants: SegmentPadding::NAMES,
         default: None,
     },
-    "Space beside the widget's text: small for none, large for one on each side, left or right for one on that side only. Unset: the theme's padding for it, else the widget's own.",
+    "Space beside the widget's text: small for none, large for one on each side, left or right for one on that side only. Unset: the widget's own.",
 );
 
 const TEXT_VALUE: OptionSpec = required(
@@ -684,6 +684,84 @@ mod tests {
                 "{} lists padding itself",
                 spec.name
             );
+        }
+    }
+
+    /// The rows of the config reference's table of the padding each widget
+    /// draws with when its `padding` is unset, as the widgets each row names
+    /// and the padding with its markup removed. A row naming no widgets is
+    /// for every other widget.
+    fn documented_default_paddings() -> Vec<(Vec<&'static str>, String)> {
+        let page = include_str!("../../site/config.html");
+        let (_, table) = page
+            .split_once(r#"<table class="opts" id="padding-defaults">"#)
+            .expect("config.html has the padding defaults table");
+        let (table, _) = table.split_once("</table>").unwrap();
+        let (_, body) = table.split_once("<tbody>").unwrap();
+        body.split("</tr>")
+            .filter_map(|row| {
+                let mut cells = row.split("<td>").skip(1);
+                let (widgets, padding) = (cells.next()?, cells.next()?);
+                let widgets = widgets
+                    .split("<code>")
+                    .skip(1)
+                    .filter_map(|code| Some(code.split_once("</code>")?.0))
+                    .collect();
+                let mut text = String::new();
+                let mut in_tag = false;
+                for c in padding.chars() {
+                    match c {
+                        '<' => in_tag = true,
+                        '>' => in_tag = false,
+                        c if !in_tag => text.push(c),
+                        _ => {}
+                    }
+                }
+                Some((widgets, text.trim().to_string()))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_config_reference_lists_the_padding_every_widget_declares() {
+        use crate::config::Widget;
+        use crate::powerline::default_padding;
+
+        let rows = documented_default_paddings();
+        let documented = |name: &str| {
+            let named = rows.iter().find(|(widgets, _)| widgets.contains(&name));
+            let other = rows.iter().find(|(widgets, _)| widgets.is_empty());
+            named.or(other).map(|(_, padding)| padding.as_str())
+        };
+        for (widgets, _) in &rows {
+            for name in widgets {
+                assert!(
+                    find(name).is_some_and(WidgetSpec::takes_padding),
+                    "config.html lists the padding of {name}, which takes none"
+                );
+            }
+        }
+        for spec in WIDGETS {
+            let Ok(widget) = serde_json::from_value::<Widget>(spec.template()) else {
+                assert!(!spec.listed, "{} template parses", spec.name);
+                continue;
+            };
+            let layout = matches!(spec.name, "separator" | "padding");
+            let declared = default_padding(&widget);
+            assert_eq!(
+                declared.is_none(),
+                layout,
+                "{} declares a padding",
+                spec.name
+            );
+            if spec.listed && spec.takes_padding() {
+                assert_eq!(
+                    documented(spec.name),
+                    declared.map(|padding| padding.to_string()).as_deref(),
+                    "{}'s padding in config.html",
+                    spec.name
+                );
+            }
         }
     }
 

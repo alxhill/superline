@@ -29,6 +29,8 @@ use ratatui::{DefaultTerminal, Frame};
 use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
 
+use crate::config::Widget;
+use crate::powerline::default_padding;
 use model::{describe, show_value, widget_spec, Document, Entry, SegPos, Side, Target};
 use preview::{Preview, Request};
 use schema::{Kind, OptionSpec, WidgetSpec, WIDGETS};
@@ -944,6 +946,13 @@ impl App {
         draw_scrollbar(frame, rows, self.entries.len(), self.list.offset());
     }
 
+    /// What the widget at `pos` pads its text with while its `padding` is
+    /// unset: the padding the widget declares.
+    fn padding_fallback(&self, pos: SegPos) -> Option<String> {
+        let widget: Widget = serde_json::from_value(self.doc.segment(pos).clone()).ok()?;
+        Some(default_padding(&widget)?.to_string())
+    }
+
     fn draw_options(&self, frame: &mut Frame, area: Rect) {
         let focused = self.focus == Focus::Options;
         let (title, intro, target) = match self.entry() {
@@ -1184,12 +1193,12 @@ impl App {
     }
 }
 
-/// An option's value, or what applies without one. `fallback` is where an
-/// unset value comes from and what it is, such as `("default", "left")`.
+/// An option's value, or what applies without one. `fallback` is the default
+/// an option with none of its own falls back to, such as a widget's padding.
 fn option_value_spans(
     spec: &OptionSpec,
     value: Option<&Value>,
-    fallback: Option<(&'static str, String)>,
+    fallback: Option<String>,
     selected: bool,
 ) -> Vec<Span<'static>> {
     let cyclable = matches!(spec.kind, Kind::Bool { .. } | Kind::Choice { .. });
@@ -1199,9 +1208,7 @@ fn option_value_spans(
             format!("{} (default)", show_value(&default)),
             Style::new().dark_gray(),
         ),
-        (None, None, Some((source, fallback))) => {
-            (format!("{source} ({fallback})"), Style::new().dark_gray())
-        }
+        (None, None, Some(fallback)) => (format!("default ({fallback})"), Style::new().dark_gray()),
         (None, None, None) if spec.required => ("missing".into(), Style::new().red()),
         (None, None, None) => ("unset".into(), Style::new().dark_gray()),
     };
@@ -1214,8 +1221,8 @@ fn option_value_spans(
     } else {
         vec![Span::styled(text, style)]
     };
-    if let (Some(_), Some((source, fallback))) = (value, fallback) {
-        spans.push(Span::raw(format!("  (overrides {source} {fallback})")).dark_gray());
+    if let (Some(_), Some(fallback)) = (value, fallback) {
+        spans.push(Span::raw(format!("  (overrides default {fallback})")).dark_gray());
     }
     spans
 }
@@ -1380,10 +1387,6 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("⏎  space", "switch bold, italic or underline on or off"),
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
-        (
-            "⏎  ← →",
-            "cycle a padding through small, large, left and right",
-        ),
         ("n", "fork the theme into a new theme file"),
         ("⏎ on a list", "edit each colour: ⏎ pick, ← → step, i type"),
         (

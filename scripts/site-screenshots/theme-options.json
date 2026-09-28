@@ -12,16 +12,14 @@
       ["bg_colors", "color list", "Backgrounds for successive path components, repeating from the start when the path is longer.", "[defaults.bg]"],
       ["home_icon", "string", "Stands in for the home directory at the start of the path; \"\" hides it.", "\"~\""],
       ["root_icon", "string", "Shown on its own at the filesystem root.", "\"~\""],
-      ["ellipsis_icon", "string", "Stands in for the components a long path leaves out.", "\"...\""],
-      ["padding", "choice: small, large, left, right", "Space around every path component: small for none, large for both sides, left or right for one side.", "left"]
+      ["ellipsis_icon", "string", "Stands in for the components a long path leaves out.", "\"...\""]
     ]
   },
   "readonly": {
     "properties": [
       ["fg", "color", "The lock icon.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["icon", "string", "The lock icon; \"\" hides the widget.", "U+E0A2"],
-      ["padding", "choice: small, large, left, right", "Space around the lock icon: small for none, large for both sides, left or right for one side.", "large"]
+      ["icon", "string", "The lock icon; \"\" hides the widget.", "U+E0A2"]
     ]
   },
   "cmd": {
@@ -31,31 +29,27 @@
       ["failed_fg", "color", "The exit code after a failed command.", "defaults.bg"],
       ["failed_bg", "color", "Background after a failed command.", "defaults.fg"],
       ["user_symbol", "string", "The prompt symbol.", "\"$\""],
-      ["root_symbol", "string", "The prompt symbol when running as root.", "\"#\""],
-      ["padding", "choice: small, large, left, right", "Space around the prompt symbol: small for none, large for both sides, left or right for one side.", "small"]
+      ["root_symbol", "string", "The prompt symbol when running as root.", "\"#\""]
     ]
   },
   "last_cmd_duration": {
     "properties": [
       ["fg", "color", "The duration text.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["time_icon", "string", "Icon after the duration.", "U+F1ACC"],
-      ["padding", "choice: small, large, left, right", "Space around the duration: small for none, large for both sides, left or right for one side.", "left"]
+      ["time_icon", "string", "Icon after the duration.", "U+F1ACC"]
     ]
   },
   "shell": {
     "properties": [
       ["fg", "color", "The shell name.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"],
-      ["padding", "choice: small, large, left, right", "Space around the shell name: small for none, large for both sides, left or right for one side.", "small"]
+      ["bg", "color", "Segment background.", "defaults.bg"]
     ]
   },
   "jobs": {
     "properties": [
       ["fg", "color", "The icon and job count.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["icon", "string", "Icon before the job count.", "U+F085"],
-      ["padding", "choice: small, large, left, right", "Space around the icon and job count: small for none, large for both sides, left or right for one side.", "large"]
+      ["icon", "string", "Icon before the job count.", "U+F085"]
     ]
   },
   "git": {
@@ -84,8 +78,7 @@
       ["remote_icon", "string", "GitHub logo that opens the remote segment.", "U+E709"],
       ["ahead_icon", "string", "After the number of commits ahead of the upstream.", "U+F062"],
       ["behind_icon", "string", "After the number of commits behind the upstream.", "U+F063"],
-      ["worktree_icon", "string", "Icon before the linked-worktree count (index/count inside a linked worktree) next to the branch. \"\" shows just the numbers.", "U+F1897"],
-      ["padding", "choice: small, large, left, right", "Space around every git segment's text: small for none, large for both sides, left or right for one side.", "large"]
+      ["worktree_icon", "string", "Icon before the linked-worktree count (index/count inside a linked worktree) next to the branch. \"\" shows just the numbers.", "U+F1897"]
     ]
   },
   "pr": {
@@ -102,8 +95,7 @@
       ["status_failure_fg", "color", "CI dot when checks fail.", "defaults.fg"],
       ["status_pending_fg", "color", "CI dot while checks run.", "defaults.fg"],
       ["icon", "string", "Icon before the PR number.", "U+EA64"],
-      ["status_icon", "string", "The CI dot.", "\"●\""],
-      ["padding", "choice: small, large, left, right", "Space around the link and CI dot: small for none, large for both sides, left or right for one side.", "large"]
+      ["status_icon", "string", "The CI dot.", "\"●\""]
     ]
   },
   "python": {
@@ -115,8 +107,7 @@
       ["version_bg", "color", "Background of the version segment.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
       ["icon", "string", "The Python logo.", "U+E73C"],
-      ["pyproject_icon", "string", "After the logo in a directory with a pyproject.toml.", "U+F150E"],
-      ["padding", "choice: small, large, left, right", "Space around each segment's text: small for none, large for both sides, left or right for one side.", "large; venv label right"]
+      ["pyproject_icon", "string", "After the logo in a directory with a pyproject.toml.", "U+F150E"]
     ]
   },
   "node": {
@@ -126,8 +117,7 @@
       ["bg", "color", "Background for a version nvm or mise has activated.", "defaults.bg"],
       ["inactive_bg", "color", "Background for a version that only comes from .nvmrc.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
-      ["icon", "string", "The Node.js logo.", "U+ED0D"],
-      ["padding", "choice: small, large, left, right", "Space around the logo and version: small for none, large for both sides, left or right for one side.", "large"]
+      ["icon", "string", "The Node.js logo.", "U+ED0D"]
     ]
   },
   "java": {
@@ -136,8 +126,7 @@
       ["fg", "color", "Logo, version and distribution.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it. Read from java only.", "U+F1064"],
-      ["icon", "string", "The Java logo.", "U+F0176"],
-      ["padding", "choice: small, large, left, right", "Space around the segment's text: small for none, large for both sides, left or right for one side.", "large"]
+      ["icon", "string", "The Java logo.", "U+F0176"]
     ]
   },
   "cargo": {
@@ -145,8 +134,7 @@
       ["fg", "color", "Logo and toolchain version.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
       ["mise_icon", "string", "Marker for a version pinned by mise; \"\" hides it.", "U+F1064"],
-      ["icon", "string", "The Rust logo.", "U+E68B"],
-      ["padding", "choice: small, large, left, right", "Space around the segment's text: small for none, large for both sides, left or right for one side.", "large"]
+      ["icon", "string", "The Rust logo.", "U+E68B"]
     ]
   },
   "ai_usage": {
@@ -161,8 +149,7 @@
       ["reset_icon", "string", "Before the time left until the session window resets.", "\"↻\""],
       ["loading_icon", "string", "In place of a reading until the first refresh lands.", "\"…\""],
       ["logged_out_icon", "string", "In place of a reading when the provider CLI has no signed-in account.", "U+F235"],
-      ["not_installed_icon", "string", "In place of a reading when the provider CLI is not installed.", "\"?\""],
-      ["padding", "choice: small, large, left, right", "Space around the usage text: small for none, large for both sides, left or right for one side.", "large"]
+      ["not_installed_icon", "string", "In place of a reading when the provider CLI is not installed.", "\"?\""]
     ]
   },
   "os": {
@@ -174,50 +161,39 @@
       ["linux_symbol", "string", "Icon on Linux.", "symbol"],
       ["windows_symbol", "string", "Icon on Windows.", "symbol"],
       ["android_symbol", "string", "Icon on Android.", "symbol"],
-      ["freebsd_symbol", "string", "Icon on FreeBSD. Also openbsd_symbol, netbsd_symbol, dragonfly_symbol, illumos_symbol, solaris_symbol, haiku_symbol and unknown_symbol.", "symbol"],
-      ["padding", "choice: small, large, left, right", "Space around the icon: small for none, large for both sides, left or right for one side.", "large"]
+      ["freebsd_symbol", "string", "Icon on FreeBSD. Also openbsd_symbol, netbsd_symbol, dragonfly_symbol, illumos_symbol, solaris_symbol, haiku_symbol and unknown_symbol.", "symbol"]
     ]
   },
   "memory_usage": {
     "properties": [
       ["fg", "color", "Icon and percentages.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["icon", "string", "Icon before the memory percentage.", "U+F035B"],
-      ["padding", "choice: small, large, left, right", "Space around the segment's text: small for none, large for both sides, left or right for one side.", "large"]
+      ["icon", "string", "Icon before the memory percentage.", "U+F035B"]
     ]
   },
   "time": {
     "properties": [
       ["fg", "color", "The time.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"],
-      ["padding", "choice: small, large, left, right", "Space around the time: small for none, large for both sides, left or right for one side.", "large"]
-    ]
-  },
-  "text": {
-    "properties": [
-      ["padding", "choice: small, large, left, right", "Space around the text: small for none, large for both sides, left or right for one side.", "large"]
+      ["bg", "color", "Segment background.", "defaults.bg"]
     ]
   },
   "username": {
     "properties": [
       ["fg", "color", "The username.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["root_bg", "color", "Background when running as root.", "defaults.bg"],
-      ["padding", "choice: small, large, left, right", "Space around the username: small for none, large for both sides, left or right for one side.", "large"]
+      ["root_bg", "color", "Background when running as root.", "defaults.bg"]
     ]
   },
   "hostname": {
     "properties": [
       ["fg", "color", "The hostname.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"],
-      ["padding", "choice: small, large, left, right", "Space around the hostname: small for none, large for both sides, left or right for one side.", "large"]
+      ["bg", "color", "Segment background.", "defaults.bg"]
     ]
   },
   "local_ip": {
     "properties": [
       ["fg", "color", "The address.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"],
-      ["padding", "choice: small, large, left, right", "Space around the address: small for none, large for both sides, left or right for one side.", "large"]
+      ["bg", "color", "Segment background.", "defaults.bg"]
     ]
   },
   "battery": {
@@ -228,31 +204,27 @@
       ["charging_icon", "string", "Icon while charging.", "U+F0084"],
       ["discharging_icon", "string", "Icon while discharging.", "U+F0083"],
       ["empty_icon", "string", "Icon when the battery is empty.", "U+F008E"],
-      ["unknown_icon", "string", "Icon when the charging state is unknown.", "U+F0091"],
-      ["padding", "choice: small, large, left, right", "Space around the charge text: small for none, large for both sides, left or right for one side.", "large"]
+      ["unknown_icon", "string", "Icon when the charging state is unknown.", "U+F0091"]
     ]
   },
   "sudo": {
     "properties": [
       ["fg", "color", "The key symbol.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["symbol", "string", "Symbol shown while credentials are cached.", "\"⚿\""],
-      ["padding", "choice: small, large, left, right", "Space around the symbol: small for none, large for both sides, left or right for one side.", "large"]
+      ["symbol", "string", "Symbol shown while credentials are cached.", "\"⚿\""]
     ]
   },
   "kubernetes": {
     "properties": [
       ["fg", "color", "Context and namespace.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
-      ["icon", "string", "Icon before the context; \"\" hides it.", "U+F10FE"],
-      ["padding", "choice: small, large, left, right", "Space around the context: small for none, large for both sides, left or right for one side.", "large"]
+      ["icon", "string", "Icon before the context; \"\" hides it.", "U+F10FE"]
     ]
   },
   "spacer": {
     "properties": [
       ["fg", "color", "Unused by the blank segment, but accepted.", "defaults.fg"],
-      ["bg", "color", "Spacer background.", "defaults.bg"],
-      ["padding", "choice: small, large, left, right", "Blank cells in the spacer: none for small, two for large, one for left or right.", "small for small_spacer, large for large_spacer"]
+      ["bg", "color", "Spacer background.", "defaults.bg"]
     ]
   },
   "update": {
@@ -265,15 +237,13 @@
   "error": {
     "properties": [
       ["fg", "color", "Text of error segments, such as a config that fails to parse.", "defaults.fg"],
-      ["bg", "color", "Error segment background.", "defaults.bg"],
-      ["padding", "choice: small, large, left, right", "Space around the error text: small for none, large for both sides, left or right for one side.", "large"]
+      ["bg", "color", "Error segment background.", "defaults.bg"]
     ]
   },
   "unknown": {
     "properties": [
       ["fg", "color", "Text of the segment shown for an unknown module name.", "defaults.fg"],
-      ["bg", "color", "Unknown segment background.", "defaults.bg"],
-      ["padding", "choice: small, large, left, right", "Space around the segment's text: small for none, large for both sides, left or right for one side.", "large"]
+      ["bg", "color", "Unknown segment background.", "defaults.bg"]
     ]
   }
 }

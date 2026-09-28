@@ -5,10 +5,7 @@ use std::sync::OnceLock;
 
 use serde_json::{Map, Value};
 
-use super::schema::WIDGETS;
 use crate::colors::{TextAttrs, NAMED_COLORS};
-use crate::config::{LineSegment, Widget};
-use crate::powerline::{default_padding, theme_module};
 use crate::themes::{color_code, infer_theme_property_kind, validate_theme, ThemePropertyKind};
 use crate::themes::{text_attribute_color, text_attribute_key, TEXT_ATTRIBUTES};
 
@@ -24,8 +21,6 @@ pub enum PropKind {
     Color,
     ColorList,
     Str,
-    /// One of a fixed set of strings, cycled through rather than typed.
-    Choice(&'static [&'static str]),
     Bool,
 }
 
@@ -75,9 +70,6 @@ pub fn module_specs() -> &'static [ModuleSpec] {
                         kind: match row[1].as_str() {
                             Some("color") => PropKind::Color,
                             Some("color list") => PropKind::ColorList,
-                            Some(kind) if kind.starts_with("choice") => {
-                                inferred_kind(row[0].as_str().unwrap_or_default())
-                            }
                             _ => PropKind::Str,
                         },
                         help: row[2].as_str().unwrap_or_default().to_string(),
@@ -139,69 +131,9 @@ fn inferred_kind(key: &str) -> PropKind {
     match infer_theme_property_kind(key) {
         Some(ThemePropertyKind::ColorList) => PropKind::ColorList,
         Some(ThemePropertyKind::Color) => PropKind::Color,
-        Some(ThemePropertyKind::Choice(variants)) => PropKind::Choice(variants),
         Some(ThemePropertyKind::Bool) => PropKind::Bool,
         _ => PropKind::Str,
     }
-}
-
-/// What a theme module's `padding` falls back to, as the widgets themed under
-/// it declare in code: `large`, or `small for small_spacer, large for
-/// large_spacer` when they differ.
-pub fn module_default_padding(module: &str) -> Option<&'static str> {
-    static DEFAULTS: OnceLock<Vec<(&'static str, String)>> = OnceLock::new();
-    let defaults = DEFAULTS.get_or_init(|| {
-        let widgets = WIDGETS
-            .iter()
-            .filter_map(|spec| Some((spec.name, serde_json::from_value(spec.template()).ok()?)))
-            .chain([
-                (
-                    "error",
-                    Widget::from(LineSegment::Error {
-                        message: String::new(),
-                    }),
-                ),
-                (
-                    "unknown",
-                    Widget::from(LineSegment::Unknown {
-                        name: String::new(),
-                    }),
-                ),
-            ]);
-        let mut by_module: Vec<(&'static str, Vec<(&'static str, String)>)> = Vec::new();
-        for (name, widget) in widgets {
-            let (Some(module), Some(padding)) =
-                (theme_module(&widget.segment), default_padding(&widget))
-            else {
-                continue;
-            };
-            let padding = (name, padding.to_string());
-            match by_module.iter_mut().find(|(m, _)| *m == module) {
-                Some((_, widgets)) => widgets.push(padding),
-                None => by_module.push((module, vec![padding])),
-            }
-        }
-        by_module
-            .into_iter()
-            .map(|(module, widgets)| {
-                let (_, first) = &widgets[0];
-                let text = if widgets.iter().all(|(_, padding)| padding == first) {
-                    first.clone()
-                } else {
-                    widgets
-                        .iter()
-                        .map(|(name, padding)| format!("{padding} for {name}"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                };
-                (module, text)
-            })
-            .collect()
-    });
-    defaults
-        .iter()
-        .find(|(m, _)| *m == module)
-        .map(|(_, padding)| padding.as_str())
 }
 
 /// A property the file sets that the editor has no description for.
@@ -362,13 +294,6 @@ impl ThemeDoc {
                 .map(|spec| spec.props.clone())
                 .unwrap_or_default(),
         };
-        // A padding falls back to what the module's widgets declare.
-        if let ThemeEntry::Module(name) = entry {
-            let padding = specs.iter_mut().find(|spec| spec.key == "padding");
-            if let (Some(spec), Some(default)) = (padding, module_default_padding(name)) {
-                spec.fallback = default.to_string();
-            }
-        }
         let section = self.section(entry);
         if let Some(section) = section {
             for key in section.keys() {
@@ -459,9 +384,6 @@ impl ThemeDoc {
         spec: &PropSpec,
         value: Option<&Value>,
     ) -> Option<u8> {
-        if matches!(spec.kind, PropKind::Choice(_)) {
-            return None;
-        }
         if let Some(value) = value {
             return color_code(value).or_else(|| value.as_array()?.first().and_then(color_code));
         }
@@ -572,36 +494,6 @@ pub fn parse_color_list(text: &str) -> Result<Value, String> {
         return Err("give at least one colour".into());
     }
     Ok(Value::Array(colors))
-}
-
-/// Parses a typed choice, such as a padding.
-pub fn parse_choice(text: &str, variants: &[&str]) -> Result<Value, String> {
-    let text = text.trim();
-    if variants.contains(&text) {
-        Ok(Value::from(text))
-    } else {
-        Err(format!("{text:?} is not one of {}", variants.join(", ")))
-    }
-}
-
-/// The choice after (or before) a choice property's value. An unset property
-/// steps from its fallback. `None` when the property is not a choice.
-pub fn step_choice(spec: &PropSpec, value: Option<&Value>, forward: bool) -> Option<&'static str> {
-    let PropKind::Choice(variants) = spec.kind else {
-        return None;
-    };
-    let current = match value {
-        Some(value) => variants.iter().position(|v| value.as_str() == Some(v)),
-        None => variants.iter().position(|v| spec.fallback.starts_with(v)),
-    };
-    let count = variants.len();
-    let next = match current {
-        Some(i) if forward => (i + 1) % count,
-        Some(i) => (i + count - 1) % count,
-        None if forward => 0,
-        None => count - 1,
-    };
-    variants.get(next).copied()
 }
 
 /// How a colour value is written back: as a name when the value it replaces
@@ -872,141 +764,6 @@ mod tests {
     }
 
     #[test]
-    fn documented_choices_list_the_variants_the_loader_accepts() {
-        let options: Value = serde_json::from_str(THEME_OPTIONS).unwrap();
-        let mut choices = 0;
-        for (module, spec) in options.as_object().unwrap() {
-            for row in spec["properties"].as_array().into_iter().flatten() {
-                let (key, kind) = (row[0].as_str().unwrap(), row[1].as_str().unwrap());
-                let Some(listed) = kind.strip_prefix("choice: ") else {
-                    continue;
-                };
-                let listed: Vec<&str> = listed.split(", ").collect();
-                let PropKind::Choice(variants) = inferred_kind(key) else {
-                    panic!("{module}.{key} is documented as a choice");
-                };
-                assert_eq!(variants, listed, "{module}.{key}");
-                choices += 1;
-            }
-        }
-        assert!(choices > 20, "every module documents its padding");
-    }
-
-    #[test]
-    fn documented_padding_defaults_are_the_ones_the_widgets_declare() {
-        let options: Value = serde_json::from_str(THEME_OPTIONS).unwrap();
-        for (module, spec) in options.as_object().unwrap() {
-            let rows = spec["properties"].as_array().into_iter().flatten();
-            for row in rows.filter(|row| row[0] == "padding") {
-                assert_eq!(
-                    row[3].as_str(),
-                    module_default_padding(module),
-                    "modules.{module}.padding in theme-options.json"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn every_widget_declares_a_padding_and_documents_it() {
-        let documented: Vec<&str> = module_specs()
-            .iter()
-            .filter(|spec| spec.props.iter().any(|p| p.key == "padding"))
-            .map(|spec| spec.name.as_str())
-            .collect();
-        for spec in WIDGETS {
-            let Ok(widget) = serde_json::from_value::<Widget>(spec.template()) else {
-                assert!(!spec.listed, "{} template parses", spec.name);
-                continue;
-            };
-            let layout = matches!(spec.name, "separator" | "padding");
-            assert_eq!(
-                default_padding(&widget).is_none(),
-                layout,
-                "{} declares a padding",
-                spec.name
-            );
-            if let Some(module) = theme_module(&widget.segment).filter(|_| !layout) {
-                assert!(
-                    documented.contains(&module),
-                    "{} documents padding",
-                    spec.name
-                );
-            }
-        }
-        for (module, padding) in [
-            ("cwd", "left"),
-            ("last_cmd_duration", "left"),
-            ("cmd", "small"),
-            ("shell", "small"),
-            ("git", "large"),
-            ("readonly", "large"),
-            ("text", "large"),
-            ("python", "large; venv label right"),
-            ("spacer", "small for small_spacer, large for large_spacer"),
-            ("error", "large"),
-            ("unknown", "large"),
-        ] {
-            assert_eq!(module_default_padding(module), Some(padding), "{module}");
-        }
-        assert_eq!(module_default_padding("update"), None);
-    }
-
-    #[test]
-    fn padding_is_one_of_four_choices() {
-        let mut doc = doc();
-        let git = ThemeEntry::Module("git".into());
-        doc.set(&git, "padding", Some(json!("left"))).unwrap();
-        assert_eq!(doc.root()["modules"]["git"], json!({ "padding": "left" }));
-        let props = doc.props(&git);
-        let (spec, value) = props.iter().find(|(s, _)| s.key == "padding").unwrap();
-        assert_eq!(
-            spec.kind,
-            PropKind::Choice(&["small", "large", "left", "right"])
-        );
-        assert_eq!(spec.fallback, "large");
-        assert_eq!(doc.resolve(&git, spec, value.as_ref()), None);
-        // The legacy `py` key still shows python's own default.
-        let python = doc.props(&ThemeEntry::Module("python".into()));
-        let (spec, _) = python.iter().find(|(s, _)| s.key == "padding").unwrap();
-        assert_eq!(spec.fallback, "large; venv label right");
-        for bad in [json!(1), json!("wide")] {
-            assert!(doc.set(&git, "padding", Some(bad)).is_err());
-        }
-        assert_eq!(doc.root()["modules"]["git"], json!({ "padding": "left" }));
-    }
-
-    #[test]
-    fn choices_step_from_the_value_or_the_fallback() {
-        let spec = |fallback: &str| PropSpec {
-            key: "padding".into(),
-            kind: PropKind::Choice(&["small", "large", "left", "right"]),
-            help: String::new(),
-            fallback: fallback.into(),
-        };
-        let step = |fallback, value: Option<Value>, forward| {
-            step_choice(&spec(fallback), value.as_ref(), forward)
-        };
-        assert_eq!(step("large", Some(json!("small")), true), Some("large"));
-        assert_eq!(step("large", Some(json!("right")), true), Some("small"));
-        assert_eq!(step("large", Some(json!("small")), false), Some("right"));
-        assert_eq!(step("large", None, true), Some("left"));
-        assert_eq!(step("left", None, false), Some("large"));
-        assert_eq!(
-            step("large; right for the venv label", None, true),
-            Some("left")
-        );
-        assert_eq!(step("", None, true), Some("small"));
-        assert_eq!(step("", None, false), Some("right"));
-        assert_eq!(step("", Some(json!(2)), true), Some("small"));
-        let colour = PropSpec {
-            kind: PropKind::Color,
-            ..spec("")
-        };
-        assert_eq!(step_choice(&colour, None, true), None);
-    }
-
-    #[test]
     fn unset_properties_resolve_through_the_defaults() {
         let doc = doc();
         let git = ThemeEntry::Module("git".into());
@@ -1028,10 +785,6 @@ mod tests {
             json!(["red", 166, 72])
         );
         assert!(parse_color_list(" , ").is_err());
-        let paddings = &["small", "large", "left", "right"];
-        assert_eq!(parse_choice(" left ", paddings).unwrap(), json!("left"));
-        assert!(parse_choice("wide", paddings).is_err());
-        assert!(parse_choice("1", paddings).is_err());
         assert_eq!(color_value(4, true), json!("blue"));
         assert_eq!(color_value(4, false), json!(4));
         assert_eq!(color_value(99, true), json!(99));

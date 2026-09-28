@@ -431,10 +431,7 @@ impl Powerline {
         runtime_data: &impl TerminalRuntimeMetadata,
     ) {
         for widget in widgets {
-            // The config's padding wins over the theme's.
-            self.widget_padding = widget
-                .padding
-                .or_else(|| theme_module(&widget.segment).and_then(T::padding));
+            self.widget_padding = widget.padding;
             let module = &widget.segment;
             match module {
                 LineSegment::Battery => self.add_module(Battery::<T>::new()),
@@ -719,40 +716,6 @@ impl TerminalRuntimeMetadata for NoRuntimeData {
     fn last_command_status(&self) -> &str {
         "0"
     }
-}
-
-/// The `modules` key a widget is themed under, for the properties every
-/// module takes. `None` for layout entries that draw no segment.
-pub fn theme_module(segment: &LineSegment) -> Option<&'static str> {
-    Some(match segment {
-        LineSegment::Battery => "battery",
-        LineSegment::SmallSpacer | LineSegment::LargeSpacer => "spacer",
-        LineSegment::Separator(_) | LineSegment::Padding(_) => return None,
-        LineSegment::Cwd { .. } => "cwd",
-        LineSegment::ReadOnly => "readonly",
-        LineSegment::Git { .. } => "git",
-        LineSegment::Pr { .. } => "pr",
-        LineSegment::Python { .. } => "python",
-        LineSegment::Node { .. } => "node",
-        LineSegment::Java { .. } => "java",
-        LineSegment::Cargo { .. } => "cargo",
-        LineSegment::Kubernetes => "kubernetes",
-        LineSegment::Host | LineSegment::Hostname => "hostname",
-        LineSegment::Jobs => "jobs",
-        LineSegment::LocalIp => "local_ip",
-        LineSegment::MemoryUsage { .. } => "memory_usage",
-        LineSegment::Os => "os",
-        LineSegment::Sudo => "sudo",
-        LineSegment::Shell => "shell",
-        LineSegment::Time { .. } => "time",
-        LineSegment::Text(_) => "text",
-        LineSegment::AiUsage { .. } => "ai_usage",
-        LineSegment::User | LineSegment::Username => "username",
-        LineSegment::Cmd => "cmd",
-        LineSegment::LastCmdDuration { .. } => "last_cmd_duration",
-        LineSegment::Error { .. } => "error",
-        LineSegment::Unknown { .. } => "unknown",
-    })
 }
 
 #[cfg(test)]

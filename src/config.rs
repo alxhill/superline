@@ -67,13 +67,13 @@ pub struct CommandLine {
 #[derive(Debug, PartialEq)]
 pub struct Widget {
     pub segment: LineSegment,
-    /// Space around the text of the widget's segments. Overrides the theme's
-    /// `padding` for the module, which overrides the widget's own spacing.
+    /// Space around the text of the widget's segments, overriding the
+    /// widget's own spacing.
     pub padding: Option<SegmentPadding>,
 }
 
-/// Where a segment gets a space beside its text. Written in the config and
-/// theme as its lowercase name.
+/// Where a segment gets a space beside its text. Written in the config as
+/// its lowercase name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SegmentPadding {
     /// No space on either side.
