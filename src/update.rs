@@ -150,11 +150,12 @@ fn upgraded_notice<S: UpdateScheme>() -> Option<String> {
 /// The icon that opens every notice, followed by a reset so the text after
 /// it is in the terminal's default colours.
 fn icon<S: UpdateScheme>() -> String {
+    let fg = FgColor::from(S::update_fg());
     format!(
-        "{bg}{fg} {icon} {reset}",
+        "{bg}{fg} {icon} {attrs_off}{reset}",
         bg = BgColor::from(S::update_bg()),
-        fg = FgColor::from(S::update_fg()),
         icon = S::update_icon(),
+        attrs_off = fg.attrs_off(),
         reset = Reset,
     )
 }

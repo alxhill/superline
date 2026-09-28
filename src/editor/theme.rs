@@ -7,6 +7,7 @@ use serde_json::{Map, Value};
 
 use crate::colors::NAMED_COLORS;
 use crate::themes::{color_code, infer_theme_property_kind, validate_theme, ThemePropertyKind};
+use crate::themes::{text_attribute_key, TEXT_ATTRIBUTES};
 
 /// Every module's theme properties, with what they style and their fallback.
 /// Shared with the website's configuration reference.
@@ -20,6 +21,7 @@ pub enum PropKind {
     Color,
     ColorList,
     Str,
+    Bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +45,7 @@ pub fn module_specs() -> &'static [ModuleSpec] {
     SPECS.get_or_init(|| {
         let options: Value =
             serde_json::from_str(THEME_OPTIONS).expect("theme-options.json parses");
+        let attributes = &options["_text_attributes"];
         options
             .as_object()
             .expect("theme-options.json is an object")
@@ -72,10 +75,36 @@ pub fn module_specs() -> &'static [ModuleSpec] {
                         help: row[2].as_str().unwrap_or_default().to_string(),
                         fallback: row[3].as_str().unwrap_or_default().to_string(),
                     })
+                    .flat_map(|spec| {
+                        let switches = text_attribute_specs(&spec, attributes);
+                        std::iter::once(spec).chain(switches)
+                    })
                     .collect(),
             })
             .collect()
     })
+}
+
+/// The bold, italic and underline switches listed after a text colour,
+/// described by `_text_attributes` in theme-options.json.
+fn text_attribute_specs(color: &PropSpec, descriptions: &Value) -> Vec<PropSpec> {
+    if color.kind != PropKind::Color {
+        return Vec::new();
+    }
+    TEXT_ATTRIBUTES
+        .iter()
+        .filter_map(|attr| {
+            Some(PropSpec {
+                key: text_attribute_key(&color.key, attr)?,
+                kind: PropKind::Bool,
+                help: descriptions[attr]
+                    .as_str()
+                    .unwrap_or_default()
+                    .replace("{fg}", &color.key),
+                fallback: "false".into(),
+            })
+        })
+        .collect()
 }
 
 fn defaults_props() -> Vec<PropSpec> {
@@ -104,6 +133,7 @@ fn inferred_prop(key: &str) -> PropSpec {
         kind: match infer_theme_property_kind(key) {
             Some(ThemePropertyKind::ColorList) => PropKind::ColorList,
             Some(ThemePropertyKind::Color) => PropKind::Color,
+            Some(ThemePropertyKind::Bool) => PropKind::Bool,
             _ => PropKind::Str,
         },
         help: String::new(),
@@ -346,7 +376,7 @@ impl ThemeDoc {
         let default = fallback
             .strip_prefix("defaults.")
             .or(match (entry, spec.kind) {
-                (_, PropKind::Str) => None,
+                (_, PropKind::Str | PropKind::Bool) => None,
                 _ if spec.key.ends_with("bg") || spec.key.ends_with("colors") => Some("bg"),
                 _ => Some("fg"),
             })?;
@@ -389,6 +419,15 @@ pub fn parse_color(text: &str) -> Result<Value, String> {
     Err(format!(
         "{text:?} is not a colour name or a code from 0 to 255"
     ))
+}
+
+/// Parses a typed `true` or `false`.
+pub fn parse_bool(text: &str) -> Result<Value, String> {
+    match text.trim() {
+        "true" => Ok(Value::Bool(true)),
+        "false" => Ok(Value::Bool(false)),
+        other => Err(format!("{other:?} is not true or false")),
+    }
 }
 
 /// Parses a comma- or space-separated list of colours.
@@ -474,6 +513,57 @@ mod tests {
                 assert_eq!(inferred, prop.kind, "{}.{}", module.name, prop.key);
             }
         }
+    }
+
+    #[test]
+    fn every_text_colour_is_followed_by_its_attribute_switches() {
+        let git = module_specs().iter().find(|s| s.name == "git").unwrap();
+        let keys: Vec<&str> = git.props.iter().map(|p| p.key.as_str()).collect();
+        let at = keys.iter().position(|k| *k == "clean_fg").unwrap();
+        assert_eq!(
+            keys[at..at + 5],
+            [
+                "clean_fg",
+                "clean_bold",
+                "clean_italic",
+                "clean_underline",
+                "clean_bg"
+            ]
+        );
+        let bold = &git.props[at + 1];
+        assert_eq!(bold.kind, PropKind::Bool);
+        assert!(bold.help.contains("clean_fg"), "{}", bold.help);
+
+        let readonly = module_specs()
+            .iter()
+            .find(|s| s.name == "readonly")
+            .unwrap();
+        let keys: Vec<&str> = readonly.props.iter().map(|p| p.key.as_str()).collect();
+        assert_eq!(keys, ["fg", "bold", "italic", "underline", "bg"]);
+    }
+
+    #[test]
+    fn the_documented_attributes_are_the_ones_the_loader_reads() {
+        let options: Value = serde_json::from_str(THEME_OPTIONS).unwrap();
+        let documented: Vec<&str> = options["_text_attributes"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .filter(|key| !key.starts_with('_'))
+            .collect();
+        assert_eq!(documented, TEXT_ATTRIBUTES);
+    }
+
+    #[test]
+    fn attribute_switches_only_take_booleans() {
+        let mut doc = doc();
+        let git = ThemeEntry::Module("git".into());
+        doc.set(&git, "clean_bold", Some(json!(true))).unwrap();
+        assert!(doc.set(&git, "clean_italic", Some(json!("yes"))).is_err());
+        assert_eq!(doc.root()["modules"]["git"], json!({ "clean_bold": true }));
+        assert_eq!(parse_bool(" false ").unwrap(), json!(false));
+        assert!(parse_bool("yes").is_err());
     }
 
     #[test]

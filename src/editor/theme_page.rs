@@ -14,8 +14,8 @@ use serde_json::Value;
 
 use super::model::Target;
 use super::theme::{
-    color_names, color_value, edit_text, parse_color, parse_color_list, PropKind, PropSpec,
-    ThemeDoc, ThemeEntry,
+    color_names, color_value, edit_text, parse_bool, parse_color, parse_color_list, PropKind,
+    PropSpec, ThemeDoc, ThemeEntry,
 };
 use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
@@ -266,6 +266,7 @@ impl App {
                     PropKind::Color => parse_color(text),
                     PropKind::ColorList => parse_color_list(text),
                     PropKind::Str => Ok(Value::from(text)),
+                    PropKind::Bool => parse_bool(text),
                 };
                 match parsed {
                     Ok(value) => self.set_theme_prop(Some(value)),
@@ -370,6 +371,18 @@ impl App {
                             prefer_name: value.as_ref().is_some_and(Value::is_string),
                         };
                         self.preview_stale = true;
+                    }
+                    KeyCode::Enter
+                    | KeyCode::Char(' ')
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Char('h')
+                    | KeyCode::Char('l')
+                        if spec.kind == PropKind::Bool =>
+                    {
+                        // Off is the default, so switching off removes the key.
+                        let on = value.as_ref().and_then(Value::as_bool).unwrap_or(false);
+                        self.set_theme_prop((!on).then_some(Value::Bool(true)));
                     }
                     KeyCode::Enter | KeyCode::Char(' ') if spec.kind == PropKind::Str => {
                         let current = value
@@ -852,6 +865,8 @@ fn prop_value_spans(
             None if spec.fallback.is_empty() => vec![Span::raw("unset").dark_gray()],
             None => vec![Span::raw(format!("default: {}", spec.fallback)).dark_gray()],
         },
+        (PropKind::Bool, Some(value)) => vec![Span::raw(edit_text(value)).yellow()],
+        (PropKind::Bool, None) => vec![Span::raw("false (default)").dark_gray()],
         (_, Some(value)) => vec![
             swatch(doc.resolve(entry, spec, Some(value))),
             Span::raw(format!(" {}", edit_text(value))).yellow(),
@@ -869,5 +884,46 @@ fn prop_value_spans(
             }
             spans
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::crossterm::event::KeyModifiers;
+    use serde_json::json;
+
+    use super::super::model::Document;
+    use super::*;
+
+    #[test]
+    fn space_switches_a_text_attribute_on_and_off() {
+        let dir = std::env::temp_dir().join(format!("superline-theme-page-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("theme.json"),
+            r#"{ "defaults": { "fg": 15, "bg": 0 }, "modules": {} }"#,
+        )
+        .unwrap();
+        let config = json!({ "theme": "theme.json", "rows": [{ "left": ["read_only"] }] });
+        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        app.load_theme_slot();
+
+        let entries = app.theme_doc().unwrap().entries();
+        app.theme.cursor = entries
+            .iter()
+            .position(|e| e.label() == "readonly")
+            .unwrap();
+        app.theme.focus = Focus::Options;
+        app.theme.prop_cursor = 1;
+        assert_eq!(app.theme_prop().unwrap().1.key, "bold");
+
+        let space = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+        app.on_theme_key(space);
+        let modules = |app: &App| app.theme_doc().unwrap().root()["modules"].clone();
+        assert_eq!(modules(&app), json!({ "readonly": { "bold": true } }));
+        app.on_theme_key(space);
+        assert_eq!(modules(&app), json!({}));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,4 +1,5 @@
 pub(crate) use custom::{color_code, infer_theme_property_kind, validate_theme, ThemePropertyKind};
+pub(crate) use custom::{text_attribute_key, TEXT_ATTRIBUTES};
 pub use custom::{CustomTheme, CustomThemeError};
 pub use rainbow::RainbowTheme;
 pub use simple::SimpleTheme;

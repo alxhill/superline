@@ -24,11 +24,13 @@ pub struct Style {
 }
 
 impl Style {
+    /// Text in `fg`, with its text attributes, on `bg`. The separator is drawn
+    /// in `bg` without attributes.
     pub fn simple(fg: Color, bg: Color) -> Style {
         Style {
             fg: fg.into(),
             bg: bg.into(),
-            sep_fg: bg.into(),
+            sep_fg: BgColor::from(bg).transpose(),
         }
     }
 }
@@ -241,6 +243,9 @@ impl Powerline {
             .map(|width| width + if spaces { 2 } else { 0 })
             .unwrap_or_else(|| self.left_buffer[orig_len..].width());
 
+        // Text attributes end with the segment, before any separator.
+        write!(self.left_buffer, "{}", style.fg.attrs_off())?;
+
         self.last_style = Some(style);
         Ok(())
     }
@@ -282,6 +287,9 @@ impl Powerline {
             .map(|width| width + if spaces { 2 } else { 0 })
             .unwrap_or_else(|| self.right_buffer[orig_len..].width());
 
+        // Text attributes end with the segment, before any separator.
+        write!(self.right_buffer, "{}", style.fg.attrs_off())?;
+
         self.last_style_right = Some(style);
         Ok(())
     }
@@ -319,9 +327,19 @@ impl Powerline {
             Some((glyph, color)) => {
                 // separating space + the glyph itself
                 visible_width += 1 + glyph.width();
-                // Colour the glyph, then restore the segment's foreground so the
-                // terminal state matches what the renderer records for it.
-                format!("{} {}{}{}", link, FgColor::from(color), glyph, style.fg)
+                // Style the glyph in its own colour and attributes, then restore
+                // the segment's so the terminal state matches what the renderer
+                // records for it.
+                let marker = FgColor::from(color);
+                format!(
+                    "{} {}{}{}{}{}",
+                    link,
+                    style.fg.attrs_off(),
+                    marker,
+                    glyph,
+                    marker.attrs_off(),
+                    style.fg
+                )
             }
             None => link,
         };
@@ -542,7 +560,7 @@ impl Powerline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::colors::Color;
+    use crate::colors::{Color, TextAttrs};
 
     #[test]
     fn none_separator_has_no_glyph() {
@@ -606,5 +624,183 @@ mod tests {
         // " データ " and " 日本語 ": three double-width characters plus padding
         assert_eq!(powerline.left_columns, 8);
         assert_eq!(powerline.right_columns, 8);
+    }
+
+    const BOLD_UNDERLINE: TextAttrs = TextAttrs {
+        bold: true,
+        italic: false,
+        underline: true,
+    };
+
+    const ITALIC: TextAttrs = TextAttrs {
+        bold: false,
+        italic: true,
+        underline: false,
+    };
+
+    /// Each printed character with the attributes a terminal would draw it
+    /// in, reading bare escapes, and the attributes still on at the end.
+    fn drawn_attrs(buffer: &str) -> (Vec<(char, TextAttrs)>, TextAttrs) {
+        let mut attrs = TextAttrs::NONE;
+        let mut drawn = Vec::new();
+        let mut chars = buffer.chars();
+        while let Some(c) = chars.next() {
+            if c != '\x1b' {
+                drawn.push((c, attrs));
+                continue;
+            }
+            match chars.next() {
+                Some('[') => {
+                    let params: String = chars.by_ref().take_while(|c| *c != 'm').collect();
+                    let mut codes = params.split(';');
+                    while let Some(code) = codes.next() {
+                        match code {
+                            "" | "0" => attrs = TextAttrs::NONE,
+                            "1" => attrs.bold = true,
+                            "3" => attrs.italic = true,
+                            "4" => attrs.underline = true,
+                            "22" => attrs.bold = false,
+                            "23" => attrs.italic = false,
+                            "24" => attrs.underline = false,
+                            "38" | "48" => {
+                                codes.next();
+                                codes.next();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                // OSC 8 hyperlinks run to ST (ESC \).
+                Some(']') => {
+                    while let Some(c) = chars.next() {
+                        if c == '\x1b' {
+                            chars.next();
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        (drawn, attrs)
+    }
+
+    /// Only `styled` is drawn with `attrs`; every other visible character,
+    /// separators included, is drawn without any, and nothing is left on.
+    fn assert_attrs_stay_in(buffer: &str, styled: char, attrs: TextAttrs) {
+        let (drawn, end) = drawn_attrs(buffer);
+        assert!(drawn.iter().any(|(c, _)| *c == styled), "{buffer:?}");
+        for (c, drawn_with) in drawn {
+            match c {
+                c if c == styled => assert_eq!(drawn_with, attrs, "{buffer:?}"),
+                // A segment's own padding spaces share its attributes.
+                ' ' => {}
+                c => assert!(
+                    drawn_with.is_empty(),
+                    "{c:?} drawn with {drawn_with:?} in {buffer:?}"
+                ),
+            }
+        }
+        assert!(end.is_empty(), "attributes left on after {buffer:?}");
+    }
+
+    fn bold_style() -> Style {
+        Style::simple(Color(15).with_attrs(BOLD_UNDERLINE), Color(31))
+    }
+
+    #[test]
+    fn text_attributes_stay_inside_their_left_segment() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        let plain = Style::simple(Color(15), Color(31));
+        powerline.add_segment("a", plain.clone());
+        powerline.add_segment("B", bold_style());
+        powerline.add_segment("B", bold_style());
+        powerline.add_padding(2);
+        powerline.add_segment("B", bold_style());
+        powerline.add_short_segment("c", plain);
+        powerline.add_segment("B", bold_style());
+        powerline.close_left_buffer();
+
+        assert_attrs_stay_in(&powerline.left_buffer, 'B', BOLD_UNDERLINE);
+    }
+
+    #[test]
+    fn text_attributes_stay_inside_their_right_segment() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.start_right();
+        powerline.add_segment("B", bold_style());
+        powerline.add_segment("a", Style::simple(Color(15), Color(31)));
+        powerline.add_segment("B", bold_style());
+        powerline.add_padding(1);
+        powerline.add_segment("B", bold_style());
+
+        assert_attrs_stay_in(&powerline.right_buffer, 'B', BOLD_UNDERLINE);
+    }
+
+    #[test]
+    fn a_marker_glyph_gets_its_own_attributes_and_restores_the_segments() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.add_hyperlink_segment(
+            "BB",
+            "https://example.com",
+            bold_style(),
+            Some(("m", Color(2).with_attrs(ITALIC))),
+        );
+        powerline.add_segment("a", Style::simple(Color(15), Color(31)));
+        powerline.close_left_buffer();
+
+        let (drawn, end) = drawn_attrs(&powerline.left_buffer);
+        let text: String = drawn.iter().map(|(c, _)| c).collect();
+        assert!(text.starts_with(" BB m "), "{text:?}");
+        let attrs: Vec<TextAttrs> = drawn.iter().map(|(_, attrs)| *attrs).collect();
+        assert_eq!(attrs[1..3], [BOLD_UNDERLINE, BOLD_UNDERLINE]);
+        assert_eq!(attrs[4], ITALIC);
+        // Back to the segment's attributes for its closing space.
+        assert_eq!(attrs[5], BOLD_UNDERLINE);
+        assert!(attrs[6..].iter().all(|attrs| attrs.is_empty()));
+        assert!(end.is_empty());
+    }
+
+    #[test]
+    fn text_attributes_do_not_change_the_column_count() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut plain = Powerline::new();
+        plain.add_segment("one", Style::simple(Color(15), Color(31)));
+        plain.start_right();
+        plain.add_segment("two", Style::simple(Color(15), Color(31)));
+
+        let mut styled = Powerline::new();
+        styled.add_segment("one", bold_style());
+        styled.start_right();
+        styled.add_segment("two", bold_style());
+
+        assert_eq!(styled.left_columns, plain.left_columns);
+        assert_eq!(styled.right_columns, plain.right_columns);
+    }
+
+    #[test]
+    fn plain_styles_emit_no_attribute_escapes() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        let style = Style::simple(Color(15), Color(31));
+        powerline.add_hyperlink_segment(
+            "#1",
+            "https://example.com",
+            style.clone(),
+            Some(("m", Color(2))),
+        );
+        powerline.add_segment("a", style.clone());
+        powerline.close_left_buffer();
+        powerline.start_right();
+        powerline.add_segment("b", style);
+
+        for buffer in [&powerline.left_buffer, &powerline.right_buffer] {
+            for code in ["1", "3", "4", "22", "23", "24"] {
+                assert!(!buffer.contains(&format!("\x1b[{code}m")), "{buffer:?}");
+            }
+        }
     }
 }

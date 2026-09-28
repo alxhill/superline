@@ -943,6 +943,14 @@
           <a href="https://github.com/alxhill/superline/blob/main/example_theme.json"><code>example_theme.json</code></a>
           covers every module.
         </p>
+        <p>
+          Every text color (<code>fg</code>, or a property ending in <code>_fg</code>) can also make its text
+          bold, italic or underlined, with <code>true</code>/<code>false</code> properties named the same way:
+          <code>bold</code>, <code>italic</code> and <code>underline</code> go with <code>fg</code>, and
+          <code>clean_bold</code>, <code>clean_italic</code> and <code>clean_underline</code> with
+          <code>clean_fg</code>. So <code>"git": { "clean_bold": true }</code> draws the branch name in bold while
+          the working tree is clean. Separators and the rest of the prompt are never affected.
+        </p>
         <div class="examples">
           <div class="example" data-example="theme/ocean">
   <div class="ex-label">theme.json</div>
@@ -981,7 +989,8 @@
         </div>
         <p class="note">Used with <code>{ "theme": "theme.json", ... }</code> next to <code>config.json</code>.</p>
         <p>
-          Each component above lists the properties it reads under <em>Theme options</em>.
+          Each component above lists the properties it reads under <em>Theme options</em>. Its text colors also
+          take the bold, italic and underline properties described above.
         </p>
       </section>
 

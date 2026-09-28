@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::colors::Color;
+use crate::colors::{Color, TextAttrs};
 use crate::modules::{
     BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
     GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
@@ -68,6 +68,23 @@ impl CustomThemeImpl {
             .and_then(|module| module.get(property))
     }
 
+    fn text_attrs(&self, modules: &[&str], fg_property: &str) -> TextAttrs {
+        let [bold, italic, underline] = TEXT_ATTRIBUTES.map(|attr| {
+            text_attribute_key(fg_property, attr)
+                .and_then(|key| {
+                    modules
+                        .iter()
+                        .find_map(|module| self.get_property(module, &key)?.as_bool())
+                })
+                .unwrap_or(false)
+        });
+        TextAttrs {
+            bold,
+            italic,
+            underline,
+        }
+    }
+
     fn validate(&self) -> Result<(), String> {
         validate_color_json("defaults.fg", &self.defaults.fg)?;
         validate_color_json("defaults.bg", &self.defaults.bg)?;
@@ -79,6 +96,7 @@ impl CustomThemeImpl {
                     Some(ThemePropertyKind::Color) => validate_color_value(&path, value)?,
                     Some(ThemePropertyKind::ColorList) => validate_color_list(&path, value)?,
                     Some(ThemePropertyKind::String) => validate_string(&path, value)?,
+                    Some(ThemePropertyKind::Bool) => validate_bool(&path, value)?,
                     None => {}
                 }
             }
@@ -145,6 +163,14 @@ impl CustomTheme {
             .and_then(|value| value.as_str())
             .map(|s| s.to_string())
     }
+
+    /// The attributes set for the text drawn in `fg_property`, e.g.
+    /// `clean_bold` for `clean_fg`. Each is read from the first of `modules`
+    /// that sets it, so a renamed module's old key still counts.
+    pub fn get_text_attrs(modules: &[&str], fg_property: &str) -> TextAttrs {
+        let theme = THEME.get().expect("custom theme not set");
+        theme.text_attrs(modules, fg_property)
+    }
 }
 
 impl DefaultColors for CustomTheme {
@@ -183,6 +209,10 @@ macro_rules! color_from_json {
         fn $function() -> Color {
             Self::get_color(stringify!($module), stringify!($property))
                 .unwrap_or_else(Self::$default)
+                .with_attrs(Self::get_text_attrs(
+                    &[stringify!($module)],
+                    stringify!($property),
+                ))
         }
     };
 }
@@ -199,6 +229,7 @@ impl JavaScheme for CustomTheme {
         Self::get_color("java", "fg")
             .or_else(|| Self::get_color("sdkman", "fg"))
             .unwrap_or_else(Self::default_fg)
+            .with_attrs(Self::get_text_attrs(&["java", "sdkman"], "fg"))
     }
 
     fn java_bg() -> Color {
@@ -219,6 +250,7 @@ impl NodeScheme for CustomTheme {
         Self::get_color("node", "fg")
             .or_else(|| Self::get_color("nvm", "fg"))
             .unwrap_or_else(Self::default_fg)
+            .with_attrs(Self::get_text_attrs(&["node", "nvm"], "fg"))
     }
 
     fn node_bg() -> Color {
@@ -357,6 +389,7 @@ impl PythonScheme for CustomTheme {
         Self::get_color("python", "env_fg")
             .or_else(|| Self::get_color("py", "env_fg"))
             .unwrap_or_else(Self::default_fg)
+            .with_attrs(Self::get_text_attrs(&["python", "py"], "env_fg"))
     }
 
     fn pyenv_bg() -> Color {
@@ -369,6 +402,7 @@ impl PythonScheme for CustomTheme {
         Self::get_color("python", "version_fg")
             .or_else(|| Self::get_color("py", "version_fg"))
             .unwrap_or_else(Self::default_fg)
+            .with_attrs(Self::get_text_attrs(&["python", "py"], "version_fg"))
     }
 
     fn pyver_bg() -> Color {
@@ -487,6 +521,32 @@ pub(crate) enum ThemePropertyKind {
     Color,
     ColorList,
     String,
+    Bool,
+}
+
+/// The text attributes every `fg` / `<prefix>_fg` colour can take, as
+/// `bold` / `<prefix>_bold` and so on.
+pub(crate) const TEXT_ATTRIBUTES: [&str; 3] = ["bold", "italic", "underline"];
+
+/// The property that sets `attr` on the text drawn in `fg_property`, or
+/// `None` when it is not a text colour.
+pub(crate) fn text_attribute_key(fg_property: &str, attr: &str) -> Option<String> {
+    if fg_property == "fg" {
+        Some(attr.to_string())
+    } else {
+        fg_property
+            .strip_suffix("_fg")
+            .map(|prefix| format!("{prefix}_{attr}"))
+    }
+}
+
+fn is_text_attribute(property: &str) -> bool {
+    TEXT_ATTRIBUTES.iter().any(|attr| {
+        property == *attr
+            || property
+                .strip_suffix(attr)
+                .is_some_and(|prefix| prefix.ends_with('_'))
+    })
 }
 
 pub(crate) fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
@@ -504,6 +564,8 @@ pub(crate) fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyK
         || property.ends_with("_bg")
     {
         Some(ThemePropertyKind::Color)
+    } else if is_text_attribute(property) {
+        Some(ThemePropertyKind::Bool)
     } else {
         None
     }
@@ -547,6 +609,13 @@ fn validate_string(path: &str, value: &Value) -> Result<(), String> {
         .ok_or_else(|| format!("expected string at {path}"))
 }
 
+fn validate_bool(path: &str, value: &Value) -> Result<(), String> {
+    value
+        .as_bool()
+        .map(|_| ())
+        .ok_or_else(|| format!("expected true or false at {path}"))
+}
+
 fn color_from_value(value: &Value) -> Option<Color> {
     let color = serde_json::from_value::<ColorsJson>(value.to_owned()).ok()?;
     color_from_json(&color)
@@ -586,5 +655,75 @@ mod tests {
             Some(ThemePropertyKind::String)
         );
         assert_eq!(infer_theme_property_kind("display_name"), None);
+    }
+
+    #[test]
+    fn text_attributes_are_booleans_named_after_their_colour() {
+        for property in [
+            "bold",
+            "italic",
+            "underline",
+            "clean_bold",
+            "status_success_italic",
+        ] {
+            assert_eq!(
+                infer_theme_property_kind(property),
+                Some(ThemePropertyKind::Bool),
+                "{property}"
+            );
+        }
+        assert_eq!(infer_theme_property_kind("unbold"), None);
+        assert_eq!(infer_theme_property_kind("bolder"), None);
+
+        assert_eq!(text_attribute_key("fg", "bold").as_deref(), Some("bold"));
+        assert_eq!(
+            text_attribute_key("clean_fg", "underline").as_deref(),
+            Some("clean_underline")
+        );
+        assert_eq!(text_attribute_key("clean_bg", "bold"), None);
+        assert_eq!(text_attribute_key("icon", "bold"), None);
+    }
+
+    fn theme(modules: Value) -> Value {
+        serde_json::json!({ "defaults": { "fg": 15, "bg": 0 }, "modules": modules })
+    }
+
+    #[test]
+    fn text_attributes_must_be_true_or_false() {
+        assert!(validate_theme(&theme(serde_json::json!({
+            "git": { "clean_bold": true, "dirty_italic": false, "underline": true }
+        })))
+        .is_ok());
+
+        for value in [
+            serde_json::json!("yes"),
+            serde_json::json!(1),
+            serde_json::json!(null),
+        ] {
+            let error = validate_theme(&theme(
+                serde_json::json!({ "git": { "clean_bold": value } }),
+            ))
+            .unwrap_err();
+            assert_eq!(error, "expected true or false at modules.git.clean_bold");
+        }
+    }
+
+    #[test]
+    fn text_attributes_are_read_for_their_colour_and_fall_back_to_old_module_names() {
+        let theme: CustomThemeImpl = serde_json::from_value(theme(serde_json::json!({
+            "git": { "clean_bold": true, "clean_underline": true, "dirty_italic": true },
+            "python": { "env_bold": false },
+            "py": { "env_bold": true, "env_italic": true },
+        })))
+        .unwrap();
+
+        let clean = theme.text_attrs(&["git"], "clean_fg");
+        assert!(clean.bold && clean.underline && !clean.italic);
+        assert!(theme.text_attrs(&["git"], "clean_bg").is_empty());
+        assert!(theme.text_attrs(&["cargo"], "fg").is_empty());
+
+        // The canonical module wins for each attribute it sets.
+        let env = theme.text_attrs(&["python", "py"], "env_fg");
+        assert!(!env.bold && env.italic);
     }
 }
