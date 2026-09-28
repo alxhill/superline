@@ -131,8 +131,9 @@ prompt as you change them, and saves back to the same file:
   picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
   property. Each text colour is followed by its `bold`, `italic` and `underline` switches, which `Enter` or `space`
-  turns on and off. On a built-in theme, `n` creates a new theme file from the example theme and points the config
-  at it. `1` returns to the layout.
+  turns on and off. The switch under the cursor shows a sample of its text, since the preview only draws text the
+  prompt shows in the current directory (git's unstaged count needs unstaged changes). On a built-in theme, `n`
+  creates a new theme file from the example theme and points the config at it. `1` returns to the layout.
 - `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
   and `?` lists every key.
 

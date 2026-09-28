@@ -540,13 +540,20 @@ pub(crate) fn text_attribute_key(fg_property: &str, attr: &str) -> Option<String
     }
 }
 
-fn is_text_attribute(property: &str) -> bool {
-    TEXT_ATTRIBUTES.iter().any(|attr| {
-        property == *attr
-            || property
-                .strip_suffix(attr)
-                .is_some_and(|prefix| prefix.ends_with('_'))
+/// The text colour a `bold` / `<prefix>_bold` (and so on) property applies
+/// to, or `None` when `property` is not a text attribute.
+pub(crate) fn text_attribute_color(property: &str) -> Option<String> {
+    TEXT_ATTRIBUTES.iter().find_map(|attr| {
+        if property == *attr {
+            return Some("fg".to_string());
+        }
+        let prefix = property.strip_suffix(attr)?.strip_suffix('_')?;
+        Some(format!("{prefix}_fg"))
     })
+}
+
+fn is_text_attribute(property: &str) -> bool {
+    text_attribute_color(property).is_some()
 }
 
 pub(crate) fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyKind> {
@@ -682,6 +689,14 @@ mod tests {
         );
         assert_eq!(text_attribute_key("clean_bg", "bold"), None);
         assert_eq!(text_attribute_key("icon", "bold"), None);
+
+        assert_eq!(text_attribute_color("italic").as_deref(), Some("fg"));
+        assert_eq!(
+            text_attribute_color("status_success_underline").as_deref(),
+            Some("status_success_fg")
+        );
+        assert_eq!(text_attribute_color("unbold"), None);
+        assert_eq!(text_attribute_color("clean_fg"), None);
     }
 
     fn theme(modules: Value) -> Value {

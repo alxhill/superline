@@ -5,9 +5,9 @@ use std::sync::OnceLock;
 
 use serde_json::{Map, Value};
 
-use crate::colors::NAMED_COLORS;
+use crate::colors::{TextAttrs, NAMED_COLORS};
 use crate::themes::{color_code, infer_theme_property_kind, validate_theme, ThemePropertyKind};
-use crate::themes::{text_attribute_key, TEXT_ATTRIBUTES};
+use crate::themes::{text_attribute_color, text_attribute_key, TEXT_ATTRIBUTES};
 
 /// Every module's theme properties, with what they style and their fallback.
 /// Shared with the website's configuration reference.
@@ -405,6 +405,44 @@ impl ThemeDoc {
         };
         (pick("fg"), pick("bg"))
     }
+
+    /// How the prompt draws the text a bold, italic or underline switch
+    /// applies to: its colour, its background, and every switch set for it.
+    /// The background is the colour's `_bg` partner, or else the module's
+    /// first background.
+    pub fn text_sample(&self, entry: &ThemeEntry, switch: &str) -> Option<TextSample> {
+        let fg_key = text_attribute_color(switch)?;
+        let props = self.props(entry);
+        let find = |key: &str| props.iter().find(|(spec, _)| spec.key == key);
+        let (fg_spec, fg_value) = find(&fg_key).filter(|(spec, _)| spec.kind == PropKind::Color)?;
+        let bg = fg_key
+            .strip_suffix("fg")
+            .and_then(|prefix| find(&format!("{prefix}bg")))
+            .and_then(|(spec, value)| self.resolve(entry, spec, value.as_ref()))
+            .or_else(|| self.swatch(entry).1);
+        let [bold, italic, underline] = TEXT_ATTRIBUTES.map(|attr| {
+            text_attribute_key(&fg_key, attr)
+                .and_then(|key| find(&key)?.1.as_ref()?.as_bool())
+                .unwrap_or(false)
+        });
+        Some(TextSample {
+            fg: self.resolve(entry, fg_spec, fg_value.as_ref()),
+            bg,
+            attrs: TextAttrs {
+                bold,
+                italic,
+                underline,
+            },
+        })
+    }
+}
+
+/// See [`ThemeDoc::text_sample`].
+#[derive(Debug, PartialEq)]
+pub struct TextSample {
+    pub fg: Option<u8>,
+    pub bg: Option<u8>,
+    pub attrs: TextAttrs,
 }
 
 /// Parses a colour typed as a name or a 0-255 code.
@@ -564,6 +602,72 @@ mod tests {
         assert_eq!(doc.root()["modules"]["git"], json!({ "clean_bold": true }));
         assert_eq!(parse_bool(" false ").unwrap(), json!(false));
         assert!(parse_bool("yes").is_err());
+    }
+
+    #[test]
+    fn a_switch_samples_its_text_colour_on_its_background() {
+        let doc = ThemeDoc::load(
+            r#"{
+                "defaults": { "fg": 15, "bg": 0 },
+                "modules": {
+                    "git": {
+                        "notstaged_fg": 229, "notstaged_bg": 166,
+                        "notstaged_bold": true, "notstaged_italic": true, "clean_underline": true
+                    },
+                    "pr": { "draft_bg": 239, "status_success_fg": 142, "status_success_underline": true },
+                    "cwd": { "bg_colors": [166, 172] },
+                    "readonly": { "fg": 229, "bg": 124 }
+                }
+            }"#,
+        )
+        .unwrap();
+        let sample = |module: &str, switch: &str| {
+            doc.text_sample(&ThemeEntry::Module(module.into()), switch)
+        };
+        let attrs = |bold, italic, underline| TextAttrs {
+            bold,
+            italic,
+            underline,
+        };
+
+        // Every switch of a colour samples all of them together.
+        let notstaged = TextSample {
+            fg: Some(229),
+            bg: Some(166),
+            attrs: attrs(true, true, false),
+        };
+        assert_eq!(sample("git", "notstaged_bold").as_ref(), Some(&notstaged));
+        assert_eq!(sample("git", "notstaged_underline"), Some(notstaged));
+        assert_eq!(
+            sample("readonly", "italic"),
+            Some(TextSample {
+                fg: Some(229),
+                bg: Some(124),
+                attrs: TextAttrs::NONE,
+            })
+        );
+        // A colour with no `_bg` partner sits on the module's first background.
+        assert_eq!(
+            sample("pr", "status_success_bold"),
+            Some(TextSample {
+                fg: Some(142),
+                bg: Some(239),
+                attrs: attrs(false, false, true),
+            })
+        );
+        assert_eq!(sample("cwd", "path_bold").unwrap().bg, Some(166));
+        // Unset colours fall back to the defaults.
+        assert_eq!(
+            sample("git", "untracked_bold"),
+            Some(TextSample {
+                fg: Some(15),
+                bg: Some(0),
+                attrs: TextAttrs::NONE,
+            })
+        );
+
+        assert_eq!(sample("git", "notstaged_fg"), None);
+        assert_eq!(sample("git", "branch_icon"), None);
     }
 
     #[test]
