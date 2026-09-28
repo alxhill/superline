@@ -11,6 +11,9 @@ mod schema;
 mod theme;
 mod theme_page;
 
+#[cfg(test)]
+mod tests;
+
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -929,6 +932,8 @@ impl App {
             .highlight_style(highlight);
         self.list.select(Some(self.cursor));
         frame.render_stateful_widget(list, area, &mut self.list);
+        let rows = Block::bordered().inner(area);
+        draw_scrollbar(frame, rows, self.entries.len(), self.list.offset());
     }
 
     fn draw_options(&self, frame: &mut Frame, area: Rect) {
@@ -1004,7 +1009,10 @@ impl App {
         if !options.is_empty() {
             lines.push(Line::default());
         }
-        let first_option_line = lines.len();
+        // Counted in screen rows, since the intro can wrap.
+        let first_option_line = Paragraph::new(lines.clone())
+            .wrap(Wrap { trim: false })
+            .line_count(body.width);
         let mut cursor_position = None;
         for (i, (spec, value)) in options.iter().enumerate() {
             let selected = focused && i == self.option_cursor;
@@ -1038,12 +1046,10 @@ impl App {
         } else {
             0
         };
-        frame.render_widget(
-            Paragraph::new(lines)
-                .wrap(Wrap { trim: false })
-                .scroll((scroll as u16, 0)),
-            body,
-        );
+        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+        let total = paragraph.line_count(body.width);
+        frame.render_widget(paragraph.scroll((scroll as u16, 0)), body);
+        draw_scrollbar(frame, body, total, scroll);
         if let Some((x, row)) = cursor_position {
             let y = body.y + row.saturating_sub(scroll as u16);
             if y < body.y + body.height {
@@ -1202,6 +1208,33 @@ fn panel(title: &str, focused: bool) -> Block<'static> {
         .border_style(border)
 }
 
+/// Draws a scrollbar over the border to the right of `rows` when `total` rows
+/// don't fit in it. `offset` is the first row on screen.
+fn draw_scrollbar(frame: &mut Frame, rows: Rect, total: usize, offset: usize) {
+    use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+    let visible = rows.height as usize;
+    if total <= visible {
+        return;
+    }
+    let track = Rect {
+        x: rows.right(),
+        width: 1,
+        ..rows
+    }
+    .intersection(frame.area());
+    // Positions are scroll offsets, not rows, so the thumb reaches the bottom
+    // at the last one.
+    let mut state = ScrollbarState::new(total - visible + 1)
+        .viewport_content_length(visible)
+        .position(offset);
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(None)
+        .end_symbol(None)
+        .track_symbol(Some("│"))
+        .thumb_symbol("█");
+    frame.render_stateful_widget(scrollbar, track, &mut state);
+}
+
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
     let width = width.min(area.width);
     let height = height.min(area.height);
@@ -1254,6 +1287,7 @@ fn draw_picker(frame: &mut Frame, area: Rect, filter: &str, selected: usize) {
         list_area,
         &mut state,
     );
+    draw_scrollbar(frame, list_area, matches.len(), state.offset());
     if empty {
         frame.render_widget(
             Paragraph::new(Line::from("no matching widget").dark_gray()),

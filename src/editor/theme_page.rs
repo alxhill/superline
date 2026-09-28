@@ -558,6 +558,7 @@ impl App {
             list_area,
             &mut state,
         );
+        super::draw_scrollbar(frame, list_area, matches.len(), offset);
         if matches.is_empty() {
             frame.render_widget(
                 Paragraph::new(Line::from("no matching icon").dark_gray()),
@@ -691,12 +692,15 @@ impl App {
         } else {
             Style::new().bg(Color::DarkGray)
         };
+        let total = items.len();
         let list = List::new(items)
             .block(panel(&format!(" {name} "), focused))
             .highlight_symbol("▸")
             .highlight_style(highlight);
         self.theme.list.select(Some(self.theme.cursor));
         frame.render_stateful_widget(list, area, &mut self.theme.list);
+        let rows = Block::bordered().inner(area);
+        super::draw_scrollbar(frame, rows, total, self.theme.list.offset());
     }
 
     fn draw_theme_props(&self, frame: &mut Frame, area: Rect) {
@@ -737,8 +741,14 @@ impl App {
         }
 
         let visible = body.height as usize;
-        let scroll = (self.theme.prop_cursor + 1).saturating_sub(visible);
+        let scroll = if focused {
+            (self.theme.prop_cursor + 1).saturating_sub(visible)
+        } else {
+            0
+        };
+        let total = lines.len();
         frame.render_widget(Paragraph::new(lines).scroll((scroll as u16, 0)), body);
+        super::draw_scrollbar(frame, body, total, scroll);
         if let Some((x, row)) = cursor_position {
             frame.set_cursor_position((x, body.y + (row - scroll) as u16));
         }
