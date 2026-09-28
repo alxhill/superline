@@ -13,9 +13,10 @@ use ratatui::Frame;
 use serde_json::Value;
 
 use super::model::Target;
+use super::theme::TextSample;
 use super::theme::{
     color_names, color_value, edit_text, parse_bool, parse_color, parse_color_list, PropKind,
-    PropSpec, TextSample, ThemeDoc, ThemeEntry,
+    PropSpec, ThemeDoc, ThemeEntry,
 };
 use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
