@@ -136,6 +136,9 @@ prompt as you change them, and saves back to the same file:
   prompt shows in the current directory (git's unstaged count needs unstaged changes). `n` copies the theme into a
   new theme file next to the config and points the config at it. `1` returns to the layout, where Settings picks
   another theme file.
+- `Enter` on a colour list such as `cwd.bg_colors` shows its colours one per line with a swatch. `Enter` picks a colour
+  in the picker, `←`/`→` step it and `i` types it; `a`/`I` add a colour after or before it, `d` deletes it, `c` copies
+  it and `J`/`K` (or shift-arrows) move it. `i` on the list's own row still types the whole list.
 - `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
   and `?` lists every key.
 

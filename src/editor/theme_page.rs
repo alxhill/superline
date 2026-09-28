@@ -18,7 +18,7 @@ use super::theme::{
     color_names, color_value, edit_text, parse_bool, parse_color, parse_color_list, PropKind,
     PropSpec, ThemeDoc, ThemeEntry,
 };
-use super::{glyphs, picker};
+use super::{glyphs, list_editor, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
 use crate::themes::{bundled_theme, install_theme, theme_path};
 
@@ -38,6 +38,7 @@ pub(super) struct ThemePage {
     prop_cursor: usize,
     focus: Focus,
     list: ListState,
+    pub(super) color_list: Option<list_editor::OpenList>,
 }
 
 impl ThemePage {
@@ -48,6 +49,7 @@ impl ThemePage {
             prop_cursor: 0,
             focus: Focus::Layout,
             list: ListState::default(),
+            color_list: None,
         }
     }
 
@@ -122,7 +124,7 @@ impl App {
         self.theme.slots.get(&self.theme_path()?)
     }
 
-    fn theme_doc(&self) -> Option<&ThemeDoc> {
+    pub(super) fn theme_doc(&self) -> Option<&ThemeDoc> {
         match self.slot()? {
             Slot::Loaded(doc) => Some(doc),
             _ => None,
@@ -144,7 +146,7 @@ impl App {
             .cloned()
     }
 
-    fn theme_prop(&self) -> Option<(ThemeEntry, PropSpec, Option<Value>)> {
+    pub(super) fn theme_prop(&self) -> Option<(ThemeEntry, PropSpec, Option<Value>)> {
         let entry = self.theme_entry()?;
         let props = self.theme_doc()?.props(&entry);
         let (spec, value) = props.get(self.theme.prop_cursor)?.clone();
@@ -156,6 +158,9 @@ impl App {
     pub(super) fn preview_theme(&self) -> Option<Value> {
         let doc = self.theme_doc()?;
         let pending = match &self.mode {
+            Mode::ColorPicker { code, .. } if self.list_pending().is_some() => {
+                self.list_preview(*code)
+            }
             Mode::ColorPicker { code, .. } => Some(Value::from(*code)),
             Mode::IconBrowser { query, selected } => glyphs::search(query)
                 .get(*selected)
@@ -200,7 +205,7 @@ impl App {
         self.preview_stale = true;
     }
 
-    fn set_theme_prop(&mut self, value: Option<Value>) -> bool {
+    pub(super) fn set_theme_prop(&mut self, value: Option<Value>) -> bool {
         let Some((entry, spec, _)) = self.theme_prop() else {
             return false;
         };
@@ -293,6 +298,7 @@ impl App {
     pub(super) fn submit_theme_input(&mut self, purpose: InputPurpose, text: &str) -> bool {
         match purpose {
             InputPurpose::NewTheme => self.use_new_theme(text),
+            InputPurpose::ListItem => self.submit_list_color(text),
             _ => {
                 let Some((_, spec, _)) = self.theme_prop() else {
                     return true;
@@ -373,6 +379,7 @@ impl App {
                 }
                 _ => {}
             },
+            Focus::Options if self.theme.color_list.is_some() => self.on_color_list_key(key),
             Focus::Options => {
                 let props = self
                     .theme_entry()
@@ -406,6 +413,9 @@ impl App {
                             prefer_name: value.as_ref().is_some_and(Value::is_string),
                         };
                         self.preview_stale = true;
+                    }
+                    KeyCode::Enter | KeyCode::Char(' ') if spec.kind == PropKind::ColorList => {
+                        self.open_color_list()
                     }
                     KeyCode::Enter
                     | KeyCode::Char(' ')
@@ -474,9 +484,20 @@ impl App {
                 self.preview_stale = true;
                 return None;
             }
+            KeyCode::Enter | KeyCode::Char(' ') if self.list_pending().is_some() => {
+                self.pick_list_color(code, prefer_name);
+                return None;
+            }
             KeyCode::Enter | KeyCode::Char(' ') => {
                 self.set_theme_prop(Some(color_value(code, prefer_name)));
                 return None;
+            }
+            KeyCode::Char('i') if self.list_pending().is_some() => {
+                return Some(Mode::Input {
+                    cursor: code.to_string().len(),
+                    buffer: code.to_string(),
+                    purpose: InputPurpose::ListItem,
+                });
             }
             KeyCode::Char('i') => {
                 return Some(Mode::Input {
@@ -744,6 +765,9 @@ impl App {
     }
 
     fn draw_theme_props(&self, frame: &mut Frame, area: Rect) {
+        if self.color_list_open() {
+            return self.draw_color_list(frame, area);
+        }
         let (Some(doc), Some(entry)) = (self.theme_doc(), self.theme_entry()) else {
             return;
         };
@@ -827,7 +851,9 @@ impl App {
 
     pub(super) fn draw_color_picker(&self, frame: &mut Frame, area: Rect, code: u8) {
         let title = match self.theme_prop() {
-            Some((entry, spec, _)) => format!(" {}.{} ", entry.label(), spec.key),
+            Some((entry, spec, _)) => {
+                format!(" {}.{}{} ", entry.label(), spec.key, self.list_pick_label())
+            }
             None => " Colour ".to_string(),
         };
         // Grid, a blank line, the selection and the key hints, inside a border
