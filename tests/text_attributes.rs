@@ -2,8 +2,17 @@
 //! prompt: wrapped like the colour escapes, and never left on past the text
 //! they style.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::process::Command;
+
+use serde_json::{json, Value};
+use superline::colors::{Color, TextAttrs};
+use superline::modules::*;
+use superline::terminal::{Shell, SHELL};
+use superline::themes::CustomTheme;
+use superline::update::UpdateScheme;
+use superline::Style;
 
 const BIN: &str = env!("CARGO_BIN_EXE_superline");
 
@@ -201,4 +210,156 @@ fn a_non_boolean_attribute_is_a_theme_error() {
         stderr.contains("expected true or false at modules.shell.bold"),
         "{stderr}"
     );
+}
+
+type T = CustomTheme;
+
+/// A module, a text colour property it reads, and the getter it draws with.
+type TextColor = (&'static str, &'static str, fn() -> Color);
+
+/// Every text colour a module draws with, by the theme property it reads.
+const TEXT_COLORS: &[TextColor] = &[
+    ("cwd", "path_fg", <T as CwdScheme>::path_fg),
+    ("readonly", "fg", <T as ReadOnlyScheme>::readonly_fg),
+    ("cmd", "passed_fg", <T as CmdScheme>::cmd_passed_fg),
+    ("cmd", "failed_fg", <T as CmdScheme>::cmd_failed_fg),
+    (
+        "last_cmd_duration",
+        "fg",
+        <T as LastCmdDurationScheme>::time_fg,
+    ),
+    ("shell", "fg", <T as ShellScheme>::shellname_fg),
+    ("jobs", "fg", <T as JobsScheme>::jobs_fg),
+    ("git", "clean_fg", <T as GitScheme>::git_repo_clean_fg),
+    ("git", "dirty_fg", <T as GitScheme>::git_repo_dirty_fg),
+    ("git", "notstaged_fg", <T as GitScheme>::git_notstaged_fg),
+    ("git", "untracked_fg", <T as GitScheme>::git_untracked_fg),
+    ("git", "staged_fg", <T as GitScheme>::git_staged_fg),
+    ("git", "conflicted_fg", <T as GitScheme>::git_conflicted_fg),
+    ("git", "remote_fg", <T as GitScheme>::git_remote_fg),
+    ("pr", "draft_fg", <T as PrScheme>::pr_draft_fg),
+    ("pr", "open_fg", <T as PrScheme>::pr_open_fg),
+    ("pr", "merged_fg", <T as PrScheme>::pr_merged_fg),
+    ("pr", "closed_fg", <T as PrScheme>::pr_closed_fg),
+    (
+        "pr",
+        "status_success_fg",
+        <T as PrScheme>::pr_status_success_fg,
+    ),
+    (
+        "pr",
+        "status_failure_fg",
+        <T as PrScheme>::pr_status_failure_fg,
+    ),
+    (
+        "pr",
+        "status_pending_fg",
+        <T as PrScheme>::pr_status_pending_fg,
+    ),
+    ("python", "env_fg", <T as PythonScheme>::pyenv_fg),
+    ("python", "version_fg", <T as PythonScheme>::pyver_fg),
+    ("node", "fg", <T as NodeScheme>::node_fg),
+    ("java", "fg", <T as JavaScheme>::java_fg),
+    ("cargo", "fg", <T as CargoScheme>::cargo_fg),
+    ("ai_usage", "claude_fg", <T as UsageScheme>::claude_usage_fg),
+    ("ai_usage", "codex_fg", <T as UsageScheme>::codex_usage_fg),
+    ("os", "fg", <T as OsScheme>::os_fg),
+    (
+        "memory_usage",
+        "fg",
+        <T as MemoryUsageScheme>::memory_usage_fg,
+    ),
+    ("time", "fg", <T as TimeScheme>::time_fg),
+    ("username", "fg", <T as UserScheme>::username_fg),
+    ("hostname", "fg", <T as HostScheme>::hostname_fg),
+    ("local_ip", "fg", <T as LocalIpScheme>::local_ip_fg),
+    ("battery", "fg", <T as BatteryScheme>::battery_fg),
+    ("sudo", "fg", <T as SudoScheme>::sudo_fg),
+    ("kubernetes", "fg", <T as KubernetesScheme>::kubernetes_fg),
+    ("spacer", "fg", <T as SpacerScheme>::color_fg),
+    ("update", "fg", <T as UpdateScheme>::update_fg),
+    ("error", "fg", <T as ErrorMessageScheme>::error_message_fg),
+    ("unknown", "fg", <T as UnknownScheme>::unknown_fg),
+    ("exit_code", "fg", <T as ExitCodeScheme>::exit_code_fg),
+];
+
+/// Every combination of attributes but none, handed out in turn so the
+/// colours of one module each get a different one.
+fn attrs_for(row: usize) -> TextAttrs {
+    let bits = row % 7 + 1;
+    TextAttrs {
+        bold: bits & 1 != 0,
+        italic: bits & 2 != 0,
+        underline: bits & 4 != 0,
+    }
+}
+
+/// The attribute property for `fg_property`, e.g. `clean_bold`.
+fn attribute_key(fg_property: &str, attr: &str) -> String {
+    match fg_property.strip_suffix("fg") {
+        Some("") => attr.to_string(),
+        Some(prefix) => format!("{prefix}{attr}"),
+        None => panic!("{fg_property} is not a text colour"),
+    }
+}
+
+#[test]
+fn every_documented_text_color_is_drawn_with_its_attributes() {
+    let options: Value = serde_json::from_str(include_str!(
+        "../scripts/site-screenshots/theme-options.json"
+    ))
+    .unwrap();
+    let documented: BTreeSet<(String, String)> = options
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(module, _)| !module.starts_with('_'))
+        .flat_map(|(module, spec)| {
+            spec["properties"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|row| row[1] == "color")
+                .filter_map(|row| row[0].as_str())
+                .filter(|key| *key == "fg" || key.ends_with("_fg"))
+                .map(|key| (module.clone(), key.to_string()))
+        })
+        .collect();
+    let tested: BTreeSet<(String, String)> = TEXT_COLORS
+        .iter()
+        .map(|(module, key, _)| (module.to_string(), key.to_string()))
+        .collect();
+    let untested: Vec<_> = documented.difference(&tested).collect();
+    assert!(untested.is_empty(), "no getter listed for {untested:?}");
+
+    let mut modules = json!({});
+    for (row, (module, fg, _)) in TEXT_COLORS.iter().enumerate() {
+        let attrs = attrs_for(row);
+        for (attr, on) in [
+            ("bold", attrs.bold),
+            ("italic", attrs.italic),
+            ("underline", attrs.underline),
+        ] {
+            modules[*module][attribute_key(fg, attr)] = Value::Bool(on);
+        }
+    }
+    let dir = std::env::temp_dir().join(format!("superline-attrs-{}-getters", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("theme.json");
+    let theme = json!({ "defaults": { "fg": 15, "bg": 0 }, "modules": modules });
+    fs::write(&path, theme.to_string()).unwrap();
+    CustomTheme::load(&path).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    let _ = SHELL.set(Shell::Bare);
+
+    for (row, (module, fg, getter)) in TEXT_COLORS.iter().enumerate() {
+        let attrs = attrs_for(row);
+        let color = getter();
+        assert_eq!(color.attrs(), attrs, "{module}.{fg}");
+        // Modules draw every segment through Style::simple.
+        let drawn = Style::simple(color, Color(0)).fg.to_string();
+        let expected = format!("\x1b[38;5;{}m\x1b[{}m", color.to_u8(), attrs.on_codes());
+        assert_eq!(drawn, expected, "{module}.{fg}");
+    }
 }
