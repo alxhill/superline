@@ -13,6 +13,7 @@ use crate::colors::Color;
 use crate::config::{GitBackend, DEFAULT_GIT_STATUS_TIMEOUT_MS};
 use crate::debug;
 use crate::themes::DefaultColors;
+use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
 use super::Module;
@@ -90,6 +91,48 @@ pub trait GitScheme: DefaultColors {
     fn git_worktree_icon() -> &'static str {
         Self::DEFAULT_WORKTREE_ICON
     }
+
+    const DEFAULT_BRANCH_ICON: &'static str = GIT_ICON;
+    const DEFAULT_LINKED_WORKTREE_ICON: &'static str = LINKED_WORKTREE_ICON;
+    const DEFAULT_DETACHED_ICON: &'static str = DETACHED_ARROW;
+    const DEFAULT_REMOTE_ICON: &'static str = GITHUB_LOGO;
+    const DEFAULT_AHEAD_ICON: &'static str = UP_ARROW;
+    const DEFAULT_BEHIND_ICON: &'static str = DOWN_ARROW;
+
+    fn git_notstaged_icon() -> &'static str {
+        Self::NOT_STAGED_SYMBOL
+    }
+    fn git_staged_icon() -> &'static str {
+        Self::STAGED_SYMBOL
+    }
+    fn git_untracked_icon() -> &'static str {
+        Self::UNTRACKED_SYMBOL
+    }
+    fn git_conflicted_icon() -> &'static str {
+        Self::CONFLICTED_SYMBOL
+    }
+    /// Before the branch name in a repository's main working tree.
+    fn git_branch_icon() -> &'static str {
+        Self::DEFAULT_BRANCH_ICON
+    }
+    /// Before the branch name in a linked worktree, in place of the branch
+    /// icon.
+    fn git_linked_worktree_icon() -> &'static str {
+        Self::DEFAULT_LINKED_WORKTREE_ICON
+    }
+    /// Between a detached HEAD's hash and the branch it sits on.
+    fn git_detached_icon() -> &'static str {
+        Self::DEFAULT_DETACHED_ICON
+    }
+    fn git_remote_icon() -> &'static str {
+        Self::DEFAULT_REMOTE_ICON
+    }
+    fn git_ahead_icon() -> &'static str {
+        Self::DEFAULT_AHEAD_ICON
+    }
+    fn git_behind_icon() -> &'static str {
+        Self::DEFAULT_BEHIND_ICON
+    }
 }
 
 impl<S: GitScheme> Default for Git<S> {
@@ -159,6 +202,16 @@ fn detached_label(branch: Option<String>, hash: &str) -> String {
     match branch {
         Some(branch) => format!("{hash} {DETACHED_ARROW} {branch}"),
         None => hash.to_owned(),
+    }
+}
+
+/// The branch name as the prompt shows it. The cached name always marks a
+/// detached HEAD with [`DETACHED_ARROW`] (see [`detached_label`]), so the
+/// theme's icon is swapped in here.
+fn branch_label(branch_name: &str, detached_icon: &str) -> String {
+    match branch_name.split_once(&format!(" {DETACHED_ARROW} ")) {
+        Some((hash, branch)) => join_non_empty([hash, detached_icon, branch]),
+        None => branch_name.to_owned(),
     }
 }
 
@@ -649,7 +702,7 @@ const FANCY_STAR: &str = "\u{273C}";
 
 const GITHUB_LOGO: &str = "\u{e709}";
 const GIT_ICON: &str = "\u{e0a0}";
-const WORKTREE_ICON: &str = "\u{f1bb}";
+const LINKED_WORKTREE_ICON: &str = "\u{f1bb}";
 const DETACHED_ARROW: &str = "\u{f432}";
 
 /// Git status for one repository. The status walk is always attempted live
@@ -689,7 +742,11 @@ impl<S: GitScheme> Module for Git<S> {
             _ => return,
         };
 
-        let icon = if is_worktree { WORKTREE_ICON } else { GIT_ICON };
+        let icon = if is_worktree {
+            S::git_linked_worktree_icon()
+        } else {
+            S::git_branch_icon()
+        };
         let source = GitStatus {
             git_dir,
             backend: self.backend,
@@ -711,7 +768,7 @@ impl<S: GitScheme> Module for Git<S> {
             Lookup::Ready(stats) => stats,
             Lookup::Loading => {
                 powerline.add_segment(
-                    format!("{icon} loading…"),
+                    join_non_empty([icon, "loading…"]),
                     Style::simple(S::git_repo_clean_fg(), S::git_repo_clean_bg()),
                 );
                 return;
@@ -725,7 +782,8 @@ impl<S: GitScheme> Module for Git<S> {
             (S::git_repo_clean_fg(), S::git_repo_clean_bg())
         };
 
-        let mut branch = format!("{} {}", icon, stats.branch_name);
+        let branch = branch_label(&stats.branch_name, S::git_detached_icon());
+        let mut branch = join_non_empty([icon, branch.as_str()]);
         if self.worktrees && stats.worktrees > 0 {
             let label = worktree_label(
                 S::git_worktree_icon(),
@@ -737,63 +795,70 @@ impl<S: GitScheme> Module for Git<S> {
         powerline.add_segment(branch, Style::simple(branch_fg, branch_bg));
 
         let add_elem = |powerline: &mut Powerline, count: u32, symbol, fg, bg| match count.cmp(&1) {
-            Ordering::Equal | Ordering::Greater => {
-                powerline.add_segment(format!("{} {}", count, symbol), Style::simple(fg, bg))
-            }
+            Ordering::Equal | Ordering::Greater => powerline.add_segment(
+                join_non_empty([count.to_string().as_str(), symbol]),
+                Style::simple(fg, bg),
+            ),
             Ordering::Less => (),
         };
 
         add_elem(
             powerline,
             stats.non_staged,
-            S::NOT_STAGED_SYMBOL,
+            S::git_notstaged_icon(),
             S::git_notstaged_fg(),
             S::git_notstaged_bg(),
         );
         add_elem(
             powerline,
             stats.untracked,
-            S::UNTRACKED_SYMBOL,
+            S::git_untracked_icon(),
             S::git_untracked_fg(),
             S::git_untracked_bg(),
         );
         add_elem(
             powerline,
             stats.staged,
-            S::STAGED_SYMBOL,
+            S::git_staged_icon(),
             S::git_staged_fg(),
             S::git_staged_bg(),
         );
         add_elem(
             powerline,
             stats.conflicted,
-            S::CONFLICTED_SYMBOL,
+            S::git_conflicted_icon(),
             S::git_conflicted_fg(),
             S::git_conflicted_bg(),
         );
 
         if stats.remote {
-            let logo_padding = if stats.ahead > 0 || stats.behind > 0 {
-                " "
-            } else {
-                ""
-            };
-            let mut remote: String = format!("{}{}", GITHUB_LOGO, logo_padding);
-
-            if stats.ahead > 0 {
-                let _ = write!(remote, "{}{} ", stats.ahead, UP_ARROW);
-            }
-            if stats.behind > 0 {
-                let _ = write!(remote, "{}{}", stats.behind, DOWN_ARROW);
-            }
+            let remote = remote_label(
+                S::git_remote_icon(),
+                (stats.ahead, S::git_ahead_icon()),
+                (stats.behind, S::git_behind_icon()),
+            );
 
             let style = Style::simple(S::git_remote_fg(), S::git_remote_bg());
             match &stats.remote_url {
+                _ if remote.is_empty() => {}
                 Some(url) => powerline.add_hyperlink_segment(&remote, url, style, None),
                 None => powerline.add_segment(remote, style),
             }
         }
     }
+}
+
+/// The remote segment: the remote icon, then the ahead and behind counts each
+/// followed by its icon.
+fn remote_label(icon: &str, ahead: (u32, &str), behind: (u32, &str)) -> String {
+    let mut counts = String::new();
+    if ahead.0 > 0 {
+        let _ = write!(counts, "{}{} ", ahead.0, ahead.1);
+    }
+    if behind.0 > 0 {
+        let _ = write!(counts, "{}{}", behind.0, behind.1);
+    }
+    join_non_empty([icon, counts.as_str()])
 }
 
 #[cfg(test)]
@@ -803,10 +868,11 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::{
-        choose_backend, detached_label, in_list_order, index_entry_count, install_prefix_of,
-        linked_common_dir, linked_worktrees, listed_worktrees, parse_head, preferred_branch,
-        preferred_remote, prefers_cli_for_index_count, remote_web_url, resolve_git_dir,
-        worktree_label, Choice, GitBackend, GitStats, Reason, Worktrees, AUTO_CLI_ENTRY_THRESHOLD,
+        branch_label, choose_backend, detached_label, in_list_order, index_entry_count,
+        install_prefix_of, linked_common_dir, linked_worktrees, listed_worktrees, parse_head,
+        preferred_branch, preferred_remote, prefers_cli_for_index_count, remote_label,
+        remote_web_url, resolve_git_dir, worktree_label, Choice, GitBackend, GitStats, Reason,
+        Worktrees, AUTO_CLI_ENTRY_THRESHOLD,
     };
 
     fn names(list: &[&str]) -> Vec<String> {
@@ -958,6 +1024,24 @@ mod tests {
             "abc1234 \u{f432} main"
         );
         assert_eq!(detached_label(None, "abc1234"), "abc1234");
+    }
+
+    #[test]
+    fn branch_label_swaps_in_the_theme_detached_icon() {
+        let detached = detached_label(Some("main".into()), "abc1234");
+        assert_eq!(branch_label(&detached, "\u{f432}"), "abc1234 \u{f432} main");
+        assert_eq!(branch_label(&detached, "->"), "abc1234 -> main");
+        assert_eq!(branch_label(&detached, ""), "abc1234 main");
+        assert_eq!(branch_label("ah/feature", ""), "ah/feature");
+    }
+
+    #[test]
+    fn remote_label_hides_empty_icons_with_their_spaces() {
+        assert_eq!(remote_label("R", (0, "^"), (0, "v")), "R");
+        assert_eq!(remote_label("R", (2, "^"), (1, "v")), "R 2^ 1v");
+        assert_eq!(remote_label("", (2, "^"), (1, "v")), "2^ 1v");
+        assert_eq!(remote_label("", (0, "^"), (1, "")), "1");
+        assert_eq!(remote_label("", (0, "^"), (0, "v")), "");
     }
 
     #[test]
