@@ -139,7 +139,7 @@ TAPE
 
 scene_themes() {
   local theme dir
-  for theme in rainbow simple custom; do
+  for theme in rainbow simple gruvbox custom; do
     dir="$work/theme-$theme/home/code/superline"
     git_repo_with_upstream "$dir" 1 0 main
     rust_project "$dir"
@@ -189,7 +189,7 @@ editor_fixture() {
 }
 
 # GIFs of `superline config`: adding and moving widgets, changing a widget's
-# options, and editing a theme with the colour picker. Each starts with the
+# options, and picking a theme then editing it with the colour picker. Each starts with the
 # editor open and ends by quitting to the prompt it saved.
 scene_editor() {
   local open='Type "superline config"
@@ -257,19 +257,26 @@ TAPE
   editor_fixture editor-theme
   HIDDEN="$open" record editor-theme 120 40 "$configs/editor.json" code/superline <<'TAPE'
 Sleep 1.2s
-# Theme page: create theme.json from the example theme.
+# Theme page: preview simple and gruvbox in the picker and switch to gruvbox,
+# then fork it into theme.json.
 Type "2"
 Sleep 1.8s
+Type "p"
+Sleep 1.5s
+Down@2s 2
+Sleep 2s
+Enter
+Sleep 2s
 Type "n"
 Sleep 1.5s
 Enter
 Sleep 2s
-# Down to git, open dirty_bg in the picker and walk from 202 to 98.
+# Down to git, open dirty_bg in the picker and walk from 208 to 104.
 Type@250ms "jjjjjjj"
 Sleep 800ms
 Enter
 Sleep 1s
-Type@350ms "jjj"
+Type@350ms "jjjjjjjjj"
 Sleep 800ms
 Enter
 Sleep 1.5s

@@ -137,8 +137,11 @@ The keys:
   property. Each text colour is followed by its `bold`, `italic` and `underline` switches, which `Enter` or `space`
   turns on and off. The switch under the cursor shows a sample of its text, since the preview only draws text the
   prompt shows in the current directory (git's unstaged count needs unstaged changes). `n` copies the theme into a
-  new theme file next to the config and points the config at it. `1` returns to the layout, where Settings picks
-  another theme file.
+  new theme file next to the config and points the config at it. `1` returns to the layout.
+- `p` on the Theme page, or `Enter` on `theme` under Settings, opens the theme picker: the bundled themes and the theme
+  files next to the config, each with a strip of its colours. The preview draws your prompt in whichever theme is
+  highlighted, and `Enter` switches to it, first writing a bundled theme's file into the config directory. `i` types
+  any other theme file name, and `←`/`→` on the setting still step through the themes without the picker.
 - `Enter` on a colour list such as `cwd.bg_colors` shows its colours one per line with a swatch. `Enter` picks a colour
   in the picker, `←`/`→` step it and `i` types it; `a`/`I` add a colour after or before it, `d` deletes it, `c` copies
   it and `J`/`K` (or shift-arrows) move it. `i` on the list's own row still types the whole list.
@@ -587,10 +590,11 @@ one is pinned.
 `/` are absolute; anything else is resolved relative to the config directory (`$HOME/.config/superline/`). If the
 theme fails to load, superline falls back to `rainbow`.
 
-superline comes with two themes, [`rainbow`](themes/rainbow.json) and [`simple`](themes/simple.json). When the config
-names one of them and its file isn't in the config directory yet, superline writes it there, so it can be edited like
-any other theme file; an existing file is never replaced. Delete it to get the original back. The Theme page of
-`superline config` edits a theme file with a live preview.
+superline comes with three themes, [`rainbow`](themes/rainbow.json), [`simple`](themes/simple.json) and
+[`gruvbox`](themes/gruvbox.json). When the config names one of them and its file isn't in the config directory yet,
+superline writes it there, so it can be edited like any other theme file; an existing file is never replaced. Delete it
+to get the original back. The theme picker in `superline config` (`p` on the Theme page) previews each theme on your
+own prompt before you switch, and the Theme page edits a theme file with a live preview.
 
 A theme file has two keys, `defaults` and `modules`:
 

@@ -11,6 +11,7 @@ mod preview;
 mod schema;
 mod theme;
 mod theme_page;
+mod theme_picker;
 
 #[cfg(test)]
 mod tests;
@@ -91,6 +92,8 @@ enum InputPurpose {
     NewTheme,
     /// One colour of a colour list on the Theme page.
     ListItem,
+    /// A theme file name typed in the theme picker.
+    ThemeName,
 }
 
 enum Mode {
@@ -111,6 +114,10 @@ enum Mode {
     },
     IconBrowser {
         query: String,
+        selected: usize,
+    },
+    ThemePicker {
+        choices: Vec<theme_picker::ThemeChoice>,
         selected: usize,
     },
     ConfirmQuit,
@@ -496,10 +503,12 @@ impl App {
     }
 
     fn activate_option(&mut self) {
-        let Some((_, spec, value)) = self.current_option() else {
+        let Some((target, spec, value)) = self.current_option() else {
             return;
         };
-        if spec.is_text() {
+        if target == Target::Settings && spec.key == schema::THEME.key {
+            self.open_theme_picker();
+        } else if spec.is_text() {
             let buffer = value
                 .or_else(|| spec.default_value())
                 .map(|v| match v {
@@ -588,6 +597,11 @@ impl App {
             }
             Mode::IconBrowser { query, selected } => {
                 if let Some(mode) = self.on_icon_browser_key(key, query, selected) {
+                    self.mode = mode;
+                }
+            }
+            Mode::ThemePicker { choices, selected } => {
+                if let Some(mode) = self.on_theme_picker_key(key, choices, selected) {
                     self.mode = mode;
                 }
             }
@@ -818,6 +832,10 @@ impl App {
             Mode::ColorPicker { code, .. } => self.draw_color_picker(frame, area, *code),
             Mode::IconBrowser { query, selected } => {
                 self.draw_icon_browser(frame, area, query, *selected)
+            }
+            // Below the preview, which draws the highlighted theme.
+            Mode::ThemePicker { choices, selected } => {
+                self.draw_theme_picker(frame, middle, choices, *selected)
             }
             Mode::ConfirmQuit => draw_confirm(frame, area),
             Mode::Help => draw_help(frame, area),
@@ -1103,6 +1121,12 @@ impl App {
                     Page::Theme => self.theme_focus(),
                 };
                 let hints: &[(&str, &str)] = match (&self.mode, focus) {
+                    (Mode::ThemePicker { .. }, _) => &[
+                        ("↑↓", "preview"),
+                        ("⏎", "use"),
+                        ("i", "type a file name"),
+                        ("esc", "cancel"),
+                    ],
                     (Mode::IconBrowser { .. }, _) => &[
                         ("type", "search"),
                         ("↑↓", "choose"),
@@ -1127,6 +1151,7 @@ impl App {
                     (_, Focus::Layout) if self.page == Page::Theme => &[
                         ("↑↓", "move"),
                         ("⏎", "edit"),
+                        ("p", "pick theme"),
                         ("n", "fork theme"),
                         ("u", "undo"),
                         ("s", "save"),
@@ -1374,6 +1399,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("Options", ""),
         ("↑ ↓", "select an option"),
         ("⏎  space", "toggle, cycle, or type a new value"),
+        ("⏎ on theme", "pick a theme, previewing each one"),
         ("← →  h l", "cycle through the choices"),
         ("x  del", "reset the option to its default"),
         ("esc  tab", "back to the layout"),
@@ -1387,6 +1413,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("⏎  space", "switch bold, italic or underline on or off"),
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
+        ("p", "pick a theme, previewing each one"),
         ("n", "fork the theme into a new theme file"),
         ("⏎ on a list", "edit each colour: ⏎ pick, ← → step, i type"),
         (
@@ -1448,13 +1475,11 @@ fn truncate_start(text: &str, width: usize) -> String {
     format!("…{kept}")
 }
 
-/// The theme files next to the config, plus the bundled themes that aren't
-/// installed yet (choosing one installs it), by the name a config uses.
+/// The bundled themes (choosing one that isn't installed yet installs it),
+/// then the other theme files next to the config, by the name a config uses.
 fn theme_choices(config_path: &Path) -> Vec<String> {
-    let mut files: Vec<String> = crate::themes::BUNDLED_THEMES
-        .iter()
-        .map(|(file, _)| file.to_string())
-        .collect();
+    let bundled = crate::themes::BUNDLED_THEMES.iter().map(|(file, _)| *file);
+    let mut files: Vec<String> = Vec::new();
     let entries = config_path
         .parent()
         .and_then(|dir| std::fs::read_dir(dir).ok());
@@ -1462,14 +1487,20 @@ fn theme_choices(config_path: &Path) -> Vec<String> {
         let path = entry.path();
         if path.extension().is_some_and(|ext| ext == "json") && is_theme_file(&path) {
             if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
-                if !files.iter().any(|file| file == name) {
+                if !crate::themes::BUNDLED_THEMES
+                    .iter()
+                    .any(|(file, _)| *file == name)
+                {
                     files.push(name.to_string());
                 }
             }
         }
     }
     files.sort();
-    files.iter().map(|file| theme_name(file)).collect()
+    bundled
+        .map(theme_name)
+        .chain(files.iter().map(|file| theme_name(file)))
+        .collect()
 }
 
 /// A theme file's name without `.json` when the config can leave it off.
