@@ -13,6 +13,7 @@ pub struct Cmd<S: CmdScheme> {
 
 pub trait CmdScheme: DefaultColors {
     const DEFAULT_USER_SYMBOL: &'static str = "$";
+    const DEFAULT_ROOT_SYMBOL: &'static str = "#";
     fn cmd_passed_fg() -> Color {
         Self::default_fg()
     }
@@ -30,7 +31,7 @@ pub trait CmdScheme: DefaultColors {
     }
 
     fn cmd_root_symbol() -> &'static str {
-        "#"
+        Self::DEFAULT_ROOT_SYMBOL
     }
 
     fn cmd_user_symbol() -> &'static str {
