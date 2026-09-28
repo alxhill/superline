@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::fmt::Write;
 use std::io::Read;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 use std::{env, fs};
 
@@ -33,6 +33,7 @@ mod process;
 pub struct Git<S> {
     status_timeout: Duration,
     backend: GitBackend,
+    worktrees: bool,
     scheme: PhantomData<S>,
 }
 
@@ -84,6 +85,13 @@ pub trait GitScheme: DefaultColors {
     const STAGED_SYMBOL: &'static str = "+";
     const UNTRACKED_SYMBOL: &'static str = "?";
     const CONFLICTED_SYMBOL: &'static str = FANCY_STAR;
+
+    const DEFAULT_WORKTREE_ICON: &'static str = "\u{f1897}"; // nf-md-forest
+    /// Shown before the linked-worktree label. Empty shows just the numbers.
+    fn git_worktree_icon() -> &'static str {
+        Self::DEFAULT_WORKTREE_ICON
+    }
+
     const DEFAULT_BRANCH_ICON: &'static str = GIT_ICON;
     const DEFAULT_LINKED_WORKTREE_ICON: &'static str = LINKED_WORKTREE_ICON;
     const DEFAULT_DETACHED_ICON: &'static str = DETACHED_ARROW;
@@ -138,13 +146,16 @@ impl<S: GitScheme> Git<S> {
         Self::with_config(
             Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS),
             GitBackend::default(),
+            true,
         )
     }
 
-    pub fn with_config(status_timeout: Duration, backend: GitBackend) -> Git<S> {
+    /// `worktrees` shows the linked-worktree count next to the branch.
+    pub fn with_config(status_timeout: Duration, backend: GitBackend, worktrees: bool) -> Git<S> {
         Git {
             status_timeout,
             backend,
+            worktrees,
             scheme: PhantomData,
         }
     }
@@ -168,6 +179,13 @@ pub struct GitStats {
     #[serde(default)]
     pub remote_url: Option<String>,
     pub branch_name: String,
+    /// Linked worktrees of the repository, from [`linked_worktrees`].
+    #[serde(default)]
+    pub worktrees: u32,
+    /// This checkout's 1-based position among them in `git worktree list`
+    /// order. `None` in the main checkout.
+    #[serde(default)]
+    pub worktree_index: Option<u32>,
 }
 
 impl GitStats {
@@ -314,6 +332,178 @@ fn resolve_git_dir(worktree: &Path) -> Option<PathBuf> {
     } else {
         worktree.join(target)
     })
+}
+
+/// The linked worktrees of a repository, as `git worktree list` shows them
+/// after the main checkout, less the ones it marks prunable.
+#[derive(Debug, Default, PartialEq)]
+pub(super) struct Worktrees {
+    pub count: u32,
+    /// The 1-based position of the checkout asked about in that list. `None`
+    /// in the main checkout.
+    pub index: Option<u32>,
+}
+
+/// The linked worktrees of the repository checked out at `worktree` (its main
+/// checkout or any linked one), and where `worktree` sits among them. Costs a
+/// directory listing rather than a `git worktree list` spawn.
+pub(super) fn linked_worktrees(worktree: &Path) -> Worktrees {
+    let Some(git_dir) = resolve_git_dir(worktree) else {
+        return Worktrees::default();
+    };
+    match linked_common_dir(&git_dir) {
+        // The main checkout has no position, so it can skip the sort.
+        None => Worktrees {
+            count: listed_worktrees(&git_dir).len() as u32,
+            index: None,
+        },
+        Some(common) => {
+            let listed = in_list_order(listed_worktrees(&common), &common);
+            Worktrees {
+                count: listed.len() as u32,
+                index: position_of(&git_dir, &listed),
+            }
+        }
+    }
+}
+
+/// The git directory every worktree of a repository shares, when `git_dir`
+/// belongs to a linked worktree: it names it in a `commondir` file, usually
+/// `../..`. Any other git directory, a submodule's under the superproject's
+/// `.git/modules/` included, is its own common directory.
+fn linked_common_dir(git_dir: &Path) -> Option<PathBuf> {
+    let common = fs::read_to_string(git_dir.join("commondir")).ok()?;
+    Some(git_dir.join(common.trim()))
+}
+
+/// A linked worktree's entry under the common git directory's `worktrees/`.
+struct LinkedWorktree {
+    admin: PathBuf,
+    /// The `gitdir` file: the checkout's `.git`, absolute or relative to
+    /// `admin`.
+    gitdir: String,
+}
+
+impl LinkedWorktree {
+    /// The checkout path `git worktree list` prints and sorts by. Git keeps an
+    /// absolute `gitdir` as written and resolves a relative one.
+    fn listed_path(&self) -> PathBuf {
+        let path = Path::new(self.gitdir.strip_suffix("/.git").unwrap_or(&self.gitdir));
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            realpath_forgiving(&self.admin.join(path))
+        }
+    }
+}
+
+/// The entries under `common`'s `worktrees/` that `git worktree list` shows
+/// without marking them prunable, in directory order. Git leaves out entries
+/// without a `gitdir` file, and marks the ones whose checkout is gone
+/// prunable unless they are locked.
+fn listed_worktrees(common: &Path) -> Vec<LinkedWorktree> {
+    let Ok(entries) = fs::read_dir(common.join("worktrees")) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let admin = entry.path();
+            let gitdir = fs::read_to_string(admin.join("gitdir")).ok()?;
+            let gitdir = gitdir.trim();
+            let live = admin.join("locked").exists() || admin.join(gitdir).exists();
+            (!gitdir.is_empty() && live).then(|| LinkedWorktree {
+                gitdir: gitdir.to_owned(),
+                admin,
+            })
+        })
+        .collect()
+}
+
+/// Sorts `listed` the way `git worktree list` does: by path, ASCII case
+/// folded when the repository sets `core.ignorecase`.
+fn in_list_order(mut listed: Vec<LinkedWorktree>, common: &Path) -> Vec<LinkedWorktree> {
+    if listed.len() > 1 {
+        let ignore_case = ignores_case(common);
+        listed.sort_by_cached_key(|worktree| path_sort_key(&worktree.listed_path(), ignore_case));
+    }
+    listed
+}
+
+/// `core.ignorecase` from the repository's own config, where `git init` and
+/// `git clone` record it on a case-insensitive filesystem.
+fn ignores_case(common: &Path) -> bool {
+    gix::config::File::from_path_no_includes(common.join("config"), gix::config::Source::Local)
+        .ok()
+        .and_then(|config| config.boolean("core.ignorecase"))
+        .is_some_and(|value| value.unwrap_or(false))
+}
+
+/// The bytes git compares worktree paths by (`fspathcmp`), with a Windows
+/// path spelled the way git writes it.
+fn path_sort_key(path: &Path, ignore_case: bool) -> Vec<u8> {
+    let mut key = path.as_os_str().as_encoded_bytes().to_vec();
+    if cfg!(windows) {
+        if key.starts_with(br"\\?\") {
+            key.drain(..4);
+        }
+        key.iter_mut()
+            .filter(|byte| **byte == b'\\')
+            .for_each(|byte| *byte = b'/');
+    }
+    if ignore_case {
+        key.make_ascii_lowercase();
+    }
+    key
+}
+
+/// Resolves `path` like git's `strbuf_realpath_forgiving`: symlinks as far as
+/// the path exists, then the missing rest lexically.
+fn realpath_forgiving(path: &Path) -> PathBuf {
+    let components: Vec<Component> = path.components().collect();
+    for existing in (1..=components.len()).rev() {
+        let Ok(mut real) = fs::canonicalize(components[..existing].iter().collect::<PathBuf>())
+        else {
+            continue;
+        };
+        for component in &components[existing..] {
+            match component {
+                Component::ParentDir => {
+                    real.pop();
+                }
+                Component::Normal(name) => real.push(name),
+                _ => {}
+            }
+        }
+        return real;
+    }
+    path.to_path_buf()
+}
+
+/// The 1-based position in `listed` of the linked worktree whose git
+/// directory is `git_dir`. Compares resolved paths, so a relative or
+/// symlinked `gitdir:` in the checkout's `.git` file still finds its entry.
+fn position_of(git_dir: &Path, listed: &[LinkedWorktree]) -> Option<u32> {
+    let current = fs::canonicalize(git_dir).ok()?;
+    let position = listed.iter().position(|worktree| {
+        fs::canonicalize(&worktree.admin).is_ok_and(|admin| admin == current)
+    })?;
+    Some(position as u32 + 1)
+}
+
+/// The worktree label appended to the branch label: `index/count` inside a
+/// linked worktree and `count` in the main checkout, after `icon` unless it
+/// is empty.
+fn worktree_label(icon: &str, count: u32, index: Option<u32>) -> String {
+    let position = match index {
+        Some(index) => format!("{index}/{count}"),
+        None => count.to_string(),
+    };
+    if icon.is_empty() {
+        position
+    } else {
+        format!("{icon} {position}")
+    }
 }
 
 /// Repos at or above this many index entries favour the CLI backend: measured
@@ -593,10 +783,16 @@ impl<S: GitScheme> Module for Git<S> {
         };
 
         let branch = branch_label(&stats.branch_name, S::git_detached_icon());
-        powerline.add_segment(
-            join_non_empty([icon, branch.as_str()]),
-            Style::simple(branch_fg, branch_bg),
-        );
+        let mut branch = join_non_empty([icon, branch.as_str()]);
+        if self.worktrees && stats.worktrees > 0 {
+            let label = worktree_label(
+                S::git_worktree_icon(),
+                stats.worktrees,
+                stats.worktree_index,
+            );
+            let _ = write!(branch, " {label}");
+        }
+        powerline.add_segment(branch, Style::simple(branch_fg, branch_bg));
 
         let add_elem = |powerline: &mut Powerline, count: u32, symbol, fg, bg| match count.cmp(&1) {
             Ordering::Equal | Ordering::Greater => powerline.add_segment(
@@ -672,9 +868,11 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::{
-        branch_label, choose_backend, detached_label, index_entry_count, install_prefix_of,
-        parse_head, preferred_branch, preferred_remote, prefers_cli_for_index_count, remote_label,
-        remote_web_url, Choice, GitBackend, Reason, AUTO_CLI_ENTRY_THRESHOLD,
+        branch_label, choose_backend, detached_label, in_list_order, index_entry_count,
+        install_prefix_of, linked_common_dir, linked_worktrees, listed_worktrees, parse_head,
+        preferred_branch, preferred_remote, prefers_cli_for_index_count, remote_label,
+        remote_web_url, resolve_git_dir, worktree_label, Choice, GitBackend, GitStats, Reason,
+        Worktrees, AUTO_CLI_ENTRY_THRESHOLD,
     };
 
     fn names(list: &[&str]) -> Vec<String> {
@@ -947,5 +1145,310 @@ mod tests {
             parse_head("ref: refs/remotes/origin/main\n").as_deref(),
             Some("refs/remotes/origin/main")
         );
+    }
+
+    fn scratch_dir() -> std::path::PathBuf {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("superline-worktrees-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "`git {}` failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    }
+
+    fn init_repo(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "test@example.com"]);
+        git(dir, &["config", "user.name", "test"]);
+        git(dir, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    }
+
+    fn add_worktree(repo: &Path, path: &Path, branch: &str) {
+        git(
+            repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                branch,
+                path.to_str().unwrap(),
+            ],
+        );
+    }
+
+    /// What git itself reports from `checkout`: the linked worktrees `git
+    /// worktree list --porcelain` shows after the main one without marking
+    /// them prunable, as branch names in its order, and the 1-based position
+    /// of `checkout` among them.
+    fn listed_by_git(checkout: &Path) -> (Vec<String>, Option<u32>) {
+        let listing = git(checkout, &["worktree", "list", "--porcelain"]);
+        let here = std::fs::canonicalize(checkout).unwrap();
+        let (mut branches, mut index) = (Vec::new(), None);
+        let entries = listing
+            .split("\n\n")
+            .filter(|entry| entry.starts_with("worktree "));
+        for entry in entries.skip(1) {
+            if entry.lines().any(|line| line.starts_with("prunable")) {
+                continue;
+            }
+            let branch = entry
+                .lines()
+                .find_map(|line| line.strip_prefix("branch refs/heads/"))
+                .unwrap_or("(detached)");
+            branches.push(branch.to_owned());
+            let path = entry
+                .lines()
+                .next()
+                .unwrap()
+                .strip_prefix("worktree ")
+                .unwrap();
+            if std::fs::canonicalize(path).is_ok_and(|path| path == here) {
+                index = Some(branches.len() as u32);
+            }
+        }
+        (branches, index)
+    }
+
+    /// The branch names of the worktrees [`linked_worktrees`] counts from
+    /// `checkout`, in the order it numbers them.
+    fn listed_by_superline(checkout: &Path) -> Vec<String> {
+        let git_dir = resolve_git_dir(checkout).unwrap();
+        let common = linked_common_dir(&git_dir).unwrap_or(git_dir);
+        in_list_order(listed_worktrees(&common), &common)
+            .iter()
+            .map(|worktree| {
+                parse_head(&std::fs::read_to_string(worktree.admin.join("HEAD")).unwrap()).unwrap()
+            })
+            .collect()
+    }
+
+    /// Asserts that git, the helper and both backends agree from `checkout`:
+    /// `count` linked worktrees in the same order, with `checkout` at `index`.
+    fn assert_worktrees(checkout: &Path, count: u32, index: Option<u32>) {
+        let (order, git_index) = listed_by_git(checkout);
+        assert_eq!(
+            (order.len() as u32, git_index),
+            (count, index),
+            "git from {checkout:?}: {order:?}"
+        );
+        assert_eq!(
+            listed_by_superline(checkout),
+            order,
+            "order from {checkout:?}"
+        );
+        assert_eq!(
+            linked_worktrees(checkout),
+            Worktrees { count, index },
+            "{checkout:?}"
+        );
+        for (backend, stats) in [
+            ("cli", super::process::run_git(checkout)),
+            ("gitoxide", super::gitoxide::run_git(checkout)),
+        ] {
+            assert_eq!(
+                (stats.worktrees, stats.worktree_index),
+                (count, index),
+                "{backend} backend from {checkout:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn linked_worktrees_are_counted_and_numbered_from_every_checkout() {
+        let root = scratch_dir();
+        let main = root.join("main");
+        init_repo(&main);
+        assert_worktrees(&main, 0, None);
+
+        // Git numbers by path, so `a/wt2` comes before `b/wt` even though
+        // their entries under `.git/worktrees/` are `wt2` and `wt`.
+        let later = root.join("b").join("wt");
+        add_worktree(&main, &later, "later");
+        assert_worktrees(&main, 1, None);
+        assert_worktrees(&later, 1, Some(1));
+
+        let earlier = root.join("a").join("wt2");
+        add_worktree(&main, &earlier, "earlier");
+        assert_worktrees(&main, 2, None);
+        assert_worktrees(&earlier, 2, Some(1));
+        assert_worktrees(&later, 2, Some(2));
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn the_order_folds_case_only_under_core_ignorecase() {
+        let root = scratch_dir();
+        let main = root.join("main");
+        init_repo(&main);
+        let (upper, lower) = (root.join("Zed"), root.join("alpha"));
+        add_worktree(&main, &upper, "upper");
+        add_worktree(&main, &lower, "lower");
+
+        git(&main, &["config", "core.ignorecase", "true"]);
+        assert_worktrees(&lower, 2, Some(1));
+        assert_worktrees(&upper, 2, Some(2));
+
+        git(&main, &["config", "core.ignorecase", "false"]);
+        assert_worktrees(&upper, 2, Some(1));
+        assert_worktrees(&lower, 2, Some(2));
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn deleted_worktrees_are_left_out_unless_locked() {
+        let root = scratch_dir();
+        let main = root.join("main");
+        init_repo(&main);
+        let names = ["a-gone", "b-locked", "c-kept", "d-removed"];
+        let [gone, locked, kept, removed] = names.map(|name| root.join(name));
+        for (path, name) in [&gone, &locked, &kept, &removed].into_iter().zip(names) {
+            add_worktree(&main, path, name);
+        }
+        git(&main, &["worktree", "lock", locked.to_str().unwrap()]);
+        assert_worktrees(&kept, 4, Some(3));
+
+        std::fs::remove_dir_all(&gone).unwrap();
+        std::fs::remove_dir_all(&locked).unwrap();
+        git(&main, &["worktree", "remove", removed.to_str().unwrap()]);
+        assert_worktrees(&main, 2, None);
+        assert_worktrees(&kept, 2, Some(2));
+
+        git(&main, &["worktree", "prune"]);
+        assert_worktrees(&kept, 2, Some(2));
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn relative_and_symlinked_gitdirs_find_their_entry() {
+        let root = scratch_dir();
+        let main = root.join("main");
+        init_repo(&main);
+        let (relative, absolute) = (root.join("c-relative"), root.join("d-absolute"));
+        add_worktree(&main, &absolute, "d-absolute");
+        // `--relative-paths` (git 2.48+) writes both links relative. Sorting
+        // by the unresolved `gitdir`, `<admin>/../../../c-relative`, would put
+        // it after `d-absolute`.
+        let added = std::process::Command::new("git")
+            .current_dir(&main)
+            .args([
+                "worktree",
+                "add",
+                "-q",
+                "--relative-paths",
+                "-b",
+                "c-relative",
+            ])
+            .arg(&relative)
+            .status()
+            .unwrap()
+            .success();
+        if !added {
+            add_worktree(&main, &relative, "c-relative");
+        }
+        // Any git follows a relative `gitdir:` in a checkout's `.git` file.
+        std::fs::write(
+            absolute.join(".git"),
+            "gitdir: ../main/.git/worktrees/d-absolute\n",
+        )
+        .unwrap();
+
+        assert_worktrees(&relative, 2, Some(1));
+        assert_worktrees(&absolute, 2, Some(2));
+
+        #[cfg(unix)]
+        {
+            let nested = root.join("links");
+            std::fs::create_dir_all(&nested).unwrap();
+            let link = nested.join("absolute");
+            std::os::unix::fs::symlink(&absolute, &link).unwrap();
+            assert_eq!(
+                linked_worktrees(&link),
+                Worktrees {
+                    count: 2,
+                    index: Some(2)
+                }
+            );
+        }
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_submodule_counts_its_own_worktrees() {
+        let root = scratch_dir();
+        let (superproject, library) = (root.join("super"), root.join("library"));
+        init_repo(&superproject);
+        init_repo(&library);
+        add_worktree(&superproject, &root.join("super-wt"), "super-wt");
+        // Without a remote, a relative URL resolves against the superproject.
+        git(
+            &superproject,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                "../library",
+                "lib",
+            ],
+        );
+        let submodule = superproject.join("lib");
+        assert!(submodule.join(".git").is_file());
+        assert_worktrees(&submodule, 0, None);
+
+        let submodule_wt = root.join("lib-wt");
+        add_worktree(&submodule, &submodule_wt, "lib-wt");
+        assert_worktrees(&submodule, 1, None);
+        assert_worktrees(&submodule_wt, 1, Some(1));
+        assert_worktrees(&superproject, 1, None);
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn outside_a_repository_there_are_no_worktrees() {
+        let root = scratch_dir();
+        assert_eq!(linked_worktrees(&root), Worktrees::default());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn the_label_numbers_a_linked_worktree_and_counts_from_the_main_checkout() {
+        assert_eq!(worktree_label("\u{f1897}", 2, None), "\u{f1897} 2");
+        assert_eq!(worktree_label("\u{f1897}", 15, Some(3)), "\u{f1897} 3/15");
+        assert_eq!(worktree_label("", 2, None), "2");
+        assert_eq!(worktree_label("", 2, Some(1)), "1/2");
+    }
+
+    #[test]
+    fn stats_cached_without_a_worktree_index_still_load() {
+        let stats: GitStats = serde_json::from_str(
+            r#"{"untracked":0,"conflicted":0,"non_staged":0,"ahead":0,"behind":0,
+                "staged":0,"remote":false,"branch_name":"main","worktrees":2}"#,
+        )
+        .unwrap();
+        assert_eq!((stats.worktrees, stats.worktree_index), (2, None));
     }
 }

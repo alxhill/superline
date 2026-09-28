@@ -237,6 +237,7 @@ fn try_run_git(path: &Path) -> Option<GitStats> {
         add_file(std::str::from_utf8(op).unwrap());
     }
 
+    let worktrees = super::linked_worktrees(path);
     Some(super::GitStats {
         untracked,
         ahead,
@@ -247,6 +248,8 @@ fn try_run_git(path: &Path) -> Option<GitStats> {
         remote,
         remote_url,
         branch_name,
+        worktrees: worktrees.count,
+        worktree_index: worktrees.index,
     })
 }
 

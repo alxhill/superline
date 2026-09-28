@@ -77,7 +77,8 @@
       ["conflicted_icon", "string", "After the conflicted-file count.", "U+273C"],
       ["remote_icon", "string", "GitHub logo that opens the remote segment.", "U+E709"],
       ["ahead_icon", "string", "After the number of commits ahead of the upstream.", "U+F062"],
-      ["behind_icon", "string", "After the number of commits behind the upstream.", "U+F063"]
+      ["behind_icon", "string", "After the number of commits behind the upstream.", "U+F063"],
+      ["worktree_icon", "string", "Icon before the linked-worktree count (index/count inside a linked worktree) next to the branch. \"\" shows just the numbers.", "U+F1897"]
     ]
   },
   "pr": {

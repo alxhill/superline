@@ -403,12 +403,18 @@ A detached HEAD shows the short commit hash. When that commit is the tip of a br
 `git worktree add --detach`, or `git checkout origin/main`) the branch follows it, as `1a2b3c4 → main`; local
 branches take precedence over remote-tracking ones, and `main`/`master` over other names.
 
+When the repo has linked worktrees (`git worktree add`), their count follows the branch. Inside a linked worktree
+it reads `index/count` instead, such as `3/15`, so worktrees can be told apart: they are numbered in
+`git worktree list` order, which puts the main checkout first and sorts the linked ones by path. Worktrees whose
+directory has been deleted are left out of both numbers unless locked. The theme's `git.worktree_icon` sets the
+icon in front (`""` shows just the numbers), and `"worktrees": false` turns it off.
+
 Status collection waits up to `status_timeout_ms` (250 by default). If it takes longer, the last cached result is
 shown while a refresh continues in the background for the next prompt. Before anything is cached the segment shows
 `loading…`.
 
 ```json
-{ "git": { "status_timeout_ms": 250, "backend": "auto" } }
+{ "git": { "status_timeout_ms": 250, "backend": "auto", "worktrees": true } }
 ```
 
 Status is produced by one of two backends, chosen with `backend`:

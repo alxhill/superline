@@ -437,6 +437,7 @@ impl GitScheme for CustomTheme {
     color_from_json!(git_repo_dirty_bg, git, dirty_bg, default_bg);
     color_from_json!(git_repo_dirty_fg, git, dirty_fg, default_fg);
 
+    icon_from_json!(git_worktree_icon, git, worktree_icon, DEFAULT_WORKTREE_ICON);
     icon_from_json!(git_branch_icon, git, branch_icon, DEFAULT_BRANCH_ICON);
     icon_from_json!(
         git_linked_worktree_icon,
