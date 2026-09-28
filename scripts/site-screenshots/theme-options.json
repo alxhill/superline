@@ -9,7 +9,8 @@
   "readonly": {
     "properties": [
       ["fg", "color", "The lock icon.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["symbol", "string", "Icon shown in a read-only directory.", "U+E0A2"]
     ]
   },
   "cmd": {

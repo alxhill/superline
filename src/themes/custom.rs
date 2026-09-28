@@ -16,9 +16,11 @@ use crate::modules::{
     ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme,
     UserScheme,
 };
-use crate::themes::{CompleteTheme, DefaultColors};
+use crate::themes::{builtin_theme, CompleteTheme, DefaultColors};
 use crate::update::UpdateScheme;
 
+/// The theme prompts are drawn with: a built-in theme or a theme file, loaded
+/// once per process by [`CustomTheme::load_builtin`] or [`CustomTheme::load`].
 #[derive(Clone)]
 pub struct CustomTheme;
 
@@ -120,6 +122,18 @@ impl CustomTheme {
         //         println!("{:?} | failed to set custom theme? {:?}, {x}", thread_id, e);
         //     }
         // }
+    }
+
+    /// Loads one of the [`BUILTIN_THEMES`](crate::themes::BUILTIN_THEMES),
+    /// returning false when none has that name.
+    pub fn load_builtin(name: &str) -> bool {
+        let Some(text) = builtin_theme(name) else {
+            return false;
+        };
+        let theme: CustomThemeImpl =
+            serde_json::from_str(text).expect("built-in themes are valid theme files");
+        let _ = THEME.set(theme);
+        true
     }
 
     pub fn get_color(module: &str, color: &str) -> Option<Color> {
@@ -385,6 +399,12 @@ impl PythonScheme for CustomTheme {
 impl ReadOnlyScheme for CustomTheme {
     color_from_json!(readonly_fg, readonly, fg, default_fg);
     color_from_json!(readonly_bg, readonly, bg, default_bg);
+
+    fn readonly_symbol() -> &'static str {
+        Self::get_str("readonly", "symbol")
+            .map(|str| str.leak() as &'static str)
+            .unwrap_or("\u{e0a2}")
+    }
 }
 
 impl SpacerScheme for CustomTheme {

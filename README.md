@@ -126,12 +126,12 @@ prompt as you change them, and saves back to the same file:
   they move the whole row. `n` adds a row.
 - `Enter` opens a widget's options: `Enter` or `space` toggles and cycles values or types a new one, `←`/`→` cycle
   choices, and `x` resets an option to its default.
-- `2` (or `t`) switches to the Theme page, which edits the custom theme file the config names. Pick a module to see
+- `2` (or `t`) switches to the Theme page, which shows the theme the config names. Pick a module to see
   each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
   picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
-  property. On a built-in theme, `n` creates a new theme file from the example theme and points the config at it.
-  `1` returns to the layout.
+  property. `n` forks the theme into a new theme file next to the config and points the config at it; built-in
+  themes are read-only, so editing one asks for a file name to fork it into first. `1` returns to the layout.
 - `u` undoes, `U` redoes, `s` saves the config and any changed theme, `e` opens the config in `$EDITOR`, `q` quits
   and `?` lists every key.
 
@@ -559,7 +559,9 @@ one is pinned.
 
 `theme` is `"rainbow"`, `"simple"`, or a path to a theme JSON file. Paths starting with `/` are absolute; anything
 else is resolved relative to the config directory (`$HOME/.config/superline/`). If a custom theme fails to load,
-superline falls back to `rainbow`. The Theme page of `superline config` edits a custom theme with a live preview.
+superline falls back to `rainbow`. The built-in themes are theme files too, bundled into the binary from
+[`themes/`](themes), so copying one is a good way to start your own. The Theme page of `superline config` shows any
+theme with a live preview, forks it into a new file, and edits theme files.
 
 A theme file has two keys, `defaults` and `modules`:
 
@@ -577,15 +579,15 @@ A theme file has two keys, `defaults` and `modules`:
 - **defaults** - the `fg` and `bg` used for anything a module doesn't set.
 - **modules** - per-module overrides. Most modules accept `fg` and `bg`; some have extra colors (`git` has
   `staged_bg`, `pr` has `open_bg`, `cwd` takes a `bg_colors` array) or strings (`cmd.user_symbol`, `pr.icon`,
-  `kubernetes.icon`, and `mise_icon` on the language modules - set a marker to `""` to hide it). Anything omitted falls back to
-  `defaults`.
+  `readonly.symbol`, `kubernetes.icon`, and `mise_icon` on the language modules - set a marker to `""` to hide it).
+  Anything omitted falls back to `defaults`.
 
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
 old theme keys, `nvm` and `py`.
 
 Colors are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-color code from
-`0` to `255`. [`example_theme.json`](example_theme.json) covers every module, and `src/themes/custom.rs` lists every
-module name and property.
+`0` to `255`. The bundled [`themes/rainbow.json`](themes/rainbow.json) is a full example, and
+`src/themes/custom.rs` lists every module name and property.
 
 ## Commands
 
@@ -637,20 +639,24 @@ program. `examples/minimalistic.rs` and `examples/rainbow.rs` are complete, runn
 use superline::modules::*;
 use superline::powerline::{PowerlineRightBuilder, PowerlineShellBuilder};
 use superline::terminal::Shell;
-use superline::themes::SimpleTheme;
+use superline::themes::CustomTheme;
 
 fn main() {
+    // Or `CustomTheme::load("theme.json")` for a theme file.
+    CustomTheme::load_builtin("simple");
+
     superline::Powerline::builder()
         .set_shell(Shell::Bare)
-        .add_module(Cwd::<SimpleTheme>::new(45, 4, false))
-        .add_module(Git::<SimpleTheme>::new())
-        .add_module(ReadOnly::<SimpleTheme>::new())
-        .add_module(Cmd::<SimpleTheme>::new("0"))
+        .add_module(Cwd::<CustomTheme>::new(45, 4, false))
+        .add_module(Git::<CustomTheme>::new())
+        .add_module(ReadOnly::<CustomTheme>::new())
+        .add_module(Cmd::<CustomTheme>::new("0"))
         .render(0);
 }
 ```
 
-Themes are types that implement each module's `*Scheme` trait, so a custom theme is just a struct with a few impls:
+`CustomTheme` reads its colours from the loaded theme file. A theme can also be a type that implements each module's
+`*Scheme` trait, so a theme compiled into the program is just a struct with a few impls:
 
 ```rust
 use superline::modules::*;

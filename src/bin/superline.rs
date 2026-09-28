@@ -13,7 +13,7 @@ use thiserror::Error;
 use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
 use superline::debug;
 use superline::terminal::{Shell, SHELL};
-use superline::themes::{CustomTheme, CustomThemeError, RainbowTheme, SimpleTheme};
+use superline::themes::{CustomTheme, CustomThemeError};
 use superline::upgrade::{self, Installation, UpgradeError};
 use superline::{update, Powerline};
 
@@ -631,10 +631,10 @@ fn edit_config(args: ConfigArgs) {
 fn preview(args: ShowArgs) {
     SHELL.set(Shell::Bare).expect("failed to set shell");
     let result = load_config(args.config.clone()).and_then(|(conf, conf_root)| {
-        let theme = load_theme(&conf, &conf_root)?;
-        Ok((conf, theme))
+        load_theme(&conf, &conf_root)?;
+        Ok(conf)
     });
-    let (conf, theme) = match result {
+    let conf = match result {
         Ok(loaded) => loaded,
         Err(error) => {
             match &error {
@@ -645,7 +645,7 @@ fn preview(args: ShowArgs) {
         }
     };
     for prompt in &conf.rows {
-        let mut powerline = powerline_from_conf(prompt, &args, theme);
+        let mut powerline = powerline_from_conf(prompt, &args);
         powerline.print_left();
         powerline.print_padding(args.columns);
         powerline.print_right();
@@ -695,10 +695,11 @@ fn show(args: ShowArgs, right_only: bool) {
             span.finish();
 
             match theme {
-                Ok(theme) => render_prompt(&args, conf, theme, right_only),
+                Ok(()) => render_prompt(&args, conf, right_only),
                 Err(error @ PowerlineError::InvalidTheme(_)) => {
                     prepend_error_module(&mut conf, fallback_message(&error));
-                    render_prompt(&args, conf, LoadedTheme::Rainbow, right_only);
+                    CustomTheme::load_builtin(FALLBACK_THEME);
+                    render_prompt(&args, conf, right_only);
                 }
                 Err(error) => show_fallback(&args, &error, right_only),
             }
@@ -732,33 +733,29 @@ fn ignore_ctrl_c_for_powershell_prompt(shell: ShellArg) {
 #[cfg(not(windows))]
 fn ignore_ctrl_c_for_powershell_prompt(_shell: ShellArg) {}
 
-fn render_prompt(args: &ShowArgs, conf: Config, theme: LoadedTheme, right_only: bool) {
+fn render_prompt(args: &ShowArgs, conf: Config, right_only: bool) {
     let span = debug::span(if right_only { "render right" } else { "render" });
     if right_only {
-        render_right(args, conf, theme);
+        render_right(args, conf);
     } else {
-        render_normal(args, conf, theme);
+        render_normal(args, conf);
     }
     span.finish();
 }
 
-fn render_right(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
+fn render_right(args: &ShowArgs, conf: Config) {
     if let Some(prompt) = conf.rows.last() {
         let span = debug::span(format!("row {}", conf.rows.len()));
-        let powerline = powerline_from_conf(prompt, args, theme);
+        let powerline = powerline_from_conf(prompt, args);
         span.finish();
         powerline.print_right();
     }
 }
 
-fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
+fn render_normal(args: &ShowArgs, conf: Config) {
     if !conf.update.disable {
         let span = debug::span("update notice");
-        let notice = match theme {
-            LoadedTheme::Rainbow => update::notice::<RainbowTheme>(conf.update.auto),
-            LoadedTheme::Simple => update::notice::<SimpleTheme>(conf.update.auto),
-            LoadedTheme::Custom => update::notice::<CustomTheme>(conf.update.auto),
-        };
+        let notice = update::notice::<CustomTheme>(conf.update.auto);
         span.finish();
         if let Some(notice) = notice {
             println!("{notice}");
@@ -771,7 +768,7 @@ fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
         .enumerate()
         .map(|(row, prompt)| {
             let span = debug::span(format!("row {}", row + 1));
-            let powerline = powerline_from_conf(&prompt, args, theme);
+            let powerline = powerline_from_conf(&prompt, args);
             span.finish();
             powerline
         })
@@ -792,39 +789,32 @@ fn render_normal(args: &ShowArgs, conf: Config, theme: LoadedTheme) {
     span.finish();
 }
 
-#[derive(Clone, Copy)]
-enum LoadedTheme {
-    Rainbow,
-    Simple,
-    Custom,
+/// The built-in theme a prompt falls back to when its config or theme can't
+/// be loaded.
+const FALLBACK_THEME: &str = "rainbow";
+
+/// Loads the theme the config names: a built-in theme, or a theme file
+/// relative to the config directory.
+fn load_theme(conf: &Config, conf_root: &Path) -> Result<(), PowerlineError> {
+    if CustomTheme::load_builtin(&conf.theme) {
+        return Ok(());
+    }
+    let path = match conf.theme.as_bytes() {
+        [b'/', ..] => PathBuf::from(&conf.theme),
+        _ => conf_root.join(&conf.theme),
+    };
+    CustomTheme::load(&path)?;
+    Ok(())
 }
 
-fn load_theme(conf: &Config, conf_root: &Path) -> Result<LoadedTheme, PowerlineError> {
-    match conf.theme.as_str() {
-        "rainbow" => Ok(LoadedTheme::Rainbow),
-        "simple" => Ok(LoadedTheme::Simple),
-        theme_path => {
-            let path = match theme_path.as_bytes() {
-                [b'/', ..] => PathBuf::from(theme_path),
-                _ => conf_root.join(theme_path),
-            };
-            CustomTheme::load(&path)?;
-            Ok(LoadedTheme::Custom)
-        }
-    }
-}
-
-fn powerline_from_conf(prompt: &CommandLine, args: &ShowArgs, theme: LoadedTheme) -> Powerline {
-    match theme {
-        LoadedTheme::Rainbow => Powerline::from_conf::<RainbowTheme>(prompt, args),
-        LoadedTheme::Simple => Powerline::from_conf::<SimpleTheme>(prompt, args),
-        LoadedTheme::Custom => Powerline::from_conf::<CustomTheme>(prompt, args),
-    }
+fn powerline_from_conf(prompt: &CommandLine, args: &ShowArgs) -> Powerline {
+    Powerline::from_conf::<CustomTheme>(prompt, args)
 }
 
 fn show_fallback(args: &ShowArgs, error: &PowerlineError, right_only: bool) {
     let conf = fallback_config(error);
-    render_prompt(args, conf, LoadedTheme::Rainbow, right_only);
+    CustomTheme::load_builtin(FALLBACK_THEME);
+    render_prompt(args, conf, right_only);
 }
 
 fn fallback_config(error: &PowerlineError) -> Config {

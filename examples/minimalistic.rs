@@ -1,14 +1,16 @@
 use superline::modules::*;
 use superline::powerline::{PowerlineRightBuilder, PowerlineShellBuilder};
 use superline::terminal::Shell;
-use superline::themes::SimpleTheme;
+use superline::themes::CustomTheme;
 
 fn main() {
+    CustomTheme::load_builtin("simple");
+
     superline::Powerline::builder()
         .set_shell(Shell::Bare) // override this to whatever shell you use
-        .add_module(Cwd::<SimpleTheme>::new(45, 4, false))
-        .add_module(Git::<SimpleTheme>::new())
-        .add_module(ReadOnly::<SimpleTheme>::new())
-        .add_module(Cmd::<SimpleTheme>::new("0"))
+        .add_module(Cwd::<CustomTheme>::new(45, 4, false))
+        .add_module(Git::<CustomTheme>::new())
+        .add_module(ReadOnly::<CustomTheme>::new())
+        .add_module(Cmd::<CustomTheme>::new("0"))
         .render(0);
 }

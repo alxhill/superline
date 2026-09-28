@@ -1103,7 +1103,7 @@ impl App {
                     (_, Focus::Layout) if self.page == Page::Theme => &[
                         ("↑↓", "move"),
                         ("⏎", "edit"),
-                        ("n", "new theme"),
+                        ("n", "fork theme"),
                         ("u", "undo"),
                         ("s", "save"),
                         ("q", "quit"),
@@ -1315,7 +1315,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("← →", "step a colour by one code"),
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
-        ("n", "create a new custom theme file"),
+        ("n", "fork the theme into a new theme file"),
         ("", ""),
         ("Anywhere", ""),
         ("1  2  t", "Layout page / Theme page / switch"),
@@ -1373,7 +1373,10 @@ fn truncate_start(text: &str, width: usize) -> String {
 
 /// The built-in themes plus any theme files next to the config.
 fn theme_choices(config_path: &Path) -> Vec<String> {
-    let mut choices = vec!["rainbow".to_string(), "simple".to_string()];
+    let mut choices: Vec<String> = crate::themes::BUILTIN_THEMES
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect();
     let Some(dir) = config_path.parent() else {
         return choices;
     };

@@ -1,5 +1,6 @@
-//! The editor's Theme page: the custom theme file the config names, one module
-//! at a time, with a colour picker.
+//! The editor's Theme page: the theme the config names, one module at a time,
+//! with a colour picker. Built-in themes are shown read-only and can be forked
+//! into a theme file.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,11 +20,19 @@ use super::theme::{
 };
 use super::{glyphs, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
+use crate::themes::{builtin_theme, BUILTIN_THEMES};
 
 /// Rows PageUp/PageDown move in the icon browser.
 const ICON_PAGE: usize = 10;
 
-/// A theme file the config has pointed at during this session.
+/// A theme the config can name.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum ThemeRef {
+    Builtin(&'static str),
+    File(PathBuf),
+}
+
+/// A theme the config has pointed at during this session.
 pub(super) enum Slot {
     Loaded(ThemeDoc),
     Missing,
@@ -31,7 +40,7 @@ pub(super) enum Slot {
 }
 
 pub(super) struct ThemePage {
-    slots: HashMap<PathBuf, Slot>,
+    slots: HashMap<ThemeRef, Slot>,
     cursor: usize,
     prop_cursor: usize,
     focus: Focus,
@@ -58,8 +67,8 @@ impl ThemePage {
     /// Writes every changed theme, returning the files written.
     pub(super) fn save(&mut self) -> Result<Vec<PathBuf>, String> {
         let mut written = Vec::new();
-        for (path, slot) in &mut self.slots {
-            if let Slot::Loaded(doc) = slot {
+        for (theme, slot) in &mut self.slots {
+            if let (ThemeRef::File(path), Slot::Loaded(doc)) = (theme, slot) {
                 if doc.is_dirty() {
                     write_atomic(path, &json::to_pretty_theme(doc.root()))
                         .map_err(|e| format!("could not write {}: {e}", path.display()))?;
@@ -72,7 +81,14 @@ impl ThemePage {
     }
 }
 
-fn load_slot(path: &Path) -> Slot {
+fn load_slot(theme: &ThemeRef) -> Slot {
+    let path = match theme {
+        ThemeRef::Builtin(name) => {
+            let text = builtin_theme(name).expect("built-in theme names resolve");
+            return Slot::Loaded(ThemeDoc::load(text).expect("built-in themes are valid"));
+        }
+        ThemeRef::File(path) => path,
+    };
     match std::fs::read_to_string(path) {
         Ok(text) => match ThemeDoc::load(&text) {
             Ok(doc) => Slot::Loaded(doc),
@@ -84,28 +100,32 @@ fn load_slot(path: &Path) -> Slot {
 }
 
 impl App {
-    /// The theme file the config names, or `None` for a built-in theme.
-    fn theme_path(&self) -> Option<PathBuf> {
+    /// The theme the config names.
+    fn theme_ref(&self) -> Option<ThemeRef> {
         let name = self.doc.root().get("theme")?.as_str()?;
-        if name == "rainbow" || name == "simple" {
-            return None;
+        if let Some((builtin, _)) = BUILTIN_THEMES.iter().find(|(builtin, _)| *builtin == name) {
+            return Some(ThemeRef::Builtin(builtin));
         }
         let dir = self.path.parent().unwrap_or(Path::new("."));
-        Some(dir.join(name))
+        Some(ThemeRef::File(dir.join(name)))
+    }
+
+    fn builtin_theme_name(&self) -> Option<&'static str> {
+        match self.theme_ref()? {
+            ThemeRef::Builtin(name) => Some(name),
+            ThemeRef::File(_) => None,
+        }
     }
 
     /// Reads the named theme the first time the config points at it.
     pub(super) fn load_theme_slot(&mut self) {
-        if let Some(path) = self.theme_path() {
-            self.theme
-                .slots
-                .entry(path)
-                .or_insert_with_key(|path| load_slot(path));
+        if let Some(theme) = self.theme_ref() {
+            self.theme.slots.entry(theme).or_insert_with_key(load_slot);
         }
     }
 
     fn slot(&self) -> Option<&Slot> {
-        self.theme.slots.get(&self.theme_path()?)
+        self.theme.slots.get(&self.theme_ref()?)
     }
 
     fn theme_doc(&self) -> Option<&ThemeDoc> {
@@ -115,9 +135,12 @@ impl App {
         }
     }
 
+    /// The theme open on the page, unless it is a built-in one.
     fn theme_doc_mut(&mut self) -> Option<&mut ThemeDoc> {
-        let path = self.theme_path()?;
-        match self.theme.slots.get_mut(&path)? {
+        let theme = self
+            .theme_ref()
+            .filter(|t| matches!(t, ThemeRef::File(_)))?;
+        match self.theme.slots.get_mut(&theme)? {
             Slot::Loaded(doc) => Some(doc),
             _ => None,
         }
@@ -206,30 +229,47 @@ impl App {
         }
     }
 
-    /// Points the config at a theme file, creating it from the example theme
-    /// when it does not exist yet.
+    /// A copy of the theme open on the page for a new theme file, and the name
+    /// of what it copies. The example theme stands in when no theme is open.
+    fn fork_open_theme(&self) -> (ThemeDoc, String) {
+        let name = self.doc.root().get("theme").and_then(Value::as_str);
+        match (self.theme_doc(), name) {
+            (Some(doc), Some(name)) => (doc.fork(), name.to_string()),
+            _ => (
+                ThemeDoc::new_from_starter(),
+                "the example theme".to_string(),
+            ),
+        }
+    }
+
+    /// Points the config at a theme file, creating it as a copy of the open
+    /// theme when it does not exist yet.
     fn use_new_theme(&mut self, name: &str) -> bool {
         let name = name.trim();
         if name.is_empty() {
             self.set_status("Give the theme a file name", true);
             return false;
         }
-        if name == "rainbow" || name == "simple" {
+        if builtin_theme(name).is_some() {
             self.set_status(format!("{name} is a built-in theme name"), true);
             return false;
         }
         let dir = self.path.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let path = dir.join(name);
-        let slot = match load_slot(&path) {
-            Slot::Missing => Slot::Loaded(ThemeDoc::new_from_starter()),
+        let theme = ThemeRef::File(dir.join(name));
+        let mut copied_from = None;
+        let slot = match load_slot(&theme) {
+            Slot::Missing => {
+                let (doc, source) = self.fork_open_theme();
+                copied_from = Some(source);
+                Slot::Loaded(doc)
+            }
             Slot::Broken(error) => {
                 self.set_status(format!("{name} exists but is not a theme: {error}"), true);
                 return false;
             }
             loaded => loaded,
         };
-        let created = matches!(&slot, Slot::Loaded(doc) if doc.is_dirty());
-        self.theme.slots.insert(path, slot);
+        self.theme.slots.insert(theme, slot);
         if let Err(error) =
             self.doc
                 .set_option(Target::Settings, schema::THEME.key, Some(Value::from(name)))
@@ -244,10 +284,9 @@ impl App {
         self.theme.cursor = 0;
         self.theme.prop_cursor = 0;
         self.set_status(
-            if created {
-                format!("Created {name} from the example theme (s to save)")
-            } else {
-                format!("Switched to {name}")
+            match copied_from {
+                Some(source) => format!("Created {name} from {source} (s to save)"),
+                None => format!("Switched to {name}"),
             },
             false,
         );
@@ -346,6 +385,19 @@ impl App {
                     self.theme.focus = Focus::Layout;
                     return;
                 };
+                let edits = match key.code {
+                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('i') => true,
+                    KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') => {
+                        spec.kind == PropKind::Color
+                    }
+                    KeyCode::Char('x') | KeyCode::Delete | KeyCode::Backspace => value.is_some(),
+                    _ => false,
+                };
+                if let (true, Some(name)) = (edits, self.builtin_theme_name()) {
+                    self.set_status(format!("{name} is built in: fork it to edit a copy"), false);
+                    self.start_new_theme();
+                    return;
+                }
                 match key.code {
                     KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => {
                         self.theme.focus = Focus::Layout
@@ -591,22 +643,11 @@ impl App {
             .and_then(Value::as_str)
             .unwrap_or("?")
             .to_string();
-        let message = match (self.theme_path(), self.slot()) {
-            (None, _) => Some(vec![
-                Line::from(format!(
-                    "The config uses the built-in {name} theme, which can't be edited."
-                )),
-                Line::default(),
-                Line::from(vec![
-                    Span::raw("n").bold(),
-                    Span::raw(" create a custom theme file, starting from the example theme"),
-                ]),
-                Line::from(vec![
-                    Span::raw("1").bold(),
-                    Span::raw(" back to the layout, where Settings picks another theme"),
-                ]),
-            ]),
-            (Some(_), Some(Slot::Missing)) => Some(vec![
+        let message = match self.slot() {
+            None => Some(vec![Line::from(
+                "The config names no theme. Pick one in Settings (1).",
+            )]),
+            Some(Slot::Missing) => Some(vec![
                 Line::from(format!("{name} does not exist yet.")),
                 Line::default(),
                 Line::from(vec![
@@ -614,23 +655,23 @@ impl App {
                     Span::raw(format!(" create {name} from the example theme")),
                 ]),
             ]),
-            (Some(_), Some(Slot::Broken(error))) => Some(vec![
+            Some(Slot::Broken(error)) => Some(vec![
                 Line::from(format!("{name} can't be edited here:")).red(),
                 Line::from(error.clone()).red(),
                 Line::default(),
                 Line::from("Fix the file by hand, or pick another theme in Settings (1)."),
             ]),
+            Some(Slot::Loaded(_)) => None,
+        };
+        let input = match &self.mode {
+            Mode::Input {
+                buffer,
+                cursor,
+                purpose: InputPurpose::NewTheme,
+            } => Some((buffer.clone(), *cursor)),
             _ => None,
         };
         if let Some(message) = message {
-            let input = match &self.mode {
-                Mode::Input {
-                    buffer,
-                    cursor,
-                    purpose: InputPurpose::NewTheme,
-                } => Some((buffer.clone(), *cursor)),
-                _ => None,
-            };
             let block = panel(" Theme ", true);
             let inner = block.inner(area);
             let mut lines = message;
@@ -657,8 +698,15 @@ impl App {
         let [left, right] =
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(area);
-        self.draw_theme_modules(frame, left, &name);
+        let title = match self.builtin_theme_name() {
+            Some(_) => format!("{name} (built in)"),
+            None => name.clone(),
+        };
+        self.draw_theme_modules(frame, left, &title);
         self.draw_theme_props(frame, right);
+        if let Some((buffer, cursor)) = input {
+            draw_fork_prompt(frame, area, &name, &buffer, cursor);
+        }
     }
 
     fn draw_theme_modules(&mut self, frame: &mut Frame, area: Rect, name: &str) {
@@ -725,7 +773,15 @@ impl App {
                 Span::raw(if selected { "▸ " } else { "  " }),
                 Span::styled(format!("{:key_width$}  ", spec.key), key_style),
             ];
-            if let (true, Mode::Input { buffer, cursor, .. }) = (selected, &self.mode) {
+            if let (
+                true,
+                Mode::Input {
+                    buffer,
+                    cursor,
+                    purpose: InputPurpose::ThemeProperty,
+                },
+            ) = (selected, &self.mode)
+            {
                 let before: String = buffer.chars().take(*cursor).collect();
                 let x = 2 + key_width + 2 + unicode_width::UnicodeWidthStr::width(before.as_str());
                 cursor_position = Some((inner.x + x as u16, i));
@@ -809,6 +865,29 @@ impl App {
     }
 }
 
+/// The file name prompt for forking the open theme.
+fn draw_fork_prompt(frame: &mut Frame, area: Rect, source: &str, buffer: &str, cursor: usize) {
+    let popup = super::centered(area, 64, 6);
+    frame.render_widget(Clear, popup);
+    let block = panel(" Fork theme ", true);
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+    let lines = vec![
+        Line::from(format!(
+            "Copy {source} to a new theme file next to the config."
+        )),
+        Line::default(),
+        Line::from(vec![
+            Span::raw("file name: ").dark_gray(),
+            Span::raw(buffer.to_string()).underlined(),
+        ]),
+    ];
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    let before: String = buffer.chars().take(cursor).collect();
+    let x = inner.x + 11 + unicode_width::UnicodeWidthStr::width(before.as_str()) as u16;
+    frame.set_cursor_position((x, inner.y + 2));
+}
+
 /// An icon or symbol value: the text itself, then its code points and glyph
 /// name, the same way for a set value and a default.
 fn icon_spans(text: &str, default: bool) -> Vec<Span<'static>> {
@@ -869,5 +948,143 @@ fn prop_value_spans(
             }
             spans
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::model::Document;
+    use crate::editor::Page;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use serde_json::json;
+
+    fn app(label: &str, config: Value, files: &[(&str, &str)]) -> (App, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "superline-theme-page-{label}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, text) in files {
+            std::fs::write(dir.join(name), text).unwrap();
+        }
+        let path = dir.join("config.json");
+        std::fs::write(&path, config.to_string()).unwrap();
+        let mut app = App::new(Document::new(config).unwrap(), path);
+        app.page = Page::Theme;
+        app.load_theme_slot();
+        (app, dir)
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn screen(app: &mut App) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect()
+    }
+
+    fn read_json(path: &Path) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn builtin(name: &str) -> Value {
+        serde_json::from_str(builtin_theme(name).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn builtin_themes_open_like_theme_files() {
+        let (mut app, dir) = app(
+            "open",
+            json!({ "theme": "simple", "rows": [{ "left": ["cmd"] }] }),
+            &[],
+        );
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&builtin("simple"))
+        );
+        assert_eq!(app.preview_theme(), Some(builtin("simple")));
+        assert!(screen(&mut app).contains("simple (built in)"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn editing_a_builtin_theme_asks_for_a_file_to_fork_it_into() {
+        let (mut app, dir) = app(
+            "edit",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
+            &[],
+        );
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Right);
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&builtin("rainbow"))
+        );
+        assert!(!app.is_dirty());
+        assert!(matches!(
+            app.mode,
+            Mode::Input {
+                purpose: InputPurpose::NewTheme,
+                ..
+            }
+        ));
+        let shown = screen(&mut app);
+        assert!(shown.contains("Fork theme"), "{shown}");
+        assert!(shown.contains("file name: theme.json"), "{shown}");
+
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.doc.root()["theme"], "theme.json");
+        app.save();
+        assert_eq!(read_json(&dir.join("theme.json")), builtin("rainbow"));
+        assert_eq!(read_json(&dir.join("config.json"))["theme"], "theme.json");
+
+        // The fork is an ordinary theme file, so edits now apply to it.
+        press(&mut app, KeyCode::Right);
+        assert!(app.theme.is_dirty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn forking_a_theme_file_copies_it() {
+        let custom =
+            r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": { "git": { "clean_bg": 3 } } }"#;
+        let (mut app, dir) = app(
+            "custom",
+            json!({ "theme": "theme.json", "rows": [{ "left": ["cmd"] }] }),
+            &[("theme.json", custom)],
+        );
+        press(&mut app, KeyCode::Char('n'));
+        let shown = screen(&mut app);
+        assert!(shown.contains("file name: theme-2.json"), "{shown}");
+        press(&mut app, KeyCode::Enter);
+        app.save();
+        assert_eq!(
+            read_json(&dir.join("theme-2.json")),
+            serde_json::from_str::<Value>(custom).unwrap()
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_fork_cannot_take_a_builtin_theme_name() {
+        let (mut app, dir) = app(
+            "name",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
+            &[],
+        );
+        assert!(!app.use_new_theme("simple"));
+        assert_eq!(app.doc.root()["theme"], "rainbow");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

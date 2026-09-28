@@ -89,7 +89,7 @@ fn render(request: &Request, config_dir: &Path, temp: &Path, temp_theme: &Path) 
         // The copy lives elsewhere, so point a relative theme path back at the
         // real config directory.
         if let Some(name) = theme.as_str() {
-            if name != "rainbow" && name != "simple" {
+            if crate::themes::builtin_theme(name).is_none() {
                 *theme = Value::from(config_dir.join(name).to_string_lossy().into_owned());
             }
         }
