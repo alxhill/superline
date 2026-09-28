@@ -1,4 +1,4 @@
-//! End-to-end checks for the linked-worktree count in the git widget.
+//! End-to-end checks for the linked-worktree label in the git widget.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -96,17 +96,20 @@ fn git_segment(options: Value) -> Value {
 }
 
 #[test]
-fn the_count_follows_the_branch_from_every_checkout_with_either_backend() {
+fn the_label_follows_the_branch_from_every_checkout_with_either_backend() {
     let root = scratch("count");
     for backend in ["cli", "gitoxide"] {
-        for (cwd, branch) in [("main", "main"), ("one", "one"), ("two", "two")] {
+        // The main checkout shows the count, a linked worktree its place in
+        // `git worktree list` too.
+        for (cwd, label) in [("main", "main 2"), ("one", "one 1/2"), ("two", "two 2/2")] {
             let prompt = render(
                 &root,
                 cwd,
                 git_segment(json!({ "backend": backend })),
                 json!("rainbow"),
             );
-            let expected = format!("{branch} {WORKTREE_ICON} 2 ");
+            let (branch, position) = label.split_once(' ').unwrap();
+            let expected = format!("{branch} {WORKTREE_ICON} {position} ");
             assert!(
                 prompt.contains(&expected),
                 "{backend} from {cwd}: {prompt:?}"
@@ -117,17 +120,19 @@ fn the_count_follows_the_branch_from_every_checkout_with_either_backend() {
 }
 
 #[test]
-fn turning_worktrees_off_hides_the_count() {
+fn turning_worktrees_off_hides_the_label() {
     let root = scratch("off");
-    let prompt = render(
-        &root,
-        "main",
-        git_segment(json!({ "worktrees": false })),
-        json!("rainbow"),
-    );
-    assert!(prompt.contains("main "), "prompt: {prompt:?}");
-    assert!(!prompt.contains(WORKTREE_ICON), "prompt: {prompt:?}");
-    assert!(!prompt.contains("main 2"), "prompt: {prompt:?}");
+    for (cwd, hidden) in [("main", "main 2"), ("one", "1/2")] {
+        let prompt = render(
+            &root,
+            cwd,
+            git_segment(json!({ "worktrees": false })),
+            json!("rainbow"),
+        );
+        assert!(prompt.contains(&format!("{cwd} ")), "prompt: {prompt:?}");
+        assert!(!prompt.contains(WORKTREE_ICON), "prompt: {prompt:?}");
+        assert!(!prompt.contains(hidden), "prompt: {prompt:?}");
+    }
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -147,5 +152,8 @@ fn a_theme_can_swap_or_hide_the_icon() {
     let prompt = render(&root, "main", git_segment(json!({})), theme(""));
     assert!(prompt.contains("main 2 "), "prompt: {prompt:?}");
     assert!(!prompt.contains(WORKTREE_ICON), "prompt: {prompt:?}");
+
+    let prompt = render(&root, "two", git_segment(json!({})), theme(""));
+    assert!(prompt.contains("two 2/2 "), "prompt: {prompt:?}");
     let _ = fs::remove_dir_all(&root);
 }

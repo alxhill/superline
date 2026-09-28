@@ -56,7 +56,7 @@
       ["conflicted_bg", "color", "Conflicted-file background.", "defaults.bg"],
       ["remote_fg", "color", "GitHub logo and ahead/behind counts.", "defaults.fg"],
       ["remote_bg", "color", "Remote segment background.", "defaults.bg"],
-      ["worktree_icon", "string", "Icon before the linked-worktree count next to the branch. \"\" shows the bare count.", "U+F1897"]
+      ["worktree_icon", "string", "Icon before the linked-worktree count (index/count inside a linked worktree) next to the branch. \"\" shows just the numbers.", "U+F1897"]
     ]
   },
   "pr": {

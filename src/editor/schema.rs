@@ -282,7 +282,7 @@ const GIT: &[OptionSpec] = &[
     boolean(
         "worktrees",
         true,
-        "Show how many linked worktrees the repo has next to the branch.",
+        "Show the linked-worktree count by the branch, index/count inside one.",
     ),
 ];
 

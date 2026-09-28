@@ -360,7 +360,7 @@
       },
       {
         "name": "worktrees",
-        "label": "Two linked worktrees",
+        "label": "Inside the second of two linked worktrees",
         "fixture": "git-worktrees",
         "row": {
           "left": [

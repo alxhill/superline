@@ -83,8 +83,9 @@ pub enum LineSegment {
         /// `gitoxide` pin one backend.
         #[serde(default)]
         backend: GitBackend,
-        /// Show how many linked worktrees the repository has next to the
-        /// branch. On by default; nothing shows when there are none.
+        /// Show the repository's linked-worktree count next to the branch, as
+        /// `index/count` inside a linked worktree. On by default; nothing
+        /// shows when there are none.
         #[serde(default = "default_true")]
         worktrees: bool,
     },
