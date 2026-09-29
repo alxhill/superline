@@ -1124,6 +1124,7 @@ impl App {
                     (Mode::ThemePicker { .. }, _) => &[
                         ("↑↓", "preview"),
                         ("⏎", "use"),
+                        ("c", "duplicate"),
                         ("i", "type a file name"),
                         ("esc", "cancel"),
                     ],
@@ -1152,7 +1153,7 @@ impl App {
                         ("↑↓", "move"),
                         ("⏎", "edit"),
                         ("p", "pick theme"),
-                        ("n", "fork theme"),
+                        ("c", "duplicate theme"),
                         ("u", "undo"),
                         ("s", "save"),
                         ("q", "quit"),
@@ -1414,7 +1415,8 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         ("i", "type a colour name, a 0-255 code, or text"),
         ("x", "reset the property to its fallback"),
         ("p", "pick a theme, previewing each one"),
-        ("n", "fork the theme into a new theme file"),
+        ("c  n", "duplicate the theme into a new theme file"),
+        ("c in picker", "duplicate the highlighted theme"),
         ("⏎ on a list", "edit each colour: ⏎ pick, ← → step, i type"),
         (
             "a I d J K c",

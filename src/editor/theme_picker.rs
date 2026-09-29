@@ -14,7 +14,7 @@ use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
 
 use super::model::Target;
-use super::theme::palette;
+use super::theme::{palette, ThemeDoc};
 use super::theme_page::Slot;
 use super::{panel, schema, theme_choices, App, InputPurpose, Mode};
 use crate::themes::{bundled_theme, theme_path, validate_theme};
@@ -155,6 +155,24 @@ impl App {
                 self.preview_stale = true;
                 return None;
             }
+            KeyCode::Char('c') => {
+                let Some(choice) = choices.get(selected) else {
+                    return Some(Mode::ThemePicker { choices, selected });
+                };
+                let doc = match &choice.theme {
+                    Ok(theme) => ThemeDoc::load(&theme.to_string()),
+                    Err(error) => Err(error.clone()),
+                };
+                match doc {
+                    Ok(doc) => {
+                        let name = choice.name.clone();
+                        self.preview_stale = true;
+                        self.start_duplicate(doc, &name);
+                        return Some(std::mem::replace(&mut self.mode, Mode::Normal));
+                    }
+                    Err(error) => self.set_status(format!("{}: {error}", choice.name), true),
+                }
+            }
             KeyCode::Char('i') => {
                 let buffer = self
                     .doc
@@ -256,6 +274,8 @@ impl App {
                     Span::raw(" preview  ").dark_gray(),
                     Span::raw("⏎").bold(),
                     Span::raw(" use  ").dark_gray(),
+                    Span::raw("c").bold(),
+                    Span::raw(" duplicate  ").dark_gray(),
                     Span::raw("i").bold(),
                     Span::raw(" type a file name  ").dark_gray(),
                     Span::raw("esc").bold(),

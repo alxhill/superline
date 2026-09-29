@@ -136,12 +136,13 @@ The keys:
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
   property. Each text colour is followed by its `bold`, `italic` and `underline` switches, which `Enter` or `space`
   turns on and off. The switch under the cursor shows a sample of its text, since the preview only draws text the
-  prompt shows in the current directory (git's unstaged count needs unstaged changes). `n` copies the theme into a
-  new theme file next to the config and points the config at it. `1` returns to the layout.
+  prompt shows in the current directory (git's unstaged count needs unstaged changes). `c` (or `n`) duplicates the
+  theme into a new theme file next to the config and points the config at it. `1` returns to the layout.
 - `p` on the Theme page, or `Enter` on `theme` under Settings, opens the theme picker: the bundled themes and the theme
   files next to the config, each with a strip of its colours. The preview draws your prompt in whichever theme is
-  highlighted, and `Enter` switches to it, first writing a bundled theme's file into the config directory. `i` types
-  any other theme file name, and `←`/`→` on the setting still step through the themes without the picker.
+  highlighted, and `Enter` switches to it, first writing a bundled theme's file into the config directory. `c` duplicates
+  the highlighted theme into a new file (named `<theme>-copy.json` unless you change it) to edit, `i` types any other
+  theme file name, and `←`/`→` on the setting still step through the themes without the picker.
 - `Enter` on a colour list such as `cwd.bg_colors` shows its colours one per line with a swatch. `Enter` picks a colour
   in the picker, `←`/`→` step it and `i` types it; `a`/`I` add a colour after or before it, `d` deletes it, `c` copies
   it and `J`/`K` (or shift-arrows) move it. `i` on the list's own row still types the whole list.
