@@ -47,12 +47,23 @@ impl<S: JobsScheme> Jobs<S> {
 }
 
 impl<S: JobsScheme> Module for Jobs<S> {
+    /// The number of running jobs.
+    type Data = usize;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        if let Some(text) = display_text::<S>(self.count) {
+    fn fetch(&self) -> usize {
+        self.count
+    }
+
+    fn sample(&self) -> usize {
+        2
+    }
+
+    fn render(&self, count: usize, powerline: &mut Powerline) {
+        if let Some(text) = display_text::<S>(count) {
             powerline.add_segment(text, Style::simple(S::jobs_fg(), S::jobs_bg()));
         }
     }

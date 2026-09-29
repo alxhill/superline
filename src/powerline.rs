@@ -9,7 +9,7 @@ use crate::config;
 use crate::config::{LineSegment, SegmentPadding, SeparatorStyle, TerminalRuntimeMetadata, Widget};
 use crate::debug;
 use crate::modules::{
-    Battery, Cargo, Cmd, Cwd, DefaultPadding, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes,
+    Battery, Cargo, Cmd, Cwd, DataSource, DefaultPadding, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes,
     LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName,
     Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows, Username,
 };
@@ -171,6 +171,7 @@ pub struct Powerline {
     /// Set by [`default_padding`], which asks a widget's module for its
     /// padding without drawing it.
     probe: Option<Option<DefaultPadding>>,
+    data_source: DataSource,
 }
 
 impl Default for Powerline {
@@ -194,6 +195,7 @@ impl Powerline {
             widget_padding: None,
             module_padding: SegmentPadding::Large,
             probe: None,
+            data_source: DataSource::Live,
         }
     }
 
@@ -206,8 +208,10 @@ impl Powerline {
     pub fn from_conf<T: CompleteTheme>(
         conf: &config::CommandLine,
         runtime_data: impl TerminalRuntimeMetadata,
+        source: DataSource,
     ) -> Self {
         let mut powerline = Powerline::new();
+        powerline.set_data_source(source);
         powerline.add_conf_modules::<T>(&conf.left, &runtime_data);
 
         if let Some(right_modules) = &conf.right {
@@ -413,14 +417,23 @@ impl Powerline {
         self.direction = Direction::Right;
     }
 
-    pub fn add_module<M: Module>(&mut self, mut module: M) {
+    /// Where the modules added after this call get their data.
+    pub fn set_data_source(&mut self, source: DataSource) {
+        self.data_source = source;
+    }
+
+    pub fn add_module<M: Module>(&mut self, module: M) {
         if let Some(probe) = &mut self.probe {
             *probe = Some(module.default_padding());
             return;
         }
         let span = debug::span(debug::type_label(std::any::type_name::<M>()));
         let outer = std::mem::replace(&mut self.module_padding, module.default_padding().padding);
-        module.append_segments(self);
+        let data = match self.data_source {
+            DataSource::Live => module.fetch(),
+            DataSource::Sample => module.sample(),
+        };
+        module.render(data, self);
         self.module_padding = outer;
         span.finish();
     }

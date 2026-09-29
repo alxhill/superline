@@ -18,8 +18,11 @@
 //!     fn fetch(&self) -> Option<Forecast> { /* the slow part */ }
 //! }
 //!
-//! // In `Module::append_segments`:
-//! match Cached::new(WeatherLookup { city }).load() {
+//! // In `Module::fetch`:
+//! Cached::new(WeatherLookup { city }).load()
+//!
+//! // In `Module::render`, given that `Lookup<Forecast>`:
+//! match data {
 //!     Lookup::Ready(forecast) => powerline.add_segment(forecast.summary(), style),
 //!     Lookup::Loading => powerline.add_segment("weather …", style),
 //!     Lookup::Unavailable => {}

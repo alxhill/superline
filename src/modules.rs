@@ -63,12 +63,38 @@ pub use unknown::{Unknown, UnknownScheme};
 pub use usage::{Usage, UsageLookup, UsageScheme, UsageWindow, UsageWindows};
 pub use user::{User, UserScheme, Username};
 
+/// A widget, drawn in two steps: [`Module::fetch`] gathers what it shows from
+/// the environment, and [`Module::render`] draws that data without reading
+/// anything else. Tests and `superline config` pass their own data to
+/// `render`, the latter from [`Module::sample`].
 pub trait Module {
+    /// Everything the widget reads from the environment (files, caches,
+    /// variables, the clock) to draw itself.
+    type Data;
+
     /// The padding of this module's segments when the config does not set
     /// one. The editor shows it next to the `padding` option.
     fn default_padding(&self) -> DefaultPadding;
 
-    fn append_segments(&mut self, powerline: &mut Powerline);
+    /// Reads the widget's data for the current prompt.
+    fn fetch(&self) -> Self::Data;
+
+    /// Representative data for previews, showing the widget in a state worth
+    /// looking at (e.g. the jobs widget with jobs running).
+    fn sample(&self) -> Self::Data;
+
+    /// Draws `data`. Must not read the environment.
+    fn render(&self, data: Self::Data, powerline: &mut Powerline);
+}
+
+/// Where [`Powerline::add_module`] gets each widget's data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DataSource {
+    /// [`Module::fetch`], for a real prompt.
+    #[default]
+    Live,
+    /// [`Module::sample`], for the editor preview.
+    Sample,
 }
 
 /// The padding a module declares for its segments.

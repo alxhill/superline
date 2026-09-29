@@ -12,6 +12,7 @@ use thiserror::Error;
 
 use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
 use superline::debug;
+use superline::modules::DataSource;
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError};
 use superline::upgrade::{self, Installation, Step, UpgradeError};
@@ -298,6 +299,10 @@ struct ShowArgs {
     jobs: usize,
     #[arg(long)]
     config: Option<PathBuf>,
+    /// Draw each widget with sample data instead of reading the environment.
+    /// Only `preview` honours it.
+    #[arg(long, hide = true)]
+    sample: bool,
 }
 
 #[derive(Debug, Args)]
@@ -686,7 +691,12 @@ fn preview(args: ShowArgs) {
         }
     };
     for prompt in &conf.rows {
-        let mut powerline = powerline_from_conf(prompt, &args);
+        let source = if args.sample {
+            DataSource::Sample
+        } else {
+            DataSource::Live
+        };
+        let mut powerline = Powerline::from_conf::<CustomTheme>(prompt, &args, source);
         powerline.print_left();
         powerline.print_padding(args.columns);
         powerline.print_right();
@@ -837,7 +847,7 @@ fn load_theme(conf: &Config, conf_root: &Path) -> Result<(), PowerlineError> {
 }
 
 fn powerline_from_conf(prompt: &CommandLine, args: &ShowArgs) -> Powerline {
-    Powerline::from_conf::<CustomTheme>(prompt, args)
+    Powerline::from_conf::<CustomTheme>(prompt, args, DataSource::Live)
 }
 
 fn show_fallback(args: &ShowArgs, error: &PowerlineError, right_only: bool) {

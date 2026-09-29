@@ -103,9 +103,8 @@ fn render(request: &Request, config_dir: &Path, temp: &Path, temp_theme: &Path) 
         .arg("--config")
         .arg(temp)
         .args(["-s", "0", "-c", &request.columns.to_string()])
+        .arg("--sample")
         .arg(shell_name())
-        // A sample duration so last_cmd_duration has something to show.
-        .arg("1234")
         .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("could not run superline: {e}"))?;
