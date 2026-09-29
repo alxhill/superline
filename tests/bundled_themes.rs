@@ -1,4 +1,4 @@
-//! The bundled `rainbow` and `simple` themes are installed into the config
+//! The bundled `rainbow`, `simple` and `gruvbox` themes are installed into the config
 //! directory as ordinary theme files the first time a config names them.
 
 use std::fs;
@@ -64,6 +64,7 @@ fn bundled_theme_names_resolve_with_or_without_json() {
         ("rainbow.json", "rainbow.json"),
         ("simple", "simple.json"),
         ("simple.json", "simple.json"),
+        ("gruvbox", "gruvbox.json"),
     ] {
         let dir = scratch_dir(&format!("resolve-{theme}"));
         let output = run("preview", &write_config(&dir, theme));

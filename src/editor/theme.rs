@@ -460,6 +460,42 @@ pub struct TextSample {
     pub attrs: TextAttrs,
 }
 
+/// Up to `max` distinct backgrounds a theme sets, module by module, for a
+/// strip that tells themes apart at a glance.
+pub fn palette(theme: &Value, max: usize) -> Vec<u8> {
+    let modules = theme.get("modules").and_then(Value::as_object);
+    let mut colors = Vec::new();
+    for spec in module_specs() {
+        let section = std::iter::once(&spec.name)
+            .chain(&spec.aliases)
+            .find_map(|name| modules?.get(name)?.as_object());
+        for (key, value) in section.into_iter().flatten() {
+            if key != "bg" && !key.ends_with("_bg") && !key.ends_with("colors") {
+                continue;
+            }
+            let codes = match value {
+                Value::Array(items) => items.iter().filter_map(color_code).collect(),
+                value => color_code(value).into_iter().collect::<Vec<_>>(),
+            };
+            for code in codes {
+                if !colors.contains(&code) {
+                    colors.push(code);
+                }
+            }
+        }
+    }
+    if colors.is_empty() {
+        colors.extend(
+            theme
+                .get("defaults")
+                .and_then(|d| d.get("bg"))
+                .and_then(color_code),
+        );
+    }
+    colors.truncate(max);
+    colors
+}
+
 /// Parses a colour typed as a name or a 0-255 code.
 pub fn parse_color(text: &str) -> Result<Value, String> {
     let text = text.trim();
@@ -683,6 +719,20 @@ mod tests {
 
         assert_eq!(sample("git", "notstaged_fg"), None);
         assert_eq!(sample("git", "branch_icon"), None);
+    }
+
+    #[test]
+    fn a_palette_lists_distinct_backgrounds_in_module_order() {
+        let theme = json!({
+            "defaults": { "fg": 1, "bg": 9 },
+            "modules": {
+                "git": { "clean_bg": 4, "clean_fg": 5, "dirty_bg": 2 },
+                "cwd": { "bg_colors": [2, "black", 3] }
+            }
+        });
+        assert_eq!(palette(&theme, 8), [2, 0, 3, 4]);
+        assert_eq!(palette(&theme, 2), [2, 0]);
+        assert_eq!(palette(&json!({ "defaults": { "bg": 9 } }), 8), [9]);
     }
 
     #[test]

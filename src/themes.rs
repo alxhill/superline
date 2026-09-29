@@ -21,6 +21,7 @@ mod custom;
 pub(crate) const BUNDLED_THEMES: &[(&str, &str)] = &[
     ("rainbow.json", RAINBOW),
     ("simple.json", include_str!("../themes/simple.json")),
+    ("gruvbox.json", include_str!("../themes/gruvbox.json")),
 ];
 
 /// The bundled rainbow theme, also what a prompt falls back to when its config
