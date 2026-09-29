@@ -3,7 +3,9 @@
 - Do not update `CHANGELOG.md` manually. It is managed by Release Please.
 - Add the `autorelease` label to a PR to ship it as a new version as soon as
   it lands: release-plz's release PR is then queued to merge once CI is green.
-  Without the label the release PR stays open until merged by hand.
+  Without the label the release PR stays open until merged by hand. Trust the label
+  automations - don't wait for the release PR to land, just make sure the PR you're
+  implementing lands.
 - When adding a new widget, add it to `Config::default()` in `src/config.rs` so
   a fresh install shows it, and describe it and its options in `WIDGETS` in
   `src/editor/schema.rs` so `superline config` can add and edit it.
