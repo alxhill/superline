@@ -99,7 +99,7 @@
         <dl class="keys">
           <div><dt><kbd>&uarr;</kbd> <kbd>&darr;</kbd></dt><dd>Select an option.</dd></div>
           <div><dt><kbd>&#9166;</kbd> <kbd>space</kbd></dt><dd>Toggle a switch, cycle a choice, or type a new value.</dd></div>
-          <div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Cycle through the choices. On Settings, through the themes.</dd></div>
+          <div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Cycle through the choices. On Settings, step through the themes; <kbd>&#9166;</kbd> there opens the theme picker.</dd></div>
           <div><dt><kbd>x</kbd></dt><dd>Reset the option to its default.</dd></div>
           <div><dt><kbd>esc</kbd></dt><dd>Back to the layout.</dd></div>
         </dl>
@@ -111,14 +111,18 @@
           <h2>Edit a theme</h2>
           <p>
             <kbd>2</kbd> opens the Theme page, which edits the theme file the config names one module at a time,
-            with a swatch and the fallback for every property. <kbd>n</kbd> copies the open theme into a new file
-            next to the config and points the config at it. The theme files next to the config, and the themes that
-            come with superline, are also one <kbd>&larr;</kbd> <kbd>&rarr;</kbd> away under Settings.
+            with a swatch and the fallback for every property. <kbd>c</kbd> duplicates the open theme into a new
+            file next to the config and points the config at it. <kbd>p</kbd> opens the theme picker, which lists the
+            themes that come with superline and the theme files next to the config, and draws your prompt in each
+            one as you move through them. <kbd>&#9166;</kbd> switches to it, writing a bundled theme's file next to
+            the config first, and <kbd>c</kbd> duplicates the highlighted theme into a new file to edit.
+            <kbd>&#9166;</kbd> on <code>theme</code> under Settings opens the same picker.
           </p>
         </div>
         <dl class="keys">
           <div><dt><kbd>2</kbd> <kbd>1</kbd></dt><dd>Theme page, and back to the layout. <kbd>t</kbd> switches.</dd></div>
-          <div><dt><kbd>n</kbd></dt><dd>Copy the theme into a new theme file.</dd></div>
+          <div><dt><kbd>p</kbd></dt><dd>Pick a theme, previewing each one on your prompt. <kbd>i</kbd> types a file name instead.</dd></div>
+          <div><dt><kbd>c</kbd> <kbd>n</kbd></dt><dd>Duplicate the theme into a new theme file. In the picker, <kbd>c</kbd> duplicates the highlighted theme.</dd></div>
           <div><dt><kbd>&#9166;</kbd></dt><dd>On a color, open the 256-color picker, which previews as you move. On an icon, search every Nerd Font glyph.</dd></div>
           <div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Step a color by one code.</dd></div>
           <div><dt><kbd>i</kbd></dt><dd>Type a color name, a 0&ndash;255 code, or text.</dd></div>
@@ -126,7 +130,7 @@
           <div><dt><kbd>&#9166;</kbd> <kbd>space</kbd></dt><dd>On a <code>bold</code>, <code>italic</code> or <code>underline</code> switch, turn it on or off.</dd></div>
           <div><dt><kbd>&#9166;</kbd></dt><dd>On a color list, edit it one color per line: <kbd>a</kbd>/<kbd>I</kbd> add after or before, <kbd>d</kbd> delete, <kbd>J</kbd>/<kbd>K</kbd> move, <kbd>c</kbd> copy.</dd></div>
         </dl>
-        <figure class="term"><a href="img/editor-theme.gif" title="Open full size"><img src="img/editor-theme.gif" width="1146" height="766" loading="lazy" alt="In superline config: switching to the Theme page, forking the theme into theme.json, and picking a purple background for the git segment in the 256-color picker while the preview updates."></a></figure>
+        <figure class="term"><a href="img/editor-theme.gif" title="Open full size"><img src="img/editor-theme.gif" width="1146" height="766" loading="lazy" alt="In superline config: switching to the Theme page, previewing the simple and gruvbox themes in the theme picker and switching to gruvbox, duplicating it into theme.json, and picking a new background for the git segment in the 256-color picker while the preview updates."></a></figure>
       </article>
     </section>
 
@@ -1083,12 +1087,14 @@
           <code>rainbow</code>.
         </p>
         <p>
-          superline comes with two themes,
-          <a href="https://github.com/alxhill/superline/blob/main/themes/rainbow.json"><code>rainbow</code></a> and
-          <a href="https://github.com/alxhill/superline/blob/main/themes/simple.json"><code>simple</code></a>. When
-          the config names one of them and its file isn't in the config directory yet, superline writes it there,
-          so it can be edited like any other theme file; an existing file is never replaced. The Theme page of
-          <code>superline config</code> edits a theme file with a live preview.
+          superline comes with three themes,
+          <a href="https://github.com/alxhill/superline/blob/main/themes/rainbow.json"><code>rainbow</code></a>,
+          <a href="https://github.com/alxhill/superline/blob/main/themes/simple.json"><code>simple</code></a> and
+          <a href="https://github.com/alxhill/superline/blob/main/themes/gruvbox.json"><code>gruvbox</code></a>.
+          When the config names one of them and its file isn't in the config directory yet, superline writes it
+          there, so it can be edited like any other theme file; an existing file is never replaced. The theme
+          picker in <code>superline config</code> previews each theme on your own prompt before you switch, and
+          the Theme page edits a theme file with a live preview.
         </p>
         <p>
           A theme file has <code>defaults</code>, the <code>fg</code> and <code>bg</code> for anything a module

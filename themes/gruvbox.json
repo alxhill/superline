@@ -1,0 +1,58 @@
+{
+  "defaults": { "fg": 112, "bg": 16 },
+  "modules": {
+    "cargo": { "fg": 235, "bg": 208 },
+    "cwd": { "path_fg": 229, "bg_colors": [166, 172, 72, 66, 241, 237] },
+    "git": {
+      "remote_bg": 239,
+      "remote_fg": 250,
+      "staged_bg": 106,
+      "staged_fg": 229,
+      "notstaged_bg": 166,
+      "notstaged_fg": 229,
+      "untracked_bg": 172,
+      "untracked_fg": 235,
+      "conflicted_bg": 124,
+      "conflicted_fg": 229,
+      "clean_bg": 66,
+      "clean_fg": 229,
+      "dirty_bg": 208,
+      "dirty_fg": 235,
+      "untracked_italic": true,
+      "notstaged_bold": true
+    },
+    "pr": {
+      "draft_bg": 239,
+      "draft_fg": 250,
+      "open_bg": 106,
+      "open_fg": 229,
+      "merged_bg": 132,
+      "merged_fg": 229,
+      "closed_bg": 124,
+      "closed_fg": 229,
+      "status_success_fg": 142,
+      "status_failure_fg": 167,
+      "status_pending_fg": 214,
+      "draft_italic": true,
+      "open_bold": true
+    },
+    "readonly": { "fg": 229, "bg": 124 },
+    "python": { "env_fg": 235, "env_bg": 108, "version_bg": 72, "version_fg": 229 },
+    "time": { "bg": 237, "fg": 245 },
+    "ai_usage": {
+      "claude_bg": 166,
+      "claude_fg": 229,
+      "codex_bg": 38,
+      "codex_fg": 235,
+      "threshold_bg": 203
+    },
+    "cmd": { "failed_bg": 167, "failed_fg": 229, "user_symbol": "" },
+    "node": { "bg": 106, "inactive_bg": 88, "fg": 229 },
+    "java": { "bg": 223, "fg": 124 },
+    "hostname": { "fg": 173 },
+    "jobs": { "fg": 13 },
+    "last_cmd_duration": { "time_icon": "" },
+    "os": { "fg": 15, "bg": 64 },
+    "local_ip": { "fg": 111 }
+  }
+}

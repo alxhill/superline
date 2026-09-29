@@ -33,12 +33,15 @@ pub(super) enum Slot {
 }
 
 pub(super) struct ThemePage {
-    slots: HashMap<PathBuf, Slot>,
+    pub(super) slots: HashMap<PathBuf, Slot>,
     cursor: usize,
     prop_cursor: usize,
     focus: Focus,
     list: ListState,
     pub(super) color_list: Option<list_editor::OpenList>,
+    /// The theme `c` in the theme picker is duplicating, and its name, while
+    /// the file name is typed. Otherwise a new theme copies the open one.
+    pub(super) duplicating: Option<(ThemeDoc, String)>,
 }
 
 impl ThemePage {
@@ -50,6 +53,7 @@ impl ThemePage {
             focus: Focus::Layout,
             list: ListState::default(),
             color_list: None,
+            duplicating: None,
         }
     }
 
@@ -156,6 +160,9 @@ impl App {
     /// The in-memory theme for the preview, with the colour under the picker
     /// applied.
     pub(super) fn preview_theme(&self) -> Option<Value> {
+        if let Some(theme) = self.picker_theme() {
+            return theme;
+        }
         let doc = self.theme_doc()?;
         let pending = match &self.mode {
             Mode::ColorPicker { code, .. } if self.list_pending().is_some() => {
@@ -228,6 +235,9 @@ impl App {
     /// A copy of the theme open on the page for a new theme file, and the name
     /// of what it copies. The example theme stands in when no theme is open.
     fn fork_open_theme(&self) -> (ThemeDoc, String) {
+        if let Some((doc, name)) = &self.theme.duplicating {
+            return (doc.fork(), name.clone());
+        }
         let name = self.doc.root().get("theme").and_then(Value::as_str);
         match (self.theme_doc(), name) {
             (Some(doc), Some(name)) => (doc.fork(), name.to_string()),
@@ -247,7 +257,7 @@ impl App {
             return false;
         }
         let path = theme_path(self.config_dir(), name);
-        let forking = self.theme_doc().is_some();
+        let forking = self.theme_doc().is_some() && self.theme.duplicating.is_none();
         let mut copied_from = None;
         let slot = match self.read_theme(&path) {
             Slot::Missing => {
@@ -262,6 +272,7 @@ impl App {
             loaded => loaded,
         };
         self.theme.slots.insert(path.clone(), slot);
+        self.theme.duplicating = None;
         if let Err(error) =
             self.doc
                 .set_option(Target::Settings, schema::THEME.key, Some(Value::from(name)))
@@ -298,6 +309,7 @@ impl App {
     pub(super) fn submit_theme_input(&mut self, purpose: InputPurpose, text: &str) -> bool {
         match purpose {
             InputPurpose::NewTheme => self.use_new_theme(text),
+            InputPurpose::ThemeName => self.use_theme(text),
             InputPurpose::ListItem => self.submit_list_color(text),
             _ => {
                 let Some((_, spec, _)) = self.theme_prop() else {
@@ -328,7 +340,27 @@ impl App {
         };
     }
 
+    /// Asks for a file name for a copy of `theme`, suggesting `<name>-copy`.
+    pub(super) fn start_duplicate(&mut self, doc: ThemeDoc, name: &str) {
+        let dir = self.config_dir();
+        let stem = Path::new(name).file_stem().map_or_else(
+            || "theme".to_string(),
+            |stem| stem.to_string_lossy().into_owned(),
+        );
+        let suggestion = (1..)
+            .map(|n| match n {
+                1 => format!("{stem}-copy.json"),
+                n => format!("{stem}-copy-{n}.json"),
+            })
+            .find(|file| !dir.join(file).exists())
+            .unwrap_or_default();
+        self.theme.duplicating = Some((doc, name.to_string()));
+        self.page = super::Page::Theme;
+        self.open_theme_input(InputPurpose::NewTheme, suggestion);
+    }
+
     fn start_new_theme(&mut self) {
+        self.theme.duplicating = None;
         let suggestion = match self.slot() {
             Some(Slot::Missing) => {
                 let name = self.doc.root()["theme"]
@@ -353,6 +385,9 @@ impl App {
     }
 
     pub(super) fn on_theme_key(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Char('p') && self.theme.color_list.is_none() {
+            return self.open_theme_picker();
+        }
         if self.theme_doc().is_none() {
             if key.code == KeyCode::Char('n') {
                 self.start_new_theme();
@@ -373,6 +408,13 @@ impl App {
                 KeyCode::PageUp => self.theme.cursor = self.theme.cursor.saturating_sub(10),
                 KeyCode::PageDown => self.theme.cursor = (self.theme.cursor + 10).min(entries - 1),
                 KeyCode::Char('n') => self.start_new_theme(),
+                KeyCode::Char('c') => {
+                    let name = self.doc.root()["theme"].as_str().unwrap_or_default();
+                    let name = name.to_string();
+                    if let Some(doc) = self.theme_doc().map(ThemeDoc::fork) {
+                        self.start_duplicate(doc, &name);
+                    }
+                }
                 KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => {
                     self.theme.focus = Focus::Options;
                     self.theme.prop_cursor = 0;
@@ -662,22 +704,26 @@ impl App {
             .unwrap_or("?")
             .to_string();
         let message = match self.slot() {
-            None => Some(vec![Line::from(
-                "The config names no theme. Pick one in Settings (1).",
-            )]),
+            None => Some(vec![Line::from("The config names no theme. p picks one.")]),
             Some(Slot::Missing) => Some(vec![
                 Line::from(format!("{name} does not exist yet.")),
                 Line::default(),
                 Line::from(vec![
                     Span::raw("n").bold(),
-                    Span::raw(format!(" create {name} from the example theme")),
+                    Span::raw(format!(" create {name} from the example theme   ")),
+                    Span::raw("p").bold(),
+                    Span::raw(" pick another theme"),
                 ]),
             ]),
             Some(Slot::Broken(error)) => Some(vec![
                 Line::from(format!("{name} can't be edited here:")).red(),
                 Line::from(error.clone()).red(),
                 Line::default(),
-                Line::from("Fix the file by hand, or pick another theme in Settings (1)."),
+                Line::from(vec![
+                    Span::raw("Fix the file by hand, or "),
+                    Span::raw("p").bold(),
+                    Span::raw(" pick another theme."),
+                ]),
             ]),
             Some(Slot::Loaded(_)) => None,
         };
@@ -719,7 +765,11 @@ impl App {
         self.draw_theme_modules(frame, left, &name);
         self.draw_theme_props(frame, right);
         if let Some((buffer, cursor)) = input {
-            draw_fork_prompt(frame, area, &name, &buffer, cursor);
+            let source = match &self.theme.duplicating {
+                Some((_, source)) => source.clone(),
+                None => name,
+            };
+            draw_fork_prompt(frame, area, &source, &buffer, cursor);
         }
     }
 
@@ -903,11 +953,11 @@ impl App {
     }
 }
 
-/// The file name prompt for forking the open theme.
+/// The file name prompt for a copy of a theme.
 fn draw_fork_prompt(frame: &mut Frame, area: Rect, source: &str, buffer: &str, cursor: usize) {
     let popup = super::centered(area, 64, 6);
     frame.render_widget(Clear, popup);
-    let block = panel(" Fork theme ", true);
+    let block = panel(" Duplicate theme ", true);
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
     let lines = vec![
@@ -1141,7 +1191,7 @@ mod tests {
             json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
             &[("ocean.json", custom)],
         );
-        assert_eq!(app.theme_choices, ["ocean", "rainbow", "simple"]);
+        assert_eq!(app.theme_choices, ["rainbow", "simple", "gruvbox", "ocean"]);
         assert!(!dir.join("simple.json").exists());
 
         app.page = Page::Layout;
@@ -1167,6 +1217,126 @@ mod tests {
     }
 
     #[test]
+    fn the_theme_picker_previews_each_theme_and_installs_the_one_picked() {
+        let custom = r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": {} }"#;
+        let (mut app, dir) = app(
+            "picker",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
+            &[("ocean.json", custom)],
+        );
+        press(&mut app, KeyCode::Char('p'));
+        let shown = screen(&mut app);
+        assert!(shown.contains("Pick a theme"), "{shown}");
+        assert!(shown.contains("in use"), "{shown}");
+        assert!(shown.contains("built in, installs gruvbox.json"), "{shown}");
+        assert_eq!(app.preview_theme(), Some(bundled("rainbow.json")));
+
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        assert_eq!(app.preview_theme(), Some(bundled("gruvbox.json")));
+        press(&mut app, KeyCode::Down);
+        assert_eq!(
+            app.preview_theme(),
+            Some(serde_json::from_str::<Value>(custom).unwrap())
+        );
+        assert!(!dir.join("gruvbox.json").exists());
+
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.doc.root()["theme"], "rainbow");
+        assert_eq!(app.preview_theme(), Some(bundled("rainbow.json")));
+
+        press(&mut app, KeyCode::Char('p'));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.doc.root()["theme"], "gruvbox");
+        assert_eq!(
+            read_json(&dir.join("gruvbox.json")),
+            bundled("gruvbox.json")
+        );
+        assert_eq!(
+            app.theme_doc().map(ThemeDoc::root),
+            Some(&bundled("gruvbox.json"))
+        );
+        app.save();
+        assert_eq!(read_json(&dir.join("config.json"))["theme"], "gruvbox");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn enter_on_the_theme_setting_opens_the_picker() {
+        let (mut app, dir) = app(
+            "picker-settings",
+            json!({ "theme": "simple", "rows": [{ "left": ["cmd"] }] }),
+            &[],
+        );
+        app.page = Page::Layout;
+        app.select(Entry::Settings);
+        app.focus = Focus::Options;
+        app.option_cursor = app
+            .doc
+            .options(Target::Settings)
+            .iter()
+            .position(|(spec, _)| spec.key == schema::THEME.key)
+            .unwrap();
+        press(&mut app, KeyCode::Enter);
+        assert!(matches!(app.mode, Mode::ThemePicker { selected: 1, .. }));
+
+        // i types a file name instead, which need not exist yet.
+        press(&mut app, KeyCode::Char('i'));
+        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        for c in "mine".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.doc.root()["theme"], "mine");
+        assert!(matches!(app.mode, Mode::Normal));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn c_in_the_picker_duplicates_the_highlighted_theme() {
+        let (mut app, dir) = app(
+            "duplicate",
+            json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
+            &[],
+        );
+        app.page = Page::Layout;
+        press(&mut app, KeyCode::Char('2'));
+        press(&mut app, KeyCode::Char('p'));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('c'));
+        assert!(app.page == Page::Theme);
+        let shown = screen(&mut app);
+        assert!(
+            shown.contains("Copy gruvbox to a new theme file"),
+            "{shown}"
+        );
+        assert!(shown.contains("file name: gruvbox-copy.json"), "{shown}");
+
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.doc.root()["theme"], "gruvbox-copy.json");
+        assert!(app.theme.duplicating.is_none());
+        app.save();
+        assert_eq!(
+            read_json(&dir.join("gruvbox-copy.json")),
+            bundled("gruvbox.json")
+        );
+        assert!(!dir.join("gruvbox.json").exists());
+
+        // On the Theme page, c duplicates the open theme.
+        press(&mut app, KeyCode::Char('c'));
+        let shown = screen(&mut app);
+        assert!(shown.contains("Copy gruvbox-copy.json to"), "{shown}");
+        assert!(
+            shown.contains("file name: gruvbox-copy-copy.json"),
+            "{shown}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn n_forks_the_open_theme_into_a_new_file() {
         let (mut app, dir) = app(
             "fork",
@@ -1176,7 +1346,7 @@ mod tests {
         press(&mut app, KeyCode::Down);
         press(&mut app, KeyCode::Char('n'));
         let shown = screen(&mut app);
-        assert!(shown.contains("Fork theme"), "{shown}");
+        assert!(shown.contains("Duplicate theme"), "{shown}");
         assert!(shown.contains("file name: theme.json"), "{shown}");
 
         press(&mut app, KeyCode::Enter);

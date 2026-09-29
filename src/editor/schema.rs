@@ -599,8 +599,8 @@ pub fn segment_name(segment: &Value) -> Option<&str> {
 pub const THEME: OptionSpec = required(
     "theme",
     Kind::Str { default: None },
-    "Theme file, relative to the config directory (.json optional). rainbow and simple are \
-     created on first use.",
+    "Theme file, relative to the config directory (.json optional). ⏎ picks one with a preview; \
+     rainbow, simple and gruvbox are created on first use.",
 );
 
 pub const UPDATE: &[OptionSpec] = &[
