@@ -324,20 +324,71 @@ impl Source for UsageLookup {
     }
 }
 
+/// A provider's cached reading and the clock it is shown against.
+pub struct UsageData {
+    reading: Lookup<UsageReading>,
+    /// Seconds since the Unix epoch, for the time left until a reset.
+    now: u64,
+}
+
+impl<S: UsageScheme> Usage<S> {
+    fn shows_anything(&self) -> bool {
+        self.windows.any_enabled() || self.show_session_time_remaining
+    }
+}
+
 impl<S: UsageScheme> Module for Usage<S> {
+    /// `None` when no part of the widget is enabled, so nothing was looked up.
+    type Data = Option<UsageData>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        if !self.windows.any_enabled() && !self.show_session_time_remaining {
-            return;
+    fn fetch(&self) -> Option<UsageData> {
+        if !self.shows_anything() {
+            return None;
         }
 
-        let lookup = Cached::new(UsageLookup {
+        let reading = Cached::new(UsageLookup {
             provider: self.provider,
         })
         .load();
+        Some(UsageData {
+            reading,
+            now: now_secs(),
+        })
+    }
+
+    fn sample(&self) -> Option<UsageData> {
+        Some(UsageData {
+            reading: Lookup::Ready(UsageReading {
+                session: Some(42.0),
+                weekly: Some(18.0),
+                fable: Some(9.0),
+                credits: Some(CreditsUsage {
+                    used: 12.5,
+                    limit: 50.0,
+                    unit: CreditsUnit::Dollars,
+                }),
+                session_resets_at: Some(2 * 3600 + 13 * 60),
+                logged_out: false,
+            }),
+            now: 0,
+        })
+    }
+
+    fn render(&self, data: Option<UsageData>, powerline: &mut Powerline) {
+        let Some(UsageData {
+            reading: lookup,
+            now,
+        }) = data
+        else {
+            return;
+        };
+        if !self.shows_anything() {
+            return;
+        }
 
         let (default_fg, bg) = provider_style::<S>(self.provider);
         let icon = provider_icon::<S>(self.provider);
@@ -352,6 +403,7 @@ impl<S: UsageScheme> Module for Usage<S> {
                 self.display,
                 self.show_session_time_remaining,
                 self.session_time_remaining_only_at_limit,
+                now,
             ),
             Lookup::Loading => join_non_empty([icon, S::usage_loading_icon()]),
             Lookup::Unavailable => join_non_empty([icon, S::usage_not_installed_icon()]),
@@ -391,6 +443,7 @@ fn format_usage<S: UsageScheme>(
     display: UsageDisplay,
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: f64,
+    now: u64,
 ) -> String {
     let icon = provider_icon::<S>(provider);
     let mut parts = if icon.is_empty() {
@@ -424,18 +477,18 @@ fn format_usage<S: UsageScheme>(
             " {}",
             join_non_empty([
                 S::usage_reset_icon(),
-                format_time_remaining(cache.session_resets_at).as_str()
+                format_time_remaining(cache.session_resets_at, now).as_str()
             ])
         ));
     }
     parts.join("")
 }
 
-fn format_time_remaining(resets_at: Option<u64>) -> String {
+fn format_time_remaining(resets_at: Option<u64>, now: u64) -> String {
     let Some(resets_at) = resets_at else {
         return "–".to_string();
     };
-    format_remaining_duration(resets_at.saturating_sub(now_secs()))
+    format_remaining_duration(resets_at.saturating_sub(now))
 }
 
 fn format_remaining_duration(remaining: u64) -> String {
@@ -1613,6 +1666,7 @@ mod tests {
                 UsageDisplay::Sparkline,
                 false,
                 0.0,
+                0,
             ),
             "\u{ec82} 5h ▁ C $50/$100"
         );
@@ -1658,6 +1712,7 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
+                0,
             ),
             "\u{ec81} 40%"
         );
@@ -1669,6 +1724,7 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
+                0,
             ),
             "\u{ec81} 100% C $50/$100"
         );
@@ -1681,7 +1737,7 @@ mod tests {
             weekly: Some(67.8),
             fable: None,
             credits: None,
-            session_resets_at: Some(now_secs().saturating_add(3600)),
+            session_resets_at: Some(3600),
             logged_out: false,
         };
         let windows = windows(UsageProvider::Codex, true, false, false, None);
@@ -1693,6 +1749,7 @@ mod tests {
                 UsageDisplay::Percentage,
                 true,
                 0.8,
+                0,
             )
         };
 
@@ -1711,7 +1768,7 @@ mod tests {
             weekly: None,
             fable: None,
             credits: None,
-            session_resets_at: Some(now_secs().saturating_add(2 * 3600 + 90)),
+            session_resets_at: Some(2 * 3600 + 90),
             logged_out: false,
         };
         assert_eq!(
@@ -1722,6 +1779,7 @@ mod tests {
                 UsageDisplay::Percentage,
                 true,
                 0.0,
+                0,
             ),
             "5h 12% 2h 1m"
         );
@@ -1733,8 +1791,35 @@ mod tests {
                 UsageDisplay::Percentage,
                 true,
                 0.0,
+                0,
             ),
             "\u{ec82} 5h 12% ↻ 2h 1m"
+        );
+    }
+
+    #[test]
+    fn sample_shows_windows_and_the_session_countdown() {
+        let usage = Usage::<TestTheme>::new(
+            UsageProvider::Claude,
+            windows(UsageProvider::Claude, true, true, false, None),
+            UsageDisplay::Percentage,
+            None,
+            true,
+            0.0,
+        );
+        let UsageData { reading, now } = usage.sample().unwrap();
+        let reading = reading.ready().unwrap();
+        assert_eq!(
+            format_usage::<TestTheme>(
+                UsageProvider::Claude,
+                &reading,
+                &usage.windows,
+                usage.display,
+                usage.show_session_time_remaining,
+                usage.session_time_remaining_only_at_limit,
+                now,
+            ),
+            "\u{ec82} 5h 42% 7d 18% ↻ 2h 13m"
         );
     }
 
@@ -1795,6 +1880,7 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
+                0,
             ),
             "\u{ec82} 5h 12%"
         );
@@ -1806,6 +1892,7 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
+                0,
             ),
             "\u{ec81}  7d 68%"
         );
@@ -1817,6 +1904,7 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
+                0,
             ),
             "\u{ec82} 5h 12% 7d 68% F 33%"
         );
@@ -1828,6 +1916,7 @@ mod tests {
                 UsageDisplay::Sparkline,
                 false,
                 0.0,
+                0,
             ),
             "\u{ec82} ▁▅"
         );

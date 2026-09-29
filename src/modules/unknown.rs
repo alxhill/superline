@@ -31,11 +31,17 @@ impl<S: UnknownScheme> Unknown<S> {
 }
 
 impl<S: UnknownScheme> Module for Unknown<S> {
+    type Data = ();
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) {}
+
+    fn sample(&self) {}
+
+    fn render(&self, _: (), powerline: &mut Powerline) {
         powerline.add_segment(
             format!("unknown module: {}", self.name),
             Style::simple(S::unknown_fg(), S::unknown_bg()),

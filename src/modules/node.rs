@@ -55,6 +55,15 @@ impl<S: NodeScheme> Node<S> {
         }
     }
 
+    /// The segment's label and background.
+    fn segment(&self, version: &NodeVersion) -> (String, Color) {
+        match version {
+            NodeVersion::Nvm(version) => (self.label("", version.trim()), S::node_bg()),
+            NodeVersion::Mise(version) => (self.label(S::mise_icon(), version), S::node_bg()),
+            NodeVersion::Nvmrc(nvmrc) => (self.label("", nvmrc.trim()), S::node_inactive_bg()),
+        }
+    }
+
     fn label(&self, source_icon: &str, version: &str) -> String {
         [
             Some(source_icon),
@@ -69,12 +78,27 @@ impl<S: NodeScheme> Node<S> {
     }
 }
 
+/// Where the node version for the current directory comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeVersion {
+    /// The version nvm activated.
+    Nvm(String),
+    /// A mise config manages node for this directory, so its version is the
+    /// one in effect even though nvm never activated it.
+    Mise(String),
+    /// The version a `.nvmrc` asks for, which nothing has activated.
+    Nvmrc(String),
+}
+
 impl<S: NodeScheme> Module for Node<S> {
+    /// The node version in effect or requested, if any.
+    type Data = Option<NodeVersion>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) -> Option<NodeVersion> {
         let nvm_current_version = env::var("nvm_current_version").ok();
 
         let nvmrc_version = env::current_dir()
@@ -82,24 +106,73 @@ impl<S: NodeScheme> Module for Node<S> {
             .and_then(read_to_string)
             .ok();
 
-        let segment = match (
+        match (
             nvm_current_version,
             mise::tool_version("node"),
             nvmrc_version,
         ) {
             // todo: handle the case where active version != .nvmrc
-            (Some(version), _, _) => Some((self.label("", version.trim()), S::node_bg())),
-            // A mise config manages node for this directory, so its version is
-            // the one in effect even though nvm never activated it.
-            (None, Some(version), _) => Some((self.label(S::mise_icon(), version), S::node_bg())),
-            (None, None, Some(nvmrc)) => {
-                Some((self.label("", nvmrc.trim()), S::node_inactive_bg()))
-            }
+            (Some(version), _, _) => Some(NodeVersion::Nvm(version)),
+            (None, Some(version), _) => Some(NodeVersion::Mise(version.to_string())),
+            (None, None, Some(nvmrc)) => Some(NodeVersion::Nvmrc(nvmrc)),
             _ => None,
-        };
+        }
+    }
+
+    fn sample(&self) -> Option<NodeVersion> {
+        Some(NodeVersion::Nvm("v22.11.0".to_string()))
+    }
+
+    fn render(&self, version: Option<NodeVersion>, powerline: &mut Powerline) {
+        let segment = version.map(|version| self.segment(&version));
 
         if let Some((label, bg)) = segment.filter(|(label, _)| !label.is_empty()) {
             powerline.add_segment(label, Style::simple(S::node_fg(), bg));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::colors::{black, white};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            white()
+        }
+    }
+
+    impl NodeScheme for TestTheme {}
+
+    #[test]
+    fn labels_each_version_source() {
+        let node = Node::<TestTheme>::new(true);
+        assert_eq!(
+            node.segment(&NodeVersion::Nvm("v22.11.0\n".to_string())).0,
+            "\u{ed0d} v22.11.0"
+        );
+        assert_eq!(
+            node.segment(&NodeVersion::Mise("22".to_string())).0,
+            format!("{} \u{ed0d} 22", mise::DEFAULT_ICON)
+        );
+        assert_eq!(
+            node.segment(&NodeVersion::Nvmrc("lts/iron\n".to_string()))
+                .0,
+            "\u{ed0d} lts/iron"
+        );
+    }
+
+    #[test]
+    fn hides_the_version_when_turned_off() {
+        let node = Node::<TestTheme>::new(false);
+        let sample = node.sample().expect("the sample has a version");
+        assert_eq!(node.segment(&sample).0, "\u{ed0d}");
     }
 }

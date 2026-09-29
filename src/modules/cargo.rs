@@ -52,44 +52,74 @@ impl<S: CargoScheme> Cargo<S> {
     }
 }
 
+/// A Rust project in the current directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CargoProject {
+    /// Whether a mise config pins the rust toolchain.
+    mise_managed: bool,
+    /// The pinned toolchain version, when `show_version` is on.
+    toolchain_version: Option<String>,
+}
+
 impl<S: CargoScheme> Module for Cargo<S> {
+    /// The Rust project in the current directory, if there is one.
+    type Data = Option<CargoProject>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        if let Ok(cwd) = env::current_dir() {
-            if cwd.join("Cargo.toml").exists() {
-                // The icon alone says "rust project"; a pinned toolchain adds
-                // the version that will actually build it. mise wins over
-                // rustup's `rust-toolchain` file since it is what puts cargo on
-                // the path. The mise marker stays even with the version hidden,
-                // since it says who manages the toolchain rather than which one
-                // it is.
-                let mise_version = mise::tool_version("rust");
-                let toolchain_version = match (mise_version, self.show_version) {
-                    (Some(version), true) => Some(version.to_string()),
-                    (None, true) => rust_toolchain_channel(&cwd),
-                    (_, false) => None,
-                };
+    fn fetch(&self) -> Option<CargoProject> {
+        let cwd = env::current_dir().ok()?;
+        if !cwd.join("Cargo.toml").exists() {
+            return None;
+        }
 
-                let label = [
-                    mise_version.map(|_| S::mise_icon()),
-                    Some(S::icon()),
-                    toolchain_version.as_deref(),
-                ]
-                .into_iter()
-                .flatten()
-                .filter(|part| !part.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
+        // The icon alone says "rust project"; a pinned toolchain adds the
+        // version that will actually build it. mise wins over rustup's
+        // `rust-toolchain` file since it is what puts cargo on the path.
+        let mise_version = mise::tool_version("rust");
+        let toolchain_version = match (mise_version, self.show_version) {
+            (Some(version), true) => Some(version.to_string()),
+            (None, true) => rust_toolchain_channel(&cwd),
+            (_, false) => None,
+        };
 
-                if !label.is_empty() {
-                    powerline.add_segment(label, Style::simple(S::cargo_fg(), S::cargo_bg()));
-                }
+        Some(CargoProject {
+            mise_managed: mise_version.is_some(),
+            toolchain_version,
+        })
+    }
+
+    fn sample(&self) -> Option<CargoProject> {
+        Some(CargoProject {
+            mise_managed: false,
+            toolchain_version: self.show_version.then(|| "1.93.0".to_string()),
+        })
+    }
+
+    fn render(&self, project: Option<CargoProject>, powerline: &mut Powerline) {
+        if let Some(label) = project.map(|project| cargo_label::<S>(&project)) {
+            if !label.is_empty() {
+                powerline.add_segment(label, Style::simple(S::cargo_fg(), S::cargo_bg()));
             }
         }
     }
+}
+
+/// The mise marker stays even with the version hidden, since it says who
+/// manages the toolchain rather than which one it is.
+fn cargo_label<S: CargoScheme>(project: &CargoProject) -> String {
+    [
+        project.mise_managed.then(|| S::mise_icon()),
+        Some(S::icon()),
+        project.toolchain_version.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|part| !part.is_empty())
+    .collect::<Vec<_>>()
+    .join(" ")
 }
 
 /// The channel pinned by the nearest `rust-toolchain.toml` or legacy
@@ -153,6 +183,42 @@ fn legacy_toolchain_channel(contents: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::colors::{black, white};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            white()
+        }
+    }
+
+    impl CargoScheme for TestTheme {}
+
+    #[test]
+    fn label_shows_the_mise_marker_icon_and_version() {
+        let project = CargoProject {
+            mise_managed: true,
+            toolchain_version: Some("1.93.0".to_string()),
+        };
+        assert_eq!(
+            cargo_label::<TestTheme>(&project),
+            format!("{} \u{e68b} 1.93.0", mise::DEFAULT_ICON)
+        );
+    }
+
+    #[test]
+    fn sample_follows_show_version() {
+        let with_version = Cargo::<TestTheme>::new(true).sample().unwrap();
+        assert_eq!(cargo_label::<TestTheme>(&with_version), "\u{e68b} 1.93.0");
+
+        let without_version = Cargo::<TestTheme>::new(false).sample().unwrap();
+        assert_eq!(cargo_label::<TestTheme>(&without_version), "\u{e68b}");
+    }
 
     #[test]
     fn reads_the_channel_from_the_toolchain_table() {

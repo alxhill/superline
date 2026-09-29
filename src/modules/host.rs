@@ -51,15 +51,28 @@ impl<S: HostScheme> Hostname<S> {
 }
 
 impl<S: HostScheme> Module for Hostname<S> {
+    /// The hostname, or `None` when it is hidden or unknown.
+    type Data = Option<String>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) -> Option<String> {
         if self.show_on_local || utils::is_remote_shell() {
-            if let Some(host) = current_hostname() {
-                powerline.add_segment(host, Style::simple(S::hostname_fg(), S::hostname_bg()));
-            }
+            current_hostname()
+        } else {
+            None
+        }
+    }
+
+    fn sample(&self) -> Option<String> {
+        Some("macbook".into())
+    }
+
+    fn render(&self, host: Option<String>, powerline: &mut Powerline) {
+        if let Some(host) = host {
+            powerline.add_segment(host, Style::simple(S::hostname_fg(), S::hostname_bg()));
         }
     }
 }

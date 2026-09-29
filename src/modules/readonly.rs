@@ -37,13 +37,25 @@ impl<S: ReadOnlyScheme> ReadOnly<S> {
 }
 
 impl<S: ReadOnlyScheme> Module for ReadOnly<S> {
+    /// Whether the current directory is read-only.
+    type Data = bool;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) -> bool {
+        // An empty symbol never shows, so skip the check.
+        !S::readonly_symbol().is_empty() && platform::cwd_is_readonly()
+    }
+
+    fn sample(&self) -> bool {
+        true
+    }
+
+    fn render(&self, readonly: bool, powerline: &mut Powerline) {
         let symbol = S::readonly_symbol();
-        if !symbol.is_empty() && platform::cwd_is_readonly() {
+        if !symbol.is_empty() && readonly {
             powerline.add_segment(symbol, Style::simple(S::readonly_fg(), S::readonly_bg()));
         }
     }

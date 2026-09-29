@@ -36,18 +36,47 @@ impl<S: ExitCodeScheme> ExitCode<S> {
 }
 
 impl<S: ExitCodeScheme> Module for ExitCode<S> {
+    /// The last command's exit code, as the shell passed it.
+    type Data = Option<String>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        if let Some(exit_code) = env::args().nth(1).as_deref() {
-            if exit_code != "0" {
-                powerline.add_segment(
-                    exit_code,
-                    Style::simple(S::exit_code_fg(), S::exit_code_bg()),
-                )
-            }
+    fn fetch(&self) -> Option<String> {
+        env::args().nth(1)
+    }
+
+    fn sample(&self) -> Option<String> {
+        Some("1".into())
+    }
+
+    fn render(&self, exit_code: Option<String>, powerline: &mut Powerline) {
+        if let Some(exit_code) = shown_code(exit_code.as_deref()) {
+            powerline.add_segment(
+                exit_code,
+                Style::simple(S::exit_code_fg(), S::exit_code_bg()),
+            )
         }
+    }
+}
+
+fn shown_code(exit_code: Option<&str>) -> Option<&str> {
+    exit_code.filter(|code| *code != "0")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shown_code;
+
+    #[test]
+    fn hides_success_and_missing_codes() {
+        assert_eq!(shown_code(Some("0")), None);
+        assert_eq!(shown_code(None), None);
+    }
+
+    #[test]
+    fn shows_failing_codes() {
+        assert_eq!(shown_code(Some("1")), Some("1"));
     }
 }

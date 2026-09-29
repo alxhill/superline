@@ -54,22 +54,44 @@ impl<S: UserScheme> Username<S> {
     }
 }
 
+/// The user running the shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurrentUser {
+    pub name: String,
+    pub is_root: bool,
+}
+
 impl<S: UserScheme> Module for Username<S> {
+    /// The current user, or `None` when hidden or unknown.
+    type Data = Option<CurrentUser>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        if self.show_on_local || utils::is_remote_shell() {
-            let bg = if platform::is_root() {
+    fn fetch(&self) -> Option<CurrentUser> {
+        if !(self.show_on_local || utils::is_remote_shell()) {
+            return None;
+        }
+        let is_root = platform::is_root();
+        platform::current_username().map(|name| CurrentUser { name, is_root })
+    }
+
+    fn sample(&self) -> Option<CurrentUser> {
+        Some(CurrentUser {
+            name: "alex".into(),
+            is_root: false,
+        })
+    }
+
+    fn render(&self, user: Option<CurrentUser>, powerline: &mut Powerline) {
+        if let Some(user) = user {
+            let bg = if user.is_root {
                 S::username_root_bg()
             } else {
                 S::username_bg()
             };
-
-            if let Some(name) = platform::current_username() {
-                powerline.add_segment(name, Style::simple(S::username_fg(), bg));
-            }
+            powerline.add_segment(user.name, Style::simple(S::username_fg(), bg));
         }
     }
 }

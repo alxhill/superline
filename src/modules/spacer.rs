@@ -38,6 +38,8 @@ impl<S: SpacerScheme> Spacer<S> {
 }
 
 impl<S: SpacerScheme> Module for Spacer<S> {
+    type Data = ();
+
     fn default_padding(&self) -> DefaultPadding {
         if self.large {
             SegmentPadding::Large.into()
@@ -46,7 +48,11 @@ impl<S: SpacerScheme> Module for Spacer<S> {
         }
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) {}
+
+    fn sample(&self) {}
+
+    fn render(&self, _: (), powerline: &mut Powerline) {
         powerline.add_segment("", Style::simple(S::color_fg(), S::color_bg()));
     }
 }

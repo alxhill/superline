@@ -30,14 +30,22 @@ impl<S: ShellScheme> ShellName<S> {
 }
 
 impl<S: ShellScheme> Module for ShellName<S> {
+    /// The name of the shell drawing the prompt.
+    type Data = String;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Small.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        powerline.add_segment(
-            &self.name,
-            Style::simple(S::shellname_fg(), S::shellname_bg()),
-        );
+    fn fetch(&self) -> String {
+        self.name.clone()
+    }
+
+    fn sample(&self) -> String {
+        "zsh".into()
+    }
+
+    fn render(&self, name: String, powerline: &mut Powerline) {
+        powerline.add_segment(name, Style::simple(S::shellname_fg(), S::shellname_bg()));
     }
 }

@@ -173,26 +173,43 @@ impl Source for PrLookup {
 }
 
 impl<S: PrScheme> Module for Pr<S> {
+    /// The current branch's PR, `None` when there is none to show.
+    type Data = Option<PrInfo>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        let Some((branch, repo_root)) = current_branch_and_root() else {
-            return;
-        };
+    fn fetch(&self) -> Option<PrInfo> {
+        let (branch, repo_root) = current_branch_and_root()?;
         if SKIP_BRANCHES.contains(&branch.as_str()) {
-            return;
+            return None;
         }
 
         // Render whatever we have right now (possibly slightly stale); a
         // missing or stale lookup is refreshed for a later prompt. There is no
         // loading state: the segment simply appears once the result is in.
-        let Lookup::Ready(Some(pr)) = Cached::new(PrLookup { branch, repo_root }).load() else {
+        match Cached::new(PrLookup { branch, repo_root }).load() {
+            Lookup::Ready(pr) => pr,
+            _ => None,
+        }
+    }
+
+    fn sample(&self) -> Option<PrInfo> {
+        Some(PrInfo {
+            number: 123,
+            url: String::from("https://github.com/alxhill/superline/pull/123"),
+            state: PrState::Open,
+            checks: Some(CheckStatus::Success),
+        })
+    }
+
+    fn render(&self, pr: Option<PrInfo>, powerline: &mut Powerline) {
+        let Some(pr) = pr else {
             return;
         };
 
-        let label = join_non_empty([S::pr_icon(), format!("#{}", pr.number).as_str()]);
+        let label = pr_label::<S>(&pr);
         let (fg, bg) = pr.state.style::<S>();
 
         // The CI status, when enabled and meaningful, renders as a coloured
@@ -209,6 +226,10 @@ impl<S: PrScheme> Module for Pr<S> {
 
         powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
     }
+}
+
+fn pr_label<S: PrScheme>(pr: &PrInfo) -> String {
+    join_non_empty([S::pr_icon(), format!("#{}", pr.number).as_str()])
 }
 
 /// Resolves the current branch name and repository root by walking up to the
@@ -347,6 +368,31 @@ struct GhPr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::colors::{black, green};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            green()
+        }
+    }
+
+    impl PrScheme for TestTheme {}
+
+    #[test]
+    fn the_sample_is_an_open_pr_with_passing_checks() {
+        let pr = Pr::<TestTheme>::new(true).sample().unwrap();
+        assert_eq!(pr_label::<TestTheme>(&pr), "\u{ea64} #123");
+        assert!(pr.state.is_open());
+        assert!(matches!(pr.checks, Some(CheckStatus::Success)));
+        let _ = crate::terminal::SHELL.set(crate::terminal::Shell::Bare);
+        Pr::<TestTheme>::new(true).render(Some(pr), &mut Powerline::new());
+    }
 
     #[test]
     fn draft_flag_only_applies_while_the_pr_is_open() {

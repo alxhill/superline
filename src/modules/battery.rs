@@ -17,7 +17,6 @@ use super::{DefaultPadding, Module};
 const DISPLAY_THRESHOLD_PERCENT: f32 = 10.0;
 
 pub struct Battery<S> {
-    status: Option<BatteryStatus>,
     scheme: PhantomData<S>,
 }
 
@@ -68,19 +67,32 @@ impl<S: BatteryScheme> Default for Battery<S> {
 impl<S: BatteryScheme> Battery<S> {
     pub fn new() -> Self {
         Self {
-            status: battery_status().filter(should_display),
             scheme: PhantomData,
         }
     }
 }
 
 impl<S: BatteryScheme> Module for Battery<S> {
+    /// The aggregate battery status, when it is low enough to show.
+    type Data = Option<BatteryStatus>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        if let Some(status) = self.status {
+    fn fetch(&self) -> Option<BatteryStatus> {
+        battery_status().filter(should_display)
+    }
+
+    fn sample(&self) -> Option<BatteryStatus> {
+        Some(BatteryStatus {
+            percentage: 8.0,
+            state: State::Discharging,
+        })
+    }
+
+    fn render(&self, status: Option<BatteryStatus>, powerline: &mut Powerline) {
+        if let Some(status) = status {
             powerline.add_segment(
                 status.label(icon_for_state::<S>(status.state)),
                 Style::simple(S::battery_fg(), S::battery_bg()),
@@ -90,7 +102,7 @@ impl<S: BatteryScheme> Module for Battery<S> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct BatteryStatus {
+pub struct BatteryStatus {
     percentage: f32,
     state: State,
 }
@@ -317,6 +329,16 @@ mod tests {
             };
             assert_eq!(label(status), format!("{symbol} 5%"));
         }
+    }
+
+    #[test]
+    fn sample_is_shown_as_a_low_battery_warning() {
+        let status = Battery::<TestTheme>::new()
+            .sample()
+            .expect("the sample shows a battery");
+
+        assert!(should_display(&status));
+        assert_eq!(label(status), "\u{f0083} 8%");
     }
 
     #[test]

@@ -31,11 +31,17 @@ impl<S: ErrorMessageScheme> ErrorMessage<S> {
 }
 
 impl<S: ErrorMessageScheme> Module for ErrorMessage<S> {
+    type Data = ();
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) {}
+
+    fn sample(&self) {}
+
+    fn render(&self, _: (), powerline: &mut Powerline) {
         powerline.add_segment(
             &self.message,
             Style::simple(S::error_message_fg(), S::error_message_bg()),

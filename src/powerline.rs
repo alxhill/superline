@@ -9,9 +9,9 @@ use crate::config;
 use crate::config::{LineSegment, SegmentPadding, SeparatorStyle, TerminalRuntimeMetadata, Widget};
 use crate::debug;
 use crate::modules::{
-    Battery, Cargo, Cmd, Cwd, DataSource, DefaultPadding, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes,
-    LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName,
-    Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows, Username,
+    Battery, Cargo, Cmd, Cwd, DataSource, DefaultPadding, ErrorMessage, Git, Hostname, Java, Jobs,
+    Kubernetes, LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly,
+    ShellName, Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -900,11 +900,17 @@ mod tests {
     struct Declares(DefaultPadding);
 
     impl Module for Declares {
+        type Data = ();
+
         fn default_padding(&self) -> DefaultPadding {
             self.0
         }
 
-        fn append_segments(&mut self, powerline: &mut Powerline) {
+        fn fetch(&self) {}
+
+        fn sample(&self) {}
+
+        fn render(&self, _: (), powerline: &mut Powerline) {
             let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
             powerline.add_segment("one", style.clone());
             powerline.add_padded_segment("two", style.clone(), SegmentPadding::Right);

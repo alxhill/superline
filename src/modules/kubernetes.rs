@@ -119,22 +119,38 @@ struct ContextDetails {
 }
 
 impl<S: KubernetesScheme> Module for Kubernetes<S> {
+    /// The current context, if there is one to show.
+    type Data = Option<KubernetesContext>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) -> Option<KubernetesContext> {
         let paths = kubeconfig_paths();
         if paths.is_empty() {
-            return;
+            return None;
         }
 
         let Lookup::Ready(Some(context)) =
             Cached::new(KubernetesLookup { paths }).load_with_timeout(LOOKUP_TIMEOUT)
         else {
+            return None;
+        };
+        Some(context)
+    }
+
+    fn sample(&self) -> Option<KubernetesContext> {
+        Some(KubernetesContext {
+            name: "prod-cluster".into(),
+            namespace: Some("default".into()),
+        })
+    }
+
+    fn render(&self, context: Option<KubernetesContext>, powerline: &mut Powerline) {
+        let Some(context) = context else {
             return;
         };
-
         let label = format_context(S::kubernetes_icon(), &context);
         powerline.add_segment(label, Style::simple(S::kubernetes_fg(), S::kubernetes_bg()));
     }
@@ -346,5 +362,22 @@ contexts:
             ),
             "local (default)"
         );
+    }
+
+    #[test]
+    fn sample_shows_a_context_and_namespace() {
+        struct TestTheme;
+        impl DefaultColors for TestTheme {
+            fn default_bg() -> Color {
+                crate::colors::black()
+            }
+            fn default_fg() -> Color {
+                crate::colors::white()
+            }
+        }
+        impl KubernetesScheme for TestTheme {}
+
+        let context = Kubernetes::<TestTheme>::new().sample().unwrap();
+        assert_eq!(format_context("☸", &context), "☸ prod-cluster (default)");
     }
 }

@@ -137,12 +137,23 @@ impl<S: OsScheme> Os<S> {
 }
 
 impl<S: OsScheme> Module for Os<S> {
+    /// The operating system to show.
+    type Data = OsKind;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        let symbol = S::os_symbol(self.kind);
+    fn fetch(&self) -> OsKind {
+        self.kind
+    }
+
+    fn sample(&self) -> OsKind {
+        self.kind
+    }
+
+    fn render(&self, kind: OsKind, powerline: &mut Powerline) {
+        let symbol = S::os_symbol(kind);
         if !symbol.is_empty() {
             powerline.add_segment(symbol, Style::simple(S::os_fg(), S::os_bg()));
         }

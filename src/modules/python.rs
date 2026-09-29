@@ -189,7 +189,57 @@ fn interpreter_for(venv: &Path) -> PathBuf {
     }
 }
 
+/// What the python widget found in the environment.
+pub enum PythonData {
+    /// A virtual env is active.
+    Venv {
+        /// Whether the cwd has a `pyproject.toml`; `None` when the cwd is
+        /// unreadable.
+        pyproject: Option<bool>,
+        name: String,
+        /// Only looked up when the version is shown.
+        version: Lookup<String>,
+    },
+    /// No env is active, but the cwd pins a version or is a python project.
+    Project {
+        pyproject: bool,
+        /// Whether the version came from a mise config.
+        mise: bool,
+        /// The version as read, untrimmed.
+        version: Option<String>,
+    },
+    None,
+}
+
+fn pylogo<S: PythonScheme>(pyproject: Option<bool>) -> String {
+    match pyproject {
+        Some(true) => join_non_empty([S::python_icon(), S::python_pyproject_icon()]),
+        Some(false) => S::python_icon().to_string(),
+        None => "".into(),
+    }
+}
+
+fn venv_label(pylogo: &str, venv_name: &str, show_venv: bool) -> String {
+    let venv_name: &str = if show_venv { venv_name } else { "" };
+    join_non_empty([pylogo, venv_name])
+}
+
+fn project_label<S: PythonScheme>(pylogo: &str, mise: bool, py_ver: Option<&str>) -> String {
+    [
+        mise.then(|| S::mise_icon()),
+        Some(pylogo),
+        py_ver.map(str::trim),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|part| !part.is_empty())
+    .collect::<Vec<_>>()
+    .join(" ")
+}
+
 impl<S: PythonScheme> Module for Python<S> {
+    type Data = PythonData;
+
     fn default_padding(&self) -> DefaultPadding {
         DefaultPadding {
             padding: SegmentPadding::Large,
@@ -197,51 +247,43 @@ impl<S: PythonScheme> Module for Python<S> {
         }
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) -> PythonData {
         let venv = env::var("VIRTUAL_ENV")
             .or_else(|_| env::var("CONDA_ENV_PATH"))
             .or_else(|_| env::var("CONDA_DEFAULT_ENV"));
 
-        let pylogo = if let Ok(cwd) = env::current_dir() {
-            if cwd.join("pyproject.toml").exists() {
-                join_non_empty([S::python_icon(), S::python_pyproject_icon()])
-            } else {
-                S::python_icon().to_string()
-            }
-        } else {
-            "".into()
-        };
+        let cwd = env::current_dir();
+        let pyproject = cwd
+            .as_ref()
+            .ok()
+            .map(|cwd| cwd.join("pyproject.toml").exists());
 
         if let Ok(venv_path) = venv {
             // file_name is always some, because env variable is a valid directory path.
-            let venv_name = Path::new(&venv_path).file_name().unwrap().to_string_lossy();
+            let name = Path::new(&venv_path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
 
-            let venv_name: &str = if self.show_venv { &venv_name } else { "" };
-            let label = join_non_empty([pylogo.as_str(), venv_name]);
-            if !label.is_empty() {
-                powerline.add_padded_segment(
-                    label,
-                    Style::simple(S::pyenv_fg(), S::pyenv_bg()),
-                    VENV_PADDING,
-                );
-            }
-
-            if self.show_version {
+            let version = if self.show_version {
                 let venv_dir = Path::new(&venv_path);
-                let version = match version_from_env_files(venv_dir) {
-                    Some(version) => version,
+                match version_from_env_files(venv_dir) {
+                    Some(version) => Lookup::Ready(version),
                     None => {
                         let interpreter = interpreter_for(venv_dir);
-                        match Cached::new(PythonVersion { interpreter }).load() {
-                            Lookup::Ready(version) => version,
-                            Lookup::Loading => LOADING_MARKER.to_string(),
-                            Lookup::Unavailable => return,
-                        }
+                        Cached::new(PythonVersion { interpreter }).load()
                     }
-                };
-                powerline.add_segment(version, Style::simple(S::pyver_fg(), S::pyver_bg()));
+                }
+            } else {
+                Lookup::Unavailable
+            };
+            PythonData::Venv {
+                pyproject,
+                name,
+                version,
             }
-        } else if let Ok(cwd) = env::current_dir() {
+        } else if let Ok(cwd) = cwd {
             // A mise config wins over `.python-version`: it is what puts an
             // interpreter on the path, and repos often keep both.
             let mise_ver = mise::tool_version("python");
@@ -251,23 +293,68 @@ impl<S: PythonScheme> Module for Python<S> {
                     .ok()
             });
 
-            if py_ver.is_some() || cwd.join("pyproject.toml").exists() {
+            let pyproject = pyproject.unwrap_or(false);
+            if py_ver.is_some() || pyproject {
+                PythonData::Project {
+                    pyproject,
+                    mise: mise_ver.is_some(),
+                    version: py_ver,
+                }
+            } else {
+                PythonData::None
+            }
+        } else {
+            PythonData::None
+        }
+    }
+
+    fn sample(&self) -> PythonData {
+        PythonData::Venv {
+            pyproject: Some(true),
+            name: ".venv".to_string(),
+            version: Lookup::Ready("3.12.4".to_string()),
+        }
+    }
+
+    fn render(&self, data: PythonData, powerline: &mut Powerline) {
+        match data {
+            PythonData::Venv {
+                pyproject,
+                name,
+                version,
+            } => {
+                let label = venv_label(&pylogo::<S>(pyproject), &name, self.show_venv);
+                if !label.is_empty() {
+                    powerline.add_padded_segment(
+                        label,
+                        Style::simple(S::pyenv_fg(), S::pyenv_bg()),
+                        VENV_PADDING,
+                    );
+                }
+
+                if self.show_version {
+                    let version = match version {
+                        Lookup::Ready(version) => version,
+                        Lookup::Loading => LOADING_MARKER.to_string(),
+                        Lookup::Unavailable => return,
+                    };
+                    powerline.add_segment(version, Style::simple(S::pyver_fg(), S::pyver_bg()));
+                }
+            }
+            PythonData::Project {
+                pyproject,
+                mise,
+                version,
+            } => {
                 // One segment, unlike the venv path: without an env name there
                 // is nothing for the version to be set apart from.
-                let py_ver = py_ver.filter(|_| self.show_version);
-                let label = [
-                    mise_ver.map(|_| S::mise_icon()),
-                    Some(pylogo.as_str()),
-                    py_ver.as_deref().map(str::trim),
-                ]
-                .into_iter()
-                .flatten()
-                .filter(|part| !part.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
+                let py_ver = version.filter(|_| self.show_version);
+                let label =
+                    project_label::<S>(&pylogo::<S>(Some(pyproject)), mise, py_ver.as_deref());
 
                 powerline.add_segment(label, Style::simple(S::pyenv_fg(), S::pyenv_bg()));
             }
+            PythonData::None => {}
         }
     }
 }
@@ -275,6 +362,53 @@ impl<S: PythonScheme> Module for Python<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::colors::{black, white};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            white()
+        }
+    }
+
+    impl PythonScheme for TestTheme {}
+
+    #[test]
+    fn venv_label_joins_logo_and_name_unless_the_name_is_hidden() {
+        let logo = pylogo::<TestTheme>(Some(true));
+        assert_eq!(venv_label(&logo, ".venv", true), "\u{e73c} \u{f150e} .venv");
+        assert_eq!(venv_label(&logo, ".venv", false), "\u{e73c} \u{f150e}");
+        assert_eq!(venv_label("", ".venv", false), "");
+    }
+
+    #[test]
+    fn project_label_marks_mise_versions_and_trims_the_version() {
+        let logo = pylogo::<TestTheme>(Some(false));
+        assert_eq!(
+            project_label::<TestTheme>(&logo, false, Some("3.12.4\n")),
+            "\u{e73c} 3.12.4"
+        );
+        assert_eq!(
+            project_label::<TestTheme>(&logo, true, Some("3.13")),
+            format!("{} \u{e73c} 3.13", mise::DEFAULT_ICON)
+        );
+        assert_eq!(project_label::<TestTheme>(&logo, false, None), "\u{e73c}");
+    }
+
+    #[test]
+    fn sample_is_a_venv_with_a_version() {
+        let data = Python::<TestTheme>::default().sample();
+        assert!(matches!(
+            data,
+            PythonData::Venv { ref name, version: Lookup::Ready(ref v), .. }
+                if name == ".venv" && v == "3.12.4"
+        ));
+    }
 
     #[test]
     fn pyvenv_cfg_from_each_tool_yields_the_release_version() {

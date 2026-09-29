@@ -28,11 +28,17 @@ impl<S: DefaultColors> Text<S> {
 }
 
 impl<S: DefaultColors> Module for Text<S> {
+    type Data = ();
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) {}
+
+    fn sample(&self) {}
+
+    fn render(&self, _: (), powerline: &mut Powerline) {
         powerline.add_segment(
             escape_for_shell(&sanitize(&self.text), SHELL.get()),
             Style::simple(S::default_fg(), S::default_bg()),

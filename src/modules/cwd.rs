@@ -56,25 +56,6 @@ impl<S: CwdScheme> Cwd<S> {
     }
 }
 
-macro_rules! rainbow_segment {
-    ($powerline:ident, $iter_var:ident, $value:expr) => {
-        let r_col = S::path_bg_colors()[$iter_var % S::path_bg_colors().len()];
-        $powerline.add_segment($value, Style::simple(S::path_fg(), r_col));
-        $iter_var = $iter_var.wrapping_add(1);
-    };
-}
-
-/// Like `rainbow_segment!`, but an icon the theme set to `""` draws nothing
-/// and leaves the next segment its colour.
-macro_rules! rainbow_icon {
-    ($powerline:ident, $iter_var:ident, $icon:expr) => {
-        let icon = $icon;
-        if !icon.is_empty() {
-            rainbow_segment!($powerline, $iter_var, icon);
-        }
-    };
-}
-
 /// Resolve the directory the prompt should display.
 ///
 /// When `resolve_symlinks` is set we always use the real (symlink-resolved)
@@ -98,12 +79,25 @@ fn resolve_cwd(
     pwd.map(PathBuf::from).unwrap_or_else(current_dir)
 }
 
+/// The directory the prompt shows, split at the home directory.
+pub enum CwdPath {
+    /// The filesystem root.
+    Root,
+    /// Under the home directory: the rest of the path after it, starting with
+    /// a separator (empty at home itself).
+    Home(String),
+    /// Anywhere else: the whole path.
+    Other(String),
+}
+
 impl<S: CwdScheme> Module for Cwd<S> {
+    type Data = CwdPath;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Left.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) -> CwdPath {
         let current_dir = resolve_cwd(
             self.resolve_symlinks,
             cfg!(windows),
@@ -112,24 +106,58 @@ impl<S: CwdScheme> Module for Cwd<S> {
         );
 
         let current_dir = current_dir.to_string_lossy();
-        let mut cwd: &str = &current_dir;
-
-        let mut current_bg = 0usize;
+        let cwd: &str = &current_dir;
 
         // Sitting at the filesystem root ("/" on Unix) - just show the glyph.
-        #[allow(unused_assignments)]
         if cwd == MAIN_SEPARATOR_STR {
-            rainbow_icon!(powerline, current_bg, S::cwd_root_icon());
-            return;
+            return CwdPath::Root;
         }
 
         if let Some(home) = platform::home_dir() {
             let home = home.to_string_lossy();
             if cwd.starts_with(home.as_ref()) {
-                rainbow_icon!(powerline, current_bg, S::cwd_home_icon());
-                cwd = &cwd[home.len()..]
+                return CwdPath::Home(cwd[home.len()..].to_owned());
             }
         }
+
+        CwdPath::Other(cwd.to_owned())
+    }
+
+    fn sample(&self) -> CwdPath {
+        CwdPath::Home(format!("{MAIN_SEPARATOR}dev{MAIN_SEPARATOR}superline"))
+    }
+
+    fn render(&self, path: CwdPath, powerline: &mut Powerline) {
+        let colors = S::path_bg_colors();
+        for (index, label) in self.labels(&path).into_iter().enumerate() {
+            let bg = colors[index % colors.len()];
+            powerline.add_segment(label, Style::simple(S::path_fg(), bg));
+        }
+    }
+}
+
+impl<S: CwdScheme> Cwd<S> {
+    /// The segments `path` draws as, one rainbow colour each. An icon the
+    /// theme set to `""` draws nothing and leaves the next segment its colour.
+    fn labels<'a>(&self, path: &'a CwdPath) -> Vec<&'a str> {
+        let mut labels = Vec::new();
+        let icon = |icon: &'static str, labels: &mut Vec<&'a str>| {
+            if !icon.is_empty() {
+                labels.push(icon);
+            }
+        };
+
+        let cwd = match path {
+            CwdPath::Root => {
+                icon(S::cwd_root_icon(), &mut labels);
+                return labels;
+            }
+            CwdPath::Home(rest) => {
+                icon(S::cwd_home_icon(), &mut labels);
+                rest.as_str()
+            }
+            CwdPath::Other(cwd) => cwd.as_str(),
+        };
 
         let depth = cwd.matches(MAIN_SEPARATOR).count();
 
@@ -140,26 +168,99 @@ impl<S: CwdScheme> Module for Cwd<S> {
             let start = cwd.split(MAIN_SEPARATOR).skip(1).take(left);
             let end = cwd.split(MAIN_SEPARATOR).skip(depth - right + 1);
 
-            for val in start {
-                rainbow_segment!(powerline, current_bg, val);
-            }
-
-            rainbow_icon!(powerline, current_bg, S::cwd_ellipsis_icon());
-
-            for val in end {
-                rainbow_segment!(powerline, current_bg, val);
-            }
+            labels.extend(start);
+            icon(S::cwd_ellipsis_icon(), &mut labels);
+            labels.extend(end);
         } else {
-            for val in cwd.split(MAIN_SEPARATOR).skip(1) {
-                rainbow_segment!(powerline, current_bg, val);
-            }
-        };
+            labels.extend(cwd.split(MAIN_SEPARATOR).skip(1));
+        }
+        labels
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::colors::{black, blue, green};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            green()
+        }
+    }
+
+    impl CwdScheme for TestTheme {
+        fn path_bg_colors() -> Vec<Color> {
+            vec![black(), blue()]
+        }
+    }
+
+    struct NoIconTheme;
+
+    impl DefaultColors for NoIconTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            green()
+        }
+    }
+
+    impl CwdScheme for NoIconTheme {
+        fn path_bg_colors() -> Vec<Color> {
+            vec![black()]
+        }
+
+        fn cwd_home_icon() -> &'static str {
+            ""
+        }
+
+        fn cwd_ellipsis_icon() -> &'static str {
+            ""
+        }
+    }
+
+    fn path(parts: &[&str]) -> String {
+        parts
+            .iter()
+            .map(|part| format!("{MAIN_SEPARATOR}{part}"))
+            .collect()
+    }
+
+    #[test]
+    fn the_sample_is_a_project_under_home() {
+        let cwd = Cwd::<TestTheme>::new(50, 4, false);
+        assert_eq!(cwd.labels(&cwd.sample()), ["~", "dev", "superline"]);
+        let _ = crate::terminal::SHELL.set(crate::terminal::Shell::Bare);
+        cwd.render(cwd.sample(), &mut Powerline::new());
+    }
+
+    #[test]
+    fn the_root_shows_only_its_icon() {
+        let cwd = Cwd::<TestTheme>::new(50, 4, false);
+        assert_eq!(cwd.labels(&CwdPath::Root), ["~"]);
+    }
+
+    #[test]
+    fn a_long_path_elides_its_middle() {
+        let cwd = Cwd::<TestTheme>::new(10, 2, false);
+        let long = CwdPath::Other(path(&["usr", "local", "share", "doc"]));
+        assert_eq!(cwd.labels(&long), ["usr", "...", "doc"]);
+    }
+
+    #[test]
+    fn empty_icons_draw_nothing() {
+        let cwd = Cwd::<NoIconTheme>::new(10, 2, false);
+        let long = CwdPath::Home(path(&["dev", "a", "b", "superline"]));
+        assert_eq!(cwd.labels(&long), ["dev", "superline"]);
+    }
 
     fn never_called() -> PathBuf {
         panic!("current_dir should not have been called");

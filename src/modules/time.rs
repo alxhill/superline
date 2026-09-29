@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use chrono::Local;
+use chrono::{DateTime, Local, NaiveDate};
 
 use crate::colors::Color;
 use crate::config::SegmentPadding;
@@ -46,12 +46,41 @@ impl<S: TimeScheme> Time<S> {
 }
 
 impl<S: TimeScheme> Module for Time<S> {
+    /// The time to show.
+    type Data = DateTime<Local>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        let now = Local::now().format(&self.time_format).to_string();
+    fn fetch(&self) -> DateTime<Local> {
+        Local::now()
+    }
+
+    fn sample(&self) -> DateTime<Local> {
+        sample_time()
+    }
+
+    fn render(&self, now: DateTime<Local>, powerline: &mut Powerline) {
+        let now = now.format(&self.time_format).to_string();
         powerline.add_segment(now, Style::simple(S::time_fg(), S::time_bg()));
+    }
+}
+
+/// 09:41:00 on a fixed date, in the local time zone.
+fn sample_time() -> DateTime<Local> {
+    NaiveDate::from_ymd_opt(2026, 1, 1)
+        .and_then(|date| date.and_hms_opt(9, 41, 0))
+        .and_then(|time| time.and_local_timezone(Local).earliest())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sample_is_nine_forty_one() {
+        assert_eq!(sample_time().format("%H:%M:%S").to_string(), "09:41:00");
     }
 }

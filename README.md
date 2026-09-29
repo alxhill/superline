@@ -116,7 +116,8 @@ Windows captures for every pull request.
 ## Configuration
 
 Run `superline config` to set up the prompt in the terminal. The editor lists every row's widgets, shows a live
-preview of the prompt as you change them, and saves back to `$HOME/.config/superline/config.json`, which superline
+preview of the prompt as you change them, drawing each widget with sample data (a dirty git branch, running jobs, a
+failed command) so it shows up wherever you run the editor, and saves back to `$HOME/.config/superline/config.json`, which superline
 writes with the default config on first run, along with the `rainbow` theme it names as `rainbow.json` next to it.
 Saved changes take effect on the next prompt - no reload needed.
 
@@ -135,8 +136,8 @@ The keys:
   picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
   property. Each text colour is followed by its `bold`, `italic` and `underline` switches, which `Enter` or `space`
-  turns on and off. The switch under the cursor shows a sample of its text, since the preview only draws text the
-  prompt shows in the current directory (git's unstaged count needs unstaged changes). `c` (or `n`) duplicates the
+  turns on and off. The switch under the cursor shows a sample of its text, since the preview's sample data
+  leaves some text out (git's worktree count, for one). `c` (or `n`) duplicates the
   theme into a new theme file next to the config and points the config at it. `1` returns to the layout.
 - `p` on the Theme page, or `Enter` on `theme` under Settings, opens the theme picker: the bundled themes and the theme
   files next to the config, each with a strip of its colours. The preview draws your prompt in whichever theme is

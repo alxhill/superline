@@ -41,12 +41,23 @@ impl<S: LocalIpScheme> LocalIp<S> {
 }
 
 impl<S: LocalIpScheme> Module for LocalIp<S> {
+    /// The primary IPv4 address, if the host has one.
+    type Data = Option<Ipv4Addr>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        if let Some(ip) = current_local_ipv4() {
+    fn fetch(&self) -> Option<Ipv4Addr> {
+        current_local_ipv4()
+    }
+
+    fn sample(&self) -> Option<Ipv4Addr> {
+        Some(Ipv4Addr::new(192, 168, 1, 20))
+    }
+
+    fn render(&self, ip: Option<Ipv4Addr>, powerline: &mut Powerline) {
+        if let Some(ip) = ip {
             powerline.add_segment(ip, Style::simple(S::local_ip_fg(), S::local_ip_bg()));
         }
     }

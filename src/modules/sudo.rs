@@ -98,16 +98,32 @@ impl Source for SudoLookup {
 }
 
 impl<S: SudoScheme> Module for Sudo<S> {
+    /// Whether sudo credentials are cached.
+    type Data = bool;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        let symbol = S::sudo_symbol();
-        if !symbol.is_empty() && matches!(Cached::new(SudoLookup).load(), Lookup::Ready(true)) {
+    fn fetch(&self) -> bool {
+        !S::sudo_symbol().is_empty()
+            && matches!(Cached::new(SudoLookup).load(), Lookup::Ready(true))
+    }
+
+    fn sample(&self) -> bool {
+        true
+    }
+
+    fn render(&self, cached: bool, powerline: &mut Powerline) {
+        if let Some(symbol) = display_text::<S>(cached) {
             powerline.add_segment(symbol, Style::simple(S::sudo_fg(), S::sudo_bg()));
         }
     }
+}
+
+fn display_text<S: SudoScheme>(cached: bool) -> Option<&'static str> {
+    let symbol = S::sudo_symbol();
+    (cached && !symbol.is_empty()).then_some(symbol)
 }
 
 #[cfg(test)]
@@ -133,18 +149,43 @@ mod tests {
         }
     }
 
-    fn display_text(cached: bool) -> Option<&'static str> {
-        cached.then_some(TestTheme::sudo_symbol())
+    struct NoSymbolTheme;
+
+    impl DefaultColors for NoSymbolTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            white()
+        }
+    }
+
+    impl SudoScheme for NoSymbolTheme {
+        fn sudo_symbol() -> &'static str {
+            ""
+        }
     }
 
     #[test]
     fn cached_credentials_show_the_marker() {
-        assert_eq!(display_text(true), Some("⚿"));
+        assert_eq!(display_text::<TestTheme>(true), Some("⚿"));
     }
 
     #[test]
     fn missing_credentials_hide_the_marker() {
-        assert_eq!(display_text(false), None);
+        assert_eq!(display_text::<TestTheme>(false), None);
+    }
+
+    #[test]
+    fn an_empty_symbol_hides_the_marker() {
+        assert_eq!(display_text::<NoSymbolTheme>(true), None);
+    }
+
+    #[test]
+    fn sample_shows_the_marker() {
+        let sudo = Sudo::<TestTheme>::new();
+        assert_eq!(display_text::<TestTheme>(sudo.sample()), Some("⚿"));
     }
 
     #[test]

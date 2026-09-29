@@ -22,7 +22,7 @@ const SWAP_DISPLAY_THRESHOLD_PERCENT: u8 = 1;
 
 /// A snapshot of physical and swap memory, in bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MemoryStats {
+pub struct MemoryStats {
     total: u64,
     available: u64,
     swap_total: u64,
@@ -78,12 +78,32 @@ impl<S: MemoryUsageScheme> MemoryUsage<S> {
 }
 
 impl<S: MemoryUsageScheme> Module for MemoryUsage<S> {
+    /// The system's memory, if the operating system reports it.
+    type Data = Option<MemoryStats>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        let Some(stats) = system_memory() else {
+    fn fetch(&self) -> Option<MemoryStats> {
+        system_memory()
+    }
+
+    /// 16 GiB of RAM with the larger of 72% and the threshold in use, plus a
+    /// little swap.
+    fn sample(&self) -> Option<MemoryStats> {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        let used_percent = u64::from(self.threshold.unwrap_or(0).clamp(72, 100));
+        Some(MemoryStats {
+            total: 16 * GIB,
+            available: 16 * GIB * (100 - used_percent) / 100,
+            swap_total: 4 * GIB,
+            swap_available: 4 * GIB * 95 / 100,
+        })
+    }
+
+    fn render(&self, stats: Option<MemoryStats>, powerline: &mut Powerline) {
+        let Some(stats) = stats else {
             return;
         };
 
@@ -308,6 +328,20 @@ mod tests {
 
     const ICON: &str = "\u{f035b}";
 
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            crate::colors::black()
+        }
+
+        fn default_fg() -> Color {
+            crate::colors::white()
+        }
+    }
+
+    impl MemoryUsageScheme for TestTheme {}
+
     fn stats(ram_used: u64, ram_total: u64, swap_used: u64, swap_total: u64) -> MemoryStats {
         MemoryStats {
             total: ram_total,
@@ -357,6 +391,21 @@ mod tests {
         assert_eq!(
             format_memory("", stats(80, 100, 1, 100), None),
             Some("80% | swap 1%".into())
+        );
+    }
+
+    #[test]
+    fn sample_is_shown_whatever_the_threshold() {
+        for threshold in [None, Some(50), Some(90), Some(100)] {
+            let stats = MemoryUsage::<TestTheme>::new(threshold)
+                .sample()
+                .expect("the sample has memory stats");
+            assert!(format_memory(ICON, stats, threshold).is_some());
+        }
+        let stats = MemoryUsage::<TestTheme>::new(None).sample().unwrap();
+        assert_eq!(
+            format_memory(ICON, stats, None),
+            Some("\u{f035b} 72% | swap 5%".into())
         );
     }
 

@@ -52,30 +52,64 @@ impl<S: JavaScheme> Java<S> {
             scheme: PhantomData,
         }
     }
+
+    fn label(&self, java: &JavaVersion) -> String {
+        java_label(
+            if java.from_mise { S::mise_icon() } else { "" },
+            S::icon(),
+            self.show_version.then_some(java.version.as_str()),
+            self.show_jdk
+                .then(|| distro_name(&java.distribution))
+                .as_deref(),
+        )
+    }
+}
+
+/// The JDK in effect for the current directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaVersion {
+    /// The major version, e.g. `21`.
+    version: String,
+    /// The distribution as its version manager names it, e.g. `tem`.
+    distribution: String,
+    /// Whether the version came from a mise config rather than `.sdkmanrc`.
+    from_mise: bool,
 }
 
 impl<S: JavaScheme> Module for Java<S> {
+    /// The JDK for the current directory, if a version manager pins one.
+    type Data = Option<JavaVersion>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
+    fn fetch(&self) -> Option<JavaVersion> {
         // mise wins over sdkman: when a mise config declares java it is the tool
         // actually putting a JDK on the path, even in a repo that also keeps a
         // `.sdkmanrc` around.
-        let java = mise::tool_version("java")
+        mise::tool_version("java")
             .and_then(mise_java)
-            .map(|java| (java, S::mise_icon()))
-            .or_else(|| sdkman_java().map(|java| (java, "")));
+            .map(|java| (java, true))
+            .or_else(|| sdkman_java().map(|java| (java, false)))
+            .map(|((version, distribution), from_mise)| JavaVersion {
+                version,
+                distribution,
+                from_mise,
+            })
+    }
 
-        if let Some(((version, distribution), source_icon)) = java {
-            let label = java_label(
-                source_icon,
-                S::icon(),
-                self.show_version.then_some(version.as_str()),
-                self.show_jdk.then(|| distro_name(&distribution)).as_deref(),
-            );
+    fn sample(&self) -> Option<JavaVersion> {
+        Some(JavaVersion {
+            version: "21".to_string(),
+            distribution: "tem".to_string(),
+            from_mise: false,
+        })
+    }
 
+    fn render(&self, java: Option<JavaVersion>, powerline: &mut Powerline) {
+        if let Some(java) = java {
+            let label = self.label(&java);
             if !label.is_empty() {
                 powerline.add_segment(label, Style::simple(S::java_fg(), S::java_bg()));
             }
@@ -163,6 +197,28 @@ fn distro_name(distribution: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::colors::{black, white};
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            black()
+        }
+
+        fn default_fg() -> Color {
+            white()
+        }
+    }
+
+    impl JavaScheme for TestTheme {}
+
+    #[test]
+    fn sample_names_the_version_and_distribution() {
+        let java = Java::<TestTheme>::default();
+        let sample = java.sample().expect("the sample has a JDK");
+        assert_eq!(java.label(&sample), "\u{f0176} 21 Temurin");
+    }
 
     #[test]
     fn splits_mise_versions_into_version_and_distribution() {

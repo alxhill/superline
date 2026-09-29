@@ -735,22 +735,24 @@ impl Source for GitStatus {
     }
 }
 
+/// What the git widget draws: the repository's status lookup, and whether
+/// the prompt sits in a linked worktree, which swaps the branch icon.
+pub struct GitData {
+    linked_worktree: bool,
+    stats: Lookup<GitStats>,
+}
+
 impl<S: GitScheme> Module for Git<S> {
+    /// `None` outside a git repository.
+    type Data = Option<GitData>;
+
     fn default_padding(&self) -> DefaultPadding {
         SegmentPadding::Large.into()
     }
 
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        let (git_dir, is_worktree) = match find_git_dir() {
-            Some(result) => result,
-            _ => return,
-        };
+    fn fetch(&self) -> Option<GitData> {
+        let (git_dir, is_worktree) = find_git_dir()?;
 
-        let icon = if is_worktree {
-            S::git_linked_worktree_icon()
-        } else {
-            S::git_branch_icon()
-        };
         let source = GitStatus {
             git_dir,
             backend: self.backend,
@@ -759,8 +761,8 @@ impl<S: GitScheme> Module for Git<S> {
         // The walk itself happens off this thread (and sometimes in a detached
         // child), too late to report from. Resolving the choice here instead
         // costs an index-header read and a `PATH` scan, which is why it is
-        // only done when a report is actually going to be printed. `fetch`
-        // asks the same function with the same inputs.
+        // only done when a report is actually going to be printed.
+        // `GitStatus::fetch` asks the same function with the same inputs.
         if debug::enabled() {
             debug::note(
                 "backend",
@@ -768,7 +770,35 @@ impl<S: GitScheme> Module for Git<S> {
             );
         }
 
-        let stats = match Cached::new(source).load_with_timeout(self.status_timeout) {
+        Some(GitData {
+            linked_worktree: is_worktree,
+            stats: Cached::new(source).load_with_timeout(self.status_timeout),
+        })
+    }
+
+    fn sample(&self) -> Option<GitData> {
+        Some(GitData {
+            linked_worktree: false,
+            stats: Lookup::Ready(sample_stats()),
+        })
+    }
+
+    fn render(&self, data: Option<GitData>, powerline: &mut Powerline) {
+        let Some(GitData {
+            linked_worktree,
+            stats,
+        }) = data
+        else {
+            return;
+        };
+
+        let icon = if linked_worktree {
+            S::git_linked_worktree_icon()
+        } else {
+            S::git_branch_icon()
+        };
+
+        let stats = match stats {
             Lookup::Ready(stats) => stats,
             Lookup::Loading => {
                 powerline.add_segment(
@@ -849,6 +879,23 @@ impl<S: GitScheme> Module for Git<S> {
                 None => powerline.add_segment(remote, style),
             }
         }
+    }
+}
+
+/// `main` with a couple of changes, one commit ahead of its GitHub remote.
+fn sample_stats() -> GitStats {
+    GitStats {
+        untracked: 0,
+        conflicted: 0,
+        non_staged: 2,
+        ahead: 1,
+        behind: 0,
+        staged: 1,
+        remote: true,
+        remote_url: Some(String::from("https://github.com/alxhill/superline")),
+        branch_name: String::from("main"),
+        worktrees: 0,
+        worktree_index: None,
     }
 }
 
@@ -1444,6 +1491,37 @@ mod tests {
         assert_eq!(worktree_label("\u{f1897}", 15, Some(3)), "\u{f1897} 3/15");
         assert_eq!(worktree_label("", 2, None), "2");
         assert_eq!(worktree_label("", 2, Some(1)), "1/2");
+    }
+
+    struct TestTheme;
+
+    impl crate::themes::DefaultColors for TestTheme {
+        fn default_bg() -> crate::colors::Color {
+            crate::colors::black()
+        }
+
+        fn default_fg() -> crate::colors::Color {
+            crate::colors::green()
+        }
+    }
+
+    impl super::GitScheme for TestTheme {}
+
+    #[test]
+    fn the_sample_is_a_dirty_main_ahead_of_its_remote() {
+        use crate::cache::Lookup;
+        use crate::modules::Module;
+
+        let git = super::Git::<TestTheme>::new();
+        let data = git.sample().unwrap();
+        let Lookup::Ready(stats) = &data.stats else {
+            panic!("the sample should be loaded");
+        };
+        assert!(stats.is_dirty());
+        assert_eq!((stats.branch_name.as_str(), stats.ahead), ("main", 1));
+
+        let _ = crate::terminal::SHELL.set(crate::terminal::Shell::Bare);
+        git.render(Some(data), &mut crate::Powerline::new());
     }
 
     #[test]
