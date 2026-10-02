@@ -94,8 +94,9 @@
       ["status_success_fg", "color", "CI dot when checks pass.", "defaults.fg"],
       ["status_failure_fg", "color", "CI dot when checks fail.", "defaults.fg"],
       ["status_pending_fg", "color", "CI dot while checks run.", "defaults.fg"],
-      ["diff_added_fg", "color", "Lines added, shown with diff.", "defaults.fg"],
-      ["diff_removed_fg", "color", "Lines deleted, shown with diff.", "defaults.fg"],
+      ["diff_added_fg", "color", "Lines added, shown with diff.", "\"green\""],
+      ["diff_removed_fg", "color", "Lines deleted, shown with diff.", "\"red\""],
+      ["diff_bg", "color", "Background of the diff segment.", "defaults.bg"],
       ["icon", "string", "Icon before the PR number.", "U+EA64"],
       ["status_icon", "string", "The CI dot.", "\"●\""]
     ]

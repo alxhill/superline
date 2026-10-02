@@ -375,25 +375,29 @@ impl Powerline {
         self.push_segment(seg, style, default, None);
     }
 
-    /// Adds a segment whose text is an OSC 8 terminal hyperlink, followed by
-    /// `markers`: coloured pieces (e.g. the PR status dot or diff counts),
-    /// each after a space, that share this segment's background instead of
-    /// getting one of their own. The OSC and colour escapes are invisible, so
-    /// the visible width is computed from `label` and the markers alone to
-    /// keep column accounting (and right-prompt padding) correct.
+    /// Adds a segment whose text is an OSC 8 terminal hyperlink, optionally
+    /// followed by a coloured marker glyph (e.g. the PR status dot) that shares
+    /// this segment's background instead of getting one of its own. The OSC and
+    /// colour escapes are invisible, so the visible width is computed from
+    /// `label` and the marker glyph alone to keep column accounting (and
+    /// right-prompt padding) correct.
     pub fn add_hyperlink_segment(
         &mut self,
         label: &str,
         url: &str,
         style: Style,
-        markers: &[(&str, Color)],
+        marker: Option<(&str, Color)>,
     ) {
         let mut visible_width = label.width();
-        let mut seg = Hyperlink { url, label }.to_string();
-        for (text, color) in markers {
-            visible_width += 1 + text.width();
-            let _ = write!(seg, " {}", tinted(text, *color, &style));
-        }
+        let link = Hyperlink { url, label }.to_string();
+        let seg = match marker {
+            Some((glyph, color)) => {
+                // separating space + the glyph itself
+                visible_width += 1 + glyph.width();
+                format!("{} {}", link, tinted(glyph, color, &style))
+            }
+            None => link,
+        };
         self.push_segment(seg, style, self.module_padding, Some(visible_width));
     }
 
@@ -977,7 +981,7 @@ mod tests {
             let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
             powerline.add_segment("one", style.clone());
             powerline.add_padded_segment("two", style.clone(), SegmentPadding::Right);
-            powerline.add_hyperlink_segment("#1", "https://example.com/1", style, &[]);
+            powerline.add_hyperlink_segment("#1", "https://example.com/1", style, None);
         }
     }
 
@@ -1043,7 +1047,7 @@ mod tests {
         let mut powerline = flush_powerline();
         powerline.add_segment("one", style.clone());
         powerline.add_short_segment("two", style.clone());
-        powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, &[]);
+        powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, None);
         assert_eq!(visible(&powerline.left_buffer), " one two #12 ");
         assert_eq!(powerline.left_columns, 5 + 3 + 5);
     }
@@ -1115,7 +1119,7 @@ mod tests {
     #[test]
     fn hyperlink_width_includes_the_widget_padding() {
         let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
-        let marker = &[("●", Color::from_u8(2))];
+        let marker = Some(("●", Color::from_u8(2)));
         let cases = PADDINGS
             .map(|(padding, before, after)| (Some(padding), before, after))
             .into_iter()
@@ -1268,7 +1272,7 @@ mod tests {
             "BB",
             "https://example.com",
             bold_style(),
-            &[("m", Color(2).with_attrs(ITALIC))],
+            Some(("m", Color(2).with_attrs(ITALIC))),
         );
         powerline.add_segment("a", Style::simple(Color(15), Color(31)));
         powerline.close_left_buffer();
@@ -1311,7 +1315,7 @@ mod tests {
             "#1",
             "https://example.com",
             style.clone(),
-            &[("m", Color(2))],
+            Some(("m", Color(2))),
         );
         powerline.add_segment("a", style.clone());
         powerline.close_left_buffer();

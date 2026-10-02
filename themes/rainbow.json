@@ -43,7 +43,8 @@
       "status_failure_fg": "warning_red",
       "status_pending_fg": "dark_yellow",
       "diff_added_fg": "light_green",
-      "diff_removed_fg": "warning_red"
+      "diff_removed_fg": "light_red",
+      "diff_bg": 236
     },
     "python": {
       "env_fg": "dark_grey",

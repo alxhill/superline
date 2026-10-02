@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::claude_code::PullRequest;
-use crate::colors::Color;
+use crate::colors::{self, Color};
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
@@ -32,6 +32,8 @@ pub struct Pr<S> {
 pub trait PrScheme: DefaultColors {
     const PR_ICON: &'static str = "\u{ea64}"; // nf-cod-git_pull_request
     const PR_STATUS_ICON: &'static str = "\u{25cf}"; // ● black circle
+    const PR_DIFF_ADDED_FG: Color = colors::green();
+    const PR_DIFF_REMOVED_FG: Color = colors::red();
 
     fn pr_draft_fg() -> Color {
         Self::default_fg()
@@ -75,10 +77,13 @@ pub trait PrScheme: DefaultColors {
     }
 
     fn pr_diff_added_fg() -> Color {
-        Self::default_fg()
+        Self::PR_DIFF_ADDED_FG
     }
     fn pr_diff_removed_fg() -> Color {
-        Self::default_fg()
+        Self::PR_DIFF_REMOVED_FG
+    }
+    fn pr_diff_bg() -> Color {
+        Self::default_bg()
     }
 }
 
@@ -256,19 +261,16 @@ impl<S: PrScheme> Module for Pr<S> {
             .flatten()
             .filter(|(icon, _)| !icon.is_empty());
 
-        let mut markers: Vec<(&str, Color)> = marker.into_iter().collect();
-        let diff = pr.diff.filter(|_| self.show_diff).map(|diff| {
-            (
-                format!("+{}", diff.additions),
-                format!("-{}", diff.deletions),
-            )
-        });
-        if let Some((added, removed)) = &diff {
-            markers.push((added, S::pr_diff_added_fg()));
-            markers.push((removed, S::pr_diff_removed_fg()));
-        }
+        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
 
-        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), &markers);
+        if let Some(diff) = pr.diff.filter(|_| self.show_diff) {
+            powerline.add_two_tone_segment(
+                &format!("+{}", diff.additions),
+                &format!("-{}", diff.deletions),
+                S::pr_diff_removed_fg(),
+                Style::simple(S::pr_diff_added_fg(), S::pr_diff_bg()),
+            );
+        }
     }
 }
 

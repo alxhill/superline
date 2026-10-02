@@ -35,6 +35,7 @@
       "status_pending_fg": 214,
       "diff_added_fg": 142,
       "diff_removed_fg": 167,
+      "diff_bg": 237,
       "draft_italic": true,
       "open_bold": true
     },
