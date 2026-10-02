@@ -301,14 +301,21 @@ struct ShowArgs {
     /// Number of background jobs reported by the shell.
     #[arg(long, default_value_t = 0)]
     jobs: usize,
-    #[arg(long)]
+    #[arg(long, value_parser = absolute_path)]
     config: Option<PathBuf>,
+}
+
+/// A config path made absolute against the directory superline started in,
+/// so its theme resolves next to it even after `claude-code` changes into the
+/// session's directory.
+fn absolute_path(path: &str) -> io::Result<PathBuf> {
+    std::path::absolute(path)
 }
 
 #[derive(Debug, Args)]
 struct ConfigArgs {
     /// Edit this file instead of `~/.config/superline/config.json`.
-    #[arg(long)]
+    #[arg(long, value_parser = absolute_path)]
     config: Option<PathBuf>,
     /// Edit the Claude Code status line layout,
     /// `~/.config/superline/claude-code.json`.
@@ -319,7 +326,7 @@ struct ConfigArgs {
 #[derive(Debug, Args)]
 struct ClaudeCodeArgs {
     /// Use this layout instead of `~/.config/superline/claude-code.json`.
-    #[arg(long)]
+    #[arg(long, value_parser = absolute_path)]
     config: Option<PathBuf>,
     /// Width to right-align the right side to, instead of `$COLUMNS` less
     /// `--margin`.

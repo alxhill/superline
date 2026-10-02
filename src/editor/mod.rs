@@ -1483,8 +1483,8 @@ fn truncate_start(text: &str, width: usize) -> String {
     format!("…{kept}")
 }
 
-/// The bundled themes (choosing one that isn't installed yet installs it),
-/// then the other theme files next to the config, by the name a config uses.
+/// The bundled themes, then the other theme files next to the config, by the
+/// name a config uses.
 fn theme_choices(config_path: &Path) -> Vec<String> {
     let bundled = crate::themes::BUNDLED_THEMES.iter().map(|(file, _)| *file);
     let mut files: Vec<String> = Vec::new();

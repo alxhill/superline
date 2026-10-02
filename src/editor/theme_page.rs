@@ -20,7 +20,7 @@ use super::theme::{
 };
 use super::{glyphs, list_editor, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
-use crate::themes::{bundled_theme, install_theme, theme_path};
+use crate::themes::{bundled_theme, theme_path};
 
 /// Rows PageUp/PageDown move in the icon browser.
 const ICON_PAGE: usize = 10;
@@ -113,15 +113,16 @@ impl App {
         }
     }
 
-    /// Reads a theme file, first installing a bundled theme's file that the
-    /// config directory is missing.
-    fn read_theme(&mut self, path: &Path) -> Slot {
-        if let Some(bundled) = bundled_theme(self.config_dir(), path) {
-            if let Err(error) = install_theme(path, bundled) {
-                self.set_status(format!("could not write {}: {error}", path.display()), true);
+    /// Reads a theme file, or the bundled theme of that name when its file is
+    /// not in the config directory. A bundled theme gets a file only once it
+    /// is edited and saved.
+    fn read_theme(&self, path: &Path) -> Slot {
+        match (load_slot(path), bundled_theme(self.config_dir(), path)) {
+            (Slot::Missing, Some(bundled)) => {
+                Slot::Loaded(ThemeDoc::load(bundled).expect("bundled themes are valid"))
             }
+            (slot, _) => slot,
         }
-        load_slot(path)
     }
 
     fn slot(&self) -> Option<&Slot> {
@@ -371,7 +372,7 @@ impl App {
                 return;
             }
             _ => {
-                let dir = self.path.parent().unwrap_or(Path::new("."));
+                let dir = self.config_dir();
                 (1..)
                     .map(|n| match n {
                         1 => "theme.json".to_string(),
@@ -1130,16 +1131,13 @@ mod tests {
     }
 
     #[test]
-    fn a_bundled_theme_is_installed_and_opens_as_a_normal_file() {
+    fn a_bundled_theme_gets_a_file_only_once_edited_and_saved() {
         let (mut app, dir) = app(
             "install",
             json!({ "theme": "rainbow", "rows": [{ "left": ["cmd"] }] }),
             &[],
         );
-        assert_eq!(
-            read_json(&dir.join("rainbow.json")),
-            bundled("rainbow.json")
-        );
+        assert!(!dir.join("rainbow.json").exists());
         assert_eq!(
             app.theme_doc().map(ThemeDoc::root),
             Some(&bundled("rainbow.json"))
@@ -1148,6 +1146,8 @@ mod tests {
         let shown = screen(&mut app);
         assert!(shown.contains(" rainbow "), "{shown}");
         assert!(!shown.contains("built in"), "{shown}");
+        app.save();
+        assert!(!dir.join("rainbow.json").exists());
 
         // Step the first colour of the first module and save.
         press(&mut app, KeyCode::Down);
@@ -1206,7 +1206,7 @@ mod tests {
         app.cycle(true);
         assert_eq!(app.doc.root()["theme"], "simple");
         app.load_theme_slot();
-        assert_eq!(read_json(&dir.join("simple.json")), bundled("simple.json"));
+        assert!(!dir.join("simple.json").exists());
         assert_eq!(
             app.theme_doc().map(ThemeDoc::root),
             Some(&bundled("simple.json"))
@@ -1217,7 +1217,7 @@ mod tests {
     }
 
     #[test]
-    fn the_theme_picker_previews_each_theme_and_installs_the_one_picked() {
+    fn the_theme_picker_previews_each_theme_and_switches_without_writing_it() {
         let custom = r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": {} }"#;
         let (mut app, dir) = app(
             "picker",
@@ -1228,7 +1228,7 @@ mod tests {
         let shown = screen(&mut app);
         assert!(shown.contains("Pick a theme"), "{shown}");
         assert!(shown.contains("in use"), "{shown}");
-        assert!(shown.contains("built in, installs gruvbox.json"), "{shown}");
+        assert!(shown.contains("built in"), "{shown}");
         assert_eq!(app.preview_theme(), Some(bundled("rainbow.json")));
 
         press(&mut app, KeyCode::Down);
@@ -1251,15 +1251,12 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         assert_eq!(app.doc.root()["theme"], "gruvbox");
         assert_eq!(
-            read_json(&dir.join("gruvbox.json")),
-            bundled("gruvbox.json")
-        );
-        assert_eq!(
             app.theme_doc().map(ThemeDoc::root),
             Some(&bundled("gruvbox.json"))
         );
         app.save();
         assert_eq!(read_json(&dir.join("config.json"))["theme"], "gruvbox");
+        assert!(!dir.join("gruvbox.json").exists());
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -142,8 +142,8 @@ The keys:
   theme into a new theme file next to the config and points the config at it. `1` returns to the layout.
 - `p` on the Theme page, or `Enter` on `theme` under Settings, opens the theme picker: the bundled themes and the theme
   files next to the config, each with a strip of its colours. The preview draws your prompt in whichever theme is
-  highlighted, and `Enter` switches to it, first writing a bundled theme's file into the config directory. `c` duplicates
-  the highlighted theme into a new file (named `<theme>-copy.json` unless you change it) to edit, `i` types any other
+  highlighted, and `Enter` switches to it. A bundled theme gets a file in the config directory only once you edit and
+  save it. `c` duplicates the highlighted theme into a new file (named `<theme>-copy.json` unless you change it) to edit, `i` types any other
   theme file name, and `←`/`→` on the setting still step through the themes without the picker.
 - `Enter` on a colour list such as `cwd.bg_colors` shows its colours one per line with a swatch. `Enter` picks a colour
   in the picker, `←`/`→` step it and `i` types it; `a`/`I` add a colour after or before it, `d` deletes it, `c` copies
@@ -607,9 +607,10 @@ one is pinned.
 theme fails to load, superline falls back to `rainbow`.
 
 superline comes with three themes, [`rainbow`](themes/rainbow.json), [`simple`](themes/simple.json) and
-[`gruvbox`](themes/gruvbox.json). When the config names one of them and its file isn't in the config directory yet,
-superline writes it there, so it can be edited like any other theme file; an existing file is never replaced. Delete it
-to get the original back. The theme picker in `superline config` (`p` on the Theme page) previews each theme on your
+[`gruvbox`](themes/gruvbox.json). When the config names one of them and its file isn't in the config directory,
+superline uses the copy built into the binary and writes nothing. A file of that name in the config directory takes
+its place: editing a bundled theme on the Theme page and saving writes one, and deleting it gets the original back.
+The theme picker in `superline config` (`p` on the Theme page) previews each theme on your
 own prompt before you switch, and the Theme page edits a theme file with a live preview.
 
 A theme file has two keys, `defaults` and `modules`:

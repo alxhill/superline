@@ -327,7 +327,7 @@ fn a_missing_layout_is_created_silently_with_the_default() {
     let written: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&layout).unwrap()).unwrap();
     assert_eq!(written["theme"], "rainbow");
-    assert!(scratch
+    assert!(!scratch
         .home()
         .join(".config/superline/rainbow.json")
         .exists());

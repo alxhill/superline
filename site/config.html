@@ -114,8 +114,8 @@
             with a swatch and the fallback for every property. <kbd>c</kbd> duplicates the open theme into a new
             file next to the config and points the config at it. <kbd>p</kbd> opens the theme picker, which lists the
             themes that come with superline and the theme files next to the config, and draws your prompt in each
-            one as you move through them. <kbd>&#9166;</kbd> switches to it, writing a bundled theme's file next to
-            the config first, and <kbd>c</kbd> duplicates the highlighted theme into a new file to edit.
+            one as you move through them. <kbd>&#9166;</kbd> switches to it; a bundled theme gets a file next to the
+            config only once you edit and save it. <kbd>c</kbd> duplicates the highlighted theme into a new file to edit.
             <kbd>&#9166;</kbd> on <code>theme</code> under Settings opens the same picker.
           </p>
         </div>
@@ -1418,8 +1418,9 @@
           <a href="https://github.com/alxhill/superline/blob/main/themes/rainbow.json"><code>rainbow</code></a>,
           <a href="https://github.com/alxhill/superline/blob/main/themes/simple.json"><code>simple</code></a> and
           <a href="https://github.com/alxhill/superline/blob/main/themes/gruvbox.json"><code>gruvbox</code></a>.
-          When the config names one of them and its file isn't in the config directory yet, superline writes it
-          there, so it can be edited like any other theme file; an existing file is never replaced. The theme
+          When the config names one of them and its file isn't in the config directory, superline uses the copy
+          built into the binary and writes nothing. Editing a bundled theme on the Theme page and saving writes
+          its file, which takes the built-in copy's place until it is deleted. The theme
           picker in <code>superline config</code> previews each theme on your own prompt before you switch, and
           the Theme page edits a theme file with a live preview.
         </p>
