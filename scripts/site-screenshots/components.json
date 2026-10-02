@@ -368,7 +368,8 @@
               "git": {
                 "status_timeout_ms": 500,
                 "backend": "cli",
-                "worktrees": false
+                "worktrees": false,
+                "repo": false
               }
             }
           ]

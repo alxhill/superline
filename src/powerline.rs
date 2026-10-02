@@ -484,10 +484,12 @@ impl Powerline {
                     status_timeout_ms,
                     backend,
                     worktrees,
+                    repo,
                 } => self.add_module(Git::<T>::with_config(
                     Duration::from_millis(*status_timeout_ms),
                     *backend,
                     *worktrees,
+                    *repo,
                 )),
                 LineSegment::Pr { status } => self.add_module(
                     Pr::<T>::new(*status).with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),

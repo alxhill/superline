@@ -1,4 +1,5 @@
-//! End-to-end checks for the linked-worktree label in the git widget.
+//! End-to-end checks for the linked-worktree label and the remote segment in
+//! the git widget.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -155,5 +156,32 @@ fn a_theme_can_swap_or_hide_the_icon() {
 
     let prompt = render(&root, "two", git_segment(json!({})), theme(""));
     assert!(prompt.contains("two 2/2 "), "prompt: {prompt:?}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn turning_repo_off_hides_the_remote_segment() {
+    let root = scratch("repo");
+    let main = root.join("main");
+    git(
+        &main,
+        &["remote", "add", "origin", "git@github.com:example/repo.git"],
+    );
+    let theme = json!({
+        "defaults": { "fg": 15, "bg": 0 },
+        "modules": { "git": { "remote_icon": "REMOTE" } },
+    });
+
+    let shown = render(&root, "main", git_segment(json!({})), theme.clone());
+    assert!(shown.contains("REMOTE"), "prompt: {shown:?}");
+    assert!(
+        shown.contains("https://github.com/example/repo"),
+        "prompt: {shown:?}"
+    );
+
+    let hidden = render(&root, "main", git_segment(json!({ "repo": false })), theme);
+    assert!(hidden.contains("main "), "prompt: {hidden:?}");
+    assert!(!hidden.contains("REMOTE"), "prompt: {hidden:?}");
+    assert!(!hidden.contains("github.com"), "prompt: {hidden:?}");
     let _ = fs::remove_dir_all(&root);
 }

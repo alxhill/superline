@@ -223,6 +223,10 @@ pub enum LineSegment {
         /// shows when there are none.
         #[serde(default = "default_true")]
         worktrees: bool,
+        /// Show the remote segment: the forge logo linking to the repository
+        /// and the ahead/behind counts. On by default.
+        #[serde(default = "default_true")]
+        repo: bool,
     },
     Pr {
         /// Append a coloured dot reflecting the PR's CI check status. On by
@@ -441,6 +445,8 @@ enum KnownLineSegment {
         backend: GitBackend,
         #[serde(default = "default_true")]
         worktrees: bool,
+        #[serde(default = "default_true")]
+        repo: bool,
     },
     Pr {
         #[serde(default = "default_true")]
@@ -591,10 +597,12 @@ impl From<KnownLineSegment> for LineSegment {
                 status_timeout_ms,
                 backend,
                 worktrees,
+                repo,
             } => LineSegment::Git {
                 status_timeout_ms,
                 backend,
                 worktrees,
+                repo,
             },
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
@@ -882,6 +890,7 @@ impl Config {
                         status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                         backend: GitBackend::Auto,
                         worktrees: true,
+                        repo: true,
                     },
                     LineSegment::Pr { status: true },
                 ]),
@@ -936,6 +945,7 @@ impl Default for Config {
                             status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                             backend: GitBackend::Auto,
                             worktrees: true,
+                            repo: true,
                         },
                         LineSegment::Pr { status: true },
                         LineSegment::Padding(2),
@@ -1132,6 +1142,7 @@ mod tests {
                 status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                 backend: GitBackend::Auto,
                 worktrees: true,
+                repo: true,
             }
         );
     }
@@ -1147,6 +1158,7 @@ mod tests {
                 status_timeout_ms: 250,
                 backend: GitBackend::Auto,
                 worktrees: true,
+                repo: true,
             }
         );
     }
@@ -1168,6 +1180,7 @@ mod tests {
                     status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                     backend: expected,
                     worktrees: true,
+                    repo: true,
                 }
             );
         }
@@ -1184,6 +1197,23 @@ mod tests {
                 status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                 backend: GitBackend::Auto,
                 worktrees: false,
+                repo: true,
+            }
+        );
+    }
+
+    #[test]
+    fn git_remote_segment_can_be_turned_off() {
+        let parsed: LineSegment = serde_json::from_str(r#"{"git":{"repo":false}}"#)
+            .expect("git module without repo should parse");
+
+        assert_eq!(
+            parsed,
+            LineSegment::Git {
+                status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                backend: GitBackend::Auto,
+                worktrees: true,
+                repo: false,
             }
         );
     }
@@ -1545,6 +1575,7 @@ mod tests {
                     status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                     backend: GitBackend::Cli,
                     worktrees: true,
+                    repo: true,
                 },
                 Some(SegmentPadding::Small),
             ),
