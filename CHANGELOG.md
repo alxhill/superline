@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.2](https://github.com/alxhill/superline/compare/v0.27.1...v0.27.2) - 2026-10-02
+
+### Fixed
+
+- read bundled themes from the binary instead of writing them into the config dir ([#199](https://github.com/alxhill/superline/pull/199))
+
 ## [0.27.1](https://github.com/alxhill/superline/compare/v0.27.0...v0.27.1) - 2026-10-02
 
 ### Fixed
