@@ -633,7 +633,7 @@ impl Powerline {
                     write!(self.right_buffer, "{}", padding).unwrap();
                 }
                 self.right_columns += len;
-                self.last_style = None;
+                self.last_style_right = None;
             }
         }
 
@@ -1090,6 +1090,27 @@ mod tests {
         plain.add_segment("5h 12%", style);
         assert_eq!(annotated.left_buffer, plain.left_buffer);
         assert_eq!(annotated.left_columns, plain.left_columns);
+    }
+
+    #[test]
+    fn right_padding_after_padding_closes_the_segment_once() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.set_separator(Separator::Round);
+        powerline.start_right();
+        powerline.add_segment(
+            "superline",
+            Style::simple(Color::from_u8(15), Color::from_u8(0)),
+        );
+        powerline.add_padding(1);
+        powerline.add_padding(0);
+
+        let close = Separator::Round.for_direction(Direction::Right);
+        assert_eq!(visible(&powerline.right_buffer).matches(close).count(), 1);
+        assert_eq!(
+            powerline.right_columns,
+            visible(&powerline.right_buffer).width()
+        );
     }
 
     #[test]
