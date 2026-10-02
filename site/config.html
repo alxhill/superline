@@ -999,6 +999,48 @@
   ]
 }</code></pre>
 </div><!-- /example -->
+          <div class="example" data-example="claude_code/widgets">
+  <div class="ex-label">Every Claude Code widget, on two rows</div>
+  <figure class="term shot"><img src="img/config/claude_code-widgets.png" width="1009" height="74" loading="lazy" alt="The claude_code example: Every Claude Code widget, on two rows."></figure>
+  <pre class="json"><code>{
+  <span class="k">"theme"</span>: <span class="s">"rainbow"</span>,
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+        { <span class="k">"padding"</span>: <span class="n">0</span> },
+        <span class="s">"claude_model"</span>,
+        {
+          <span class="k">"claude_context"</span>: {
+            <span class="k">"display"</span>: <span class="s">"bar"</span>,
+            <span class="k">"width"</span>: <span class="n">8</span>,
+            <span class="k">"tokens"</span>: <span class="n">true</span>,
+            <span class="k">"threshold"</span>: <span class="n">80</span>
+          }
+        },
+        { <span class="k">"padding"</span>: <span class="n">1</span> },
+        <span class="s">"claude_session"</span>
+      ],
+      <span class="k">"right"</span>: [<span class="s">"claude_lines"</span>, <span class="s">"claude_cost"</span>, { <span class="k">"padding"</span>: <span class="n">0</span> }]
+    },
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+        { <span class="k">"padding"</span>: <span class="n">0</span> },
+        <span class="s">"claude_agent"</span>,
+        <span class="s">"claude_vim"</span>,
+        { <span class="k">"padding"</span>: <span class="n">1</span> },
+        <span class="s">"claude_cache"</span>,
+        <span class="s">"claude_duration"</span>
+      ],
+      <span class="k">"right"</span>: [
+        { <span class="k">"ai_usage"</span>: { <span class="k">"provider"</span>: <span class="s">"claude"</span>, <span class="k">"threshold"</span>: <span class="n">90</span> } },
+        { <span class="k">"padding"</span>: <span class="n">0</span> }
+      ]
+    }
+  ]
+}</code></pre>
+</div><!-- /example -->
         </div>
       </section>
 

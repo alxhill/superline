@@ -533,6 +533,74 @@
             }
           ]
         }
+      },
+      {
+        "name": "widgets",
+        "label": "Every Claude Code widget, on two rows",
+        "cols": 96,
+        "config": {
+          "theme": "rainbow",
+          "rows": [
+            {
+              "left": [
+                {
+                  "separator": "round"
+                },
+                {
+                  "padding": 0
+                },
+                "claude_model",
+                {
+                  "claude_context": {
+                    "display": "bar",
+                    "width": 8,
+                    "tokens": true,
+                    "threshold": 80
+                  }
+                },
+                {
+                  "padding": 1
+                },
+                "claude_session"
+              ],
+              "right": [
+                "claude_lines",
+                "claude_cost",
+                {
+                  "padding": 0
+                }
+              ]
+            },
+            {
+              "left": [
+                {
+                  "separator": "round"
+                },
+                {
+                  "padding": 0
+                },
+                "claude_agent",
+                "claude_vim",
+                {
+                  "padding": 1
+                },
+                "claude_cache",
+                "claude_duration"
+              ],
+              "right": [
+                {
+                  "ai_usage": {
+                    "provider": "claude",
+                    "threshold": 90
+                  }
+                },
+                {
+                  "padding": 0
+                }
+              ]
+            }
+          ]
+        }
       }
     ]
   },
