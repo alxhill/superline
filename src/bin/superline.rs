@@ -10,8 +10,10 @@ use std::{env, io};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
+use superline::claude_code::{self as claude, ClaudeCodeStatus, Installed};
 use superline::config::{CommandLine, Config, LineSegment, TerminalRuntimeMetadata};
 use superline::debug;
+use superline::editor::Scope;
 use superline::terminal::{Shell, SHELL};
 use superline::themes::{CustomTheme, CustomThemeError};
 use superline::upgrade::{self, Installation, Step, UpgradeError};
@@ -230,6 +232,9 @@ enum PowerlineArgs {
     Init(ShellSubcommand),
     Show(ShowArgs),
     ShowRight(ShowArgs),
+    /// Draw a Claude Code status line from the session data on stdin. Set it
+    /// up with `superline install claude-code`.
+    ClaudeCode(ClaudeCodeArgs),
     Install(InstallArgs),
     /// Edit the config in an interactive editor with a live prompt preview.
     Config(ConfigArgs),
@@ -305,6 +310,33 @@ struct ConfigArgs {
     /// Edit this file instead of `~/.config/superline/config.json`.
     #[arg(long)]
     config: Option<PathBuf>,
+    /// Edit the Claude Code status line layout,
+    /// `~/.config/superline/claude-code.json`.
+    #[arg(long)]
+    claude_code: bool,
+}
+
+#[derive(Debug, Args)]
+struct ClaudeCodeArgs {
+    /// Use this layout instead of `~/.config/superline/claude-code.json`.
+    #[arg(long)]
+    config: Option<PathBuf>,
+    /// Width to right-align the right side to, instead of `$COLUMNS` less
+    /// `--margin`.
+    #[arg(short, long)]
+    columns: Option<usize>,
+    /// Columns to leave free when the width comes from `$COLUMNS`. Claude Code
+    /// indents its status line, so a right side drawn to the full width would
+    /// wrap.
+    #[arg(long, default_value_t = 4)]
+    margin: usize,
+    /// Draw sample session data instead of reading it from stdin.
+    #[arg(long)]
+    sample: bool,
+    /// Internal: report a broken layout on stderr, for the `superline config`
+    /// preview, instead of drawing it in the status line.
+    #[arg(long, hide = true)]
+    preview: bool,
 }
 
 #[derive(Debug, Args)]
@@ -331,9 +363,37 @@ struct UpgradeArgs {
 #[derive(Debug, Args)]
 struct InstallArgs {
     #[arg(value_enum)]
-    shell: ShellArg,
+    target: InstallTarget,
+    /// Install again even when already installed; for Claude Code, replace
+    /// another status line command.
     #[arg(long, action)]
     force: bool,
+}
+
+/// A shell's profile, or Claude Code's settings.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ValueEnum)]
+enum InstallTarget {
+    Bash,
+    Zsh,
+    Fish,
+    Pwsh,
+    #[value(alias = "nushell")]
+    Nu,
+    #[value(alias = "claude")]
+    ClaudeCode,
+}
+
+impl InstallTarget {
+    fn shell(self) -> Option<ShellArg> {
+        match self {
+            InstallTarget::Bash => Some(ShellArg::Bash),
+            InstallTarget::Zsh => Some(ShellArg::Zsh),
+            InstallTarget::Fish => Some(ShellArg::Fish),
+            InstallTarget::Pwsh => Some(ShellArg::Pwsh),
+            InstallTarget::Nu => Some(ShellArg::Nu),
+            InstallTarget::ClaudeCode => None,
+        }
+    }
 }
 
 impl TerminalRuntimeMetadata for &ShowArgs {
@@ -379,6 +439,7 @@ fn main() {
         PowerlineArgs::Init(shell) => print_shell_conf(shell),
         PowerlineArgs::Show(args) => show(args, false),
         PowerlineArgs::ShowRight(args) => show(args, true),
+        PowerlineArgs::ClaudeCode(args) => claude_code(args),
         PowerlineArgs::Install(args) => install(args),
         PowerlineArgs::Config(args) => edit_config(args),
         PowerlineArgs::Preview(args) => preview(args),
@@ -491,7 +552,10 @@ impl StepPrinter {
 }
 
 fn install(args: InstallArgs) {
-    let shell = args.shell;
+    let Some(shell) = args.target.shell() else {
+        install_claude_code(args.force);
+        return;
+    };
 
     let (conf_path, conf_contents) = match shell {
         ShellArg::Fish => (home_config(".config/fish/config.fish"), FISH_INSTALL),
@@ -654,16 +718,23 @@ fn edit_config(args: ConfigArgs) {
         std::process::exit(1);
     }
     let path = match args.config {
-        Some(path) => path,
-        None => match get_or_create_conf_file() {
-            Ok(path) => path,
-            Err(error) => {
-                eprintln!("superline config: {error}");
-                std::process::exit(1);
-            }
-        },
+        Some(path) => Ok(path),
+        None if args.claude_code => get_or_create_claude_code_conf_file(),
+        None => get_or_create_conf_file(),
     };
-    if let Err(error) = superline::editor::run(&path) {
+    let path = match path {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("superline config: {error}");
+            std::process::exit(1);
+        }
+    };
+    let target = if args.claude_code {
+        Scope::ClaudeCode
+    } else {
+        Scope::Prompt
+    };
+    if let Err(error) = superline::editor::run(&path, target) {
         eprintln!("superline config: {error}");
         std::process::exit(1);
     }
@@ -692,6 +763,214 @@ fn preview(args: ShowArgs) {
         powerline.print_right();
         println!();
     }
+}
+
+/// What `superline claude-code` hands the widgets in place of a shell's state.
+struct ClaudeCodeRuntime {
+    status: Option<ClaudeCodeStatus>,
+    columns: usize,
+}
+
+impl TerminalRuntimeMetadata for &ClaudeCodeRuntime {
+    fn shell_name(&self) -> String {
+        "claude".to_string()
+    }
+
+    fn total_columns(&self) -> usize {
+        self.columns
+    }
+
+    fn last_command_duration(&self) -> Option<Duration> {
+        None
+    }
+
+    fn last_command_status(&self) -> &str {
+        "0"
+    }
+
+    fn claude_code(&self) -> Option<&ClaudeCodeStatus> {
+        self.status.as_ref()
+    }
+
+    fn hover_text(&self) -> bool {
+        false
+    }
+}
+
+/// Claude Code blanks its status line when the command fails or prints
+/// nothing, so problems are drawn as an error segment instead, and the exit
+/// code is always 0.
+fn claude_code(args: ClaudeCodeArgs) {
+    let (status, status_error) = if args.sample {
+        (Some(ClaudeCodeStatus::sample()), None)
+    } else {
+        read_claude_code_status()
+    };
+
+    // The widgets that look at the working directory (git, cwd, pr, ...)
+    // should see the session's, which can differ from the one Claude Code
+    // started the command in. This sets environment variables, so it happens
+    // while the process is still single-threaded.
+    if let Some(dir) = status.as_ref().and_then(ClaudeCodeStatus::current_dir) {
+        if env::set_current_dir(dir).is_ok() {
+            env::set_var("PWD", dir);
+        }
+    }
+    superline::modules::preresolve_system_gitconfig();
+    SHELL.set(Shell::Bare).expect("failed to set shell");
+    superline::cache::prune_stale();
+
+    let columns = args.columns.unwrap_or_else(|| {
+        env::var("COLUMNS")
+            .ok()
+            .and_then(|columns| columns.trim().parse::<usize>().ok())
+            .unwrap_or(80)
+            .saturating_sub(args.margin)
+    });
+    let runtime = ClaudeCodeRuntime { status, columns };
+
+    let path = match args.config {
+        Some(path) => Ok(path),
+        None => get_or_create_claude_code_conf_file(),
+    };
+    let loaded = path.and_then(|path| load_config(Some(path)));
+    let mut conf = match loaded {
+        Ok((mut conf, conf_root)) => match load_theme(&conf, &conf_root) {
+            Ok(()) => conf,
+            Err(error) => {
+                if args.preview {
+                    exit_with_preview_error(&error);
+                }
+                prepend_error_module(&mut conf, fallback_message(&error));
+                CustomTheme::load_fallback();
+                conf
+            }
+        },
+        Err(error) => {
+            if args.preview {
+                exit_with_preview_error(&error);
+            }
+            let mut conf = Config::claude_code_default();
+            prepend_error_module(&mut conf, fallback_message(&error));
+            CustomTheme::load_fallback();
+            conf
+        }
+    };
+    if let Some(message) = status_error {
+        prepend_error_module(&mut conf, message.to_string());
+    }
+
+    for row in &conf.rows {
+        let mut powerline = Powerline::from_conf::<CustomTheme>(row, &runtime);
+        // A row whose widgets have nothing to show would be a blank line.
+        if !powerline.has_segments() {
+            continue;
+        }
+        powerline.print_left();
+        powerline.print_padding(columns);
+        powerline.print_right();
+        println!();
+    }
+    let _ = io::stdout().flush();
+}
+
+/// The session data on stdin. Run by hand from a terminal there is none, and
+/// the Claude Code widgets stay empty.
+fn read_claude_code_status() -> (Option<ClaudeCodeStatus>, Option<&'static str>) {
+    use std::io::Read;
+
+    let stdin = io::stdin();
+    if stdin.is_terminal() {
+        return (None, None);
+    }
+    let mut text = String::new();
+    if stdin.lock().read_to_string(&mut text).is_err() {
+        return (None, Some("status data not read"));
+    }
+    if text.trim().is_empty() {
+        return (None, None);
+    }
+    match ClaudeCodeStatus::parse(&text) {
+        Ok(status) => (Some(status), None),
+        Err(_) => (None, Some("status data not parsed")),
+    }
+}
+
+fn exit_with_preview_error(error: &PowerlineError) -> ! {
+    match error {
+        PowerlineError::InvalidConfig(inner) => eprintln!("{error}: {inner}"),
+        _ => eprintln!("{error}"),
+    }
+    std::process::exit(1);
+}
+
+/// Points Claude Code's status line at superline in its settings file, and
+/// writes the default layout so it can be edited straight away.
+fn install_claude_code(force: bool) {
+    let fail = |message: String| -> ! {
+        eprintln!("superline install claude-code: {message}");
+        std::process::exit(1);
+    };
+    let settings_path =
+        claude_settings_path().unwrap_or_else(|| fail("home directory not found".into()));
+    let mut settings = match std::fs::read_to_string(&settings_path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
+            fail(format!(
+                "{} is not valid JSON: {e}",
+                settings_path.display()
+            ))
+        }),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => serde_json::json!({}),
+        Err(e) => fail(format!("could not read {}: {e}", settings_path.display())),
+    };
+    let outcome = claude::install_status_line(&mut settings, force)
+        .unwrap_or_else(|e| fail(format!("{}: {e}", settings_path.display())));
+
+    if outcome != Installed::AlreadyPresent {
+        let text = serde_json::to_string_pretty(&settings).expect("settings serialize") + "\n";
+        if let Some(parent) = settings_path.parent() {
+            let _ = create_dir_all(parent);
+        }
+        let temp = settings_path.with_extension(format!("json.{}.tmp", std::process::id()));
+        let written =
+            std::fs::write(&temp, text).and_then(|()| std::fs::rename(&temp, &settings_path));
+        if let Err(e) = written {
+            let _ = std::fs::remove_file(&temp);
+            fail(format!("could not write {}: {e}", settings_path.display()));
+        }
+    }
+    match outcome {
+        Installed::Added => println!(
+            "Set the Claude Code status line to `{}` in {}",
+            claude::STATUS_LINE_COMMAND,
+            settings_path.display()
+        ),
+        Installed::Replaced(previous) => println!(
+            "Replaced the Claude Code status line `{previous}` with `{}` in {}",
+            claude::STATUS_LINE_COMMAND,
+            settings_path.display()
+        ),
+        Installed::AlreadyPresent => println!(
+            "Claude Code already uses superline for its status line ({})",
+            settings_path.display()
+        ),
+    }
+    match get_or_create_claude_code_conf_file() {
+        Ok(layout) => println!(
+            "Edit the layout with `superline config --claude-code` ({})",
+            layout.display()
+        ),
+        Err(error) => fail(error.to_string()),
+    }
+}
+
+/// Claude Code's user settings, under `$CLAUDE_CONFIG_DIR` when it is set.
+fn claude_settings_path() -> Option<PathBuf> {
+    let dir = match env::var_os("CLAUDE_CONFIG_DIR").filter(|dir| !dir.is_empty()) {
+        Some(dir) => PathBuf::from(dir),
+        None => superline::platform::home_dir()?.join(".claude"),
+    };
+    Some(dir.join("settings.json"))
 }
 
 fn print_shell_conf(shell: ShellSubcommand) {
@@ -897,6 +1176,29 @@ fn load_config(conf_file: Option<PathBuf>) -> Result<(Config, PathBuf), Powerlin
         conf,
         conf_path.parent().unwrap_or_else(|| Path::new(".")).into(),
     ))
+}
+
+/// The Claude Code status line layout, written with the default layout the
+/// first time. Unlike the prompt's config this is created silently: anything
+/// printed would end up in the status line.
+fn get_or_create_claude_code_conf_file() -> Result<PathBuf, PowerlineError> {
+    let home_dir = superline::platform::home_dir().ok_or(PowerlineError::HomeDirNotFound)?;
+    let config_dir = home_dir.join(".config/superline");
+    create_dir_all(&config_dir)?;
+
+    let conf_file = config_dir.join("claude-code.json");
+    if !conf_file.exists() {
+        let text = serde_json::to_string_pretty(&Config::claude_code_default())?;
+        // Status lines can start in several sessions at once, so each writes
+        // its own copy and renames it into place.
+        let temp = config_dir.join(format!(".claude-code.json.{}.tmp", std::process::id()));
+        std::fs::write(&temp, text)?;
+        std::fs::rename(&temp, &conf_file).inspect_err(|_| {
+            let _ = std::fs::remove_file(&temp);
+        })?;
+    }
+
+    Ok(conf_file)
 }
 
 fn get_or_create_conf_file() -> Result<PathBuf, PowerlineError> {

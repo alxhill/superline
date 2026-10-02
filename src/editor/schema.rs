@@ -146,6 +146,25 @@ pub struct WidgetSpec {
     pub shape: Shape,
     /// Offered in the add-widget picker.
     pub listed: bool,
+    /// Which status line the widget draws in.
+    pub scope: Scope,
+}
+
+/// Where a widget has something to show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    Everywhere,
+    /// Only the shell prompt: it reads the shell's state.
+    Prompt,
+    /// Only `superline claude-code`: it reads Claude Code's session data.
+    ClaudeCode,
+}
+
+impl Scope {
+    /// Whether a widget of this scope belongs in a layout for `target`.
+    pub fn fits(self, target: Scope) -> bool {
+        self == Scope::Everywhere || self == target
+    }
 }
 
 impl WidgetSpec {
@@ -359,6 +378,16 @@ const LAST_CMD_DURATION: &[OptionSpec] = &[required(
     "Only show commands that ran at least this many milliseconds.",
 )];
 
+const METER_WIDTH: OptionSpec = opt(
+    "width",
+    Kind::Int {
+        default: Some(crate::config::DEFAULT_METER_WIDTH as i64),
+        min: 1,
+        max: crate::config::MAX_METER_WIDTH as i64,
+    },
+    "Cells in a bar, capped_bar or block display.",
+);
+
 const AI_USAGE: &[OptionSpec] = &[
     required(
         "provider",
@@ -383,6 +412,7 @@ const AI_USAGE: &[OptionSpec] = &[
         },
         "How each window is drawn.",
     ),
+    METER_WIDTH,
     opt(
         "threshold",
         Kind::Float {
@@ -450,8 +480,70 @@ const fn widget(name: &'static str, summary: &'static str, shape: Shape) -> Widg
         summary,
         shape,
         listed: true,
+        scope: Scope::Everywhere,
     }
 }
+
+const fn prompt_widget(name: &'static str, summary: &'static str, shape: Shape) -> WidgetSpec {
+    WidgetSpec {
+        scope: Scope::Prompt,
+        ..widget(name, summary, shape)
+    }
+}
+
+const fn claude_widget(name: &'static str, summary: &'static str, shape: Shape) -> WidgetSpec {
+    WidgetSpec {
+        scope: Scope::ClaudeCode,
+        ..widget(name, summary, shape)
+    }
+}
+
+const CLAUDE_MODEL: &[OptionSpec] = &[
+    boolean("effort", true, "Show the reasoning effort after the model."),
+    boolean("fast_mode", true, "Show an icon while fast mode is on."),
+];
+
+const CLAUDE_CONTEXT: &[OptionSpec] = &[
+    opt(
+        "display",
+        Kind::Choice {
+            variants: DISPLAYS,
+            default: Some("percentage"),
+        },
+        "How the share of the context window in use is drawn.",
+    ),
+    METER_WIDTH,
+    boolean(
+        "tokens",
+        false,
+        "Also show the tokens in use out of the window size.",
+    ),
+    opt(
+        "threshold",
+        Kind::Float {
+            default: None,
+            min: 0.0,
+            max: 100.0,
+        },
+        "Percent used at which the widget switches to the theme's threshold_bg.",
+    ),
+];
+
+const CLAUDE_DURATION: &[OptionSpec] = &[boolean(
+    "api",
+    false,
+    "Show the time spent waiting on the API instead of the session's wall-clock time.",
+)];
+
+const CLAUDE_SESSION: &[OptionSpec] = &[opt(
+    "max_length",
+    Kind::Int {
+        default: Some(crate::config::DEFAULT_SESSION_MAX_LENGTH as i64),
+        min: 0,
+        max: 500,
+    },
+    "Cut longer names short with an ellipsis. 0 never cuts.",
+)];
 
 pub const WIDGETS: &[WidgetSpec] = &[
     widget(
@@ -484,18 +576,18 @@ pub const WIDGETS: &[WidgetSpec] = &[
         "Claude or Codex subscription usage.",
         Shape::Object(AI_USAGE),
     ),
-    widget(
+    prompt_widget(
         "cmd",
         "Prompt character; shows the exit code on failure.",
         Shape::Unit,
     ),
-    widget(
+    prompt_widget(
         "last_cmd_duration",
         "How long the previous command took.",
         Shape::Object(LAST_CMD_DURATION),
     ),
-    widget("shell", "Name of the running shell.", Shape::Unit),
-    widget("jobs", "Number of running background jobs.", Shape::Unit),
+    prompt_widget("shell", "Name of the running shell.", Shape::Unit),
+    prompt_widget("jobs", "Number of running background jobs.", Shape::Unit),
     WidgetSpec {
         aliases: &["host"],
         ..widget("hostname", "The machine's hostname.", Shape::Unit)
@@ -516,6 +608,51 @@ pub const WIDGETS: &[WidgetSpec] = &[
         "memory_usage",
         "Used RAM (and swap) percentage.",
         Shape::Object(MEMORY_USAGE),
+    ),
+    claude_widget(
+        "claude_model",
+        "Claude Code's model, effort level and fast mode.",
+        Shape::Object(CLAUDE_MODEL),
+    ),
+    claude_widget(
+        "claude_context",
+        "How full Claude Code's context window is.",
+        Shape::Object(CLAUDE_CONTEXT),
+    ),
+    claude_widget(
+        "claude_cost",
+        "The Claude Code session's estimated cost.",
+        Shape::Unit,
+    ),
+    claude_widget(
+        "claude_duration",
+        "How long the Claude Code session has run.",
+        Shape::Object(CLAUDE_DURATION),
+    ),
+    claude_widget(
+        "claude_lines",
+        "Lines added and removed this Claude Code session.",
+        Shape::Unit,
+    ),
+    claude_widget(
+        "claude_cache",
+        "Prompt cache hit ratio, coloured by whether it is warm.",
+        Shape::Unit,
+    ),
+    claude_widget(
+        "claude_vim",
+        "Claude Code's vim mode, while it is on.",
+        Shape::Unit,
+    ),
+    claude_widget(
+        "claude_agent",
+        "The agent Claude Code runs as (--agent).",
+        Shape::Unit,
+    ),
+    claude_widget(
+        "claude_session",
+        "The Claude Code session's name or title.",
+        Shape::Object(CLAUDE_SESSION),
     ),
     widget("os", "Operating-system icon.", Shape::Unit),
     widget(
@@ -768,6 +905,20 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn claude_code_widgets_are_only_offered_for_claude_code_layouts() {
+        for spec in WIDGETS {
+            let claude = spec.name.starts_with("claude_");
+            assert_eq!(spec.scope == Scope::ClaudeCode, claude, "{}", spec.name);
+        }
+        let model = find("claude_model").unwrap().scope;
+        assert!(model.fits(Scope::ClaudeCode) && !model.fits(Scope::Prompt));
+        let cmd = find("cmd").unwrap().scope;
+        assert!(cmd.fits(Scope::Prompt) && !cmd.fits(Scope::ClaudeCode));
+        let git = find("git").unwrap().scope;
+        assert!(git.fits(Scope::Prompt) && git.fits(Scope::ClaudeCode));
     }
 
     #[test]

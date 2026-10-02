@@ -4,10 +4,11 @@ pub use custom::{CustomTheme, CustomThemeError};
 
 use crate::colors::Color;
 use crate::modules::{
-    BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
-    GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
-    LocalIpScheme, MemoryUsageScheme, NodeScheme, OsScheme, PrScheme, PythonScheme, ReadOnlyScheme,
-    ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme, UserScheme,
+    BatteryScheme, CargoScheme, ClaudeCodeScheme, CmdScheme, CwdScheme, ErrorMessageScheme,
+    ExitCodeScheme, GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme,
+    LastCmdDurationScheme, LocalIpScheme, MemoryUsageScheme, NodeScheme, OsScheme, PrScheme,
+    PythonScheme, ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme,
+    UsageScheme, UserScheme,
 };
 use crate::update::UpdateScheme;
 use std::fs;
@@ -108,6 +109,7 @@ pub trait CompleteTheme:
     + ShellScheme
     + UserScheme
     + CargoScheme
+    + ClaudeCodeScheme
     + TimeScheme
     + UsageScheme
     + NodeScheme

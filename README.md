@@ -4,7 +4,7 @@
 
 A fast, opinionated powerline-style prompt written in Rust. It understands git and GitHub, detects Rust, Python,
 Node and Java project environments, and can show your Claude or Codex subscription usage, with async rendering
-support for the slower lookups.
+support for the slower lookups. It can draw Claude Code's status line too.
 
 See the [website](https://alxhill.github.io/superline/) for a tour of the features.
 
@@ -29,6 +29,8 @@ configurable modules and themes.
 - **Flexible layout**: multiple rows, each with an optional right-aligned side.
 - **Themeable**: themes are JSON files. Start from one of the two that come with superline, or write your own.
 - **Any shell**: fish, zsh, bash, PowerShell and nushell are all supported by `superline install`.
+- **Claude Code too**: the same widgets and themes can draw Claude Code's status line, alongside widgets for the
+  session's model, context window, cost and more.
 
 ## Installation
 
@@ -489,7 +491,7 @@ providers, or the same provider with different windows and styles. Provider labe
 | `"percentage"` (default) | `percent`, `percents`, `percentages`, `pct` | `5h 61%` | Percent used as a number. |
 | `"bar"` | `bars` | `5h ▄▄▄▁▁` | A five-cell half-height bar that fills left to right. |
 | `"capped_bar"` | `capped_bars`, `capped` | `5h ▗▄▄▄▁▁▖` | The same bar with end caps. |
-| `"block"` | `blocks` | `5h ███░░` | Five full-height cells, shaded when empty. |
+| `"block"` | `blocks` | `5h ███░░` | Five full-height cells, shaded when empty, filling in half-cell steps: a cell the reading ends halfway into is drawn `▒`, so 50% is `██▒░░`. |
 | `"sparkline"` | `sparklines`, `spark`, `sparks` | `5h ▅` | One glyph per window. |
 | `"numeric"` | `number`, `numbers`, `num` | `5h 61%` | Raw figures for the credits lane; same as `percentage` for the rate-limit windows. |
 
@@ -497,11 +499,18 @@ providers, or the same provider with different windows and styles. Provider labe
 { "ai_usage": { "provider": "codex", "display": "bar" } }
 ```
 
+**Width.** `width` sets how many cells the `bar`, `capped_bar` and `block` styles draw, from `1` to `50` (default
+`5`). The other styles ignore it.
+
+```json
+{ "ai_usage": { "provider": "claude", "display": "block", "width": 10 } }
+```
+
 **Hover text.** With any `display` except `"percentage"` and `"numeric"`, which already print the figures, the
 provider icon carries an iTerm2 hidden annotation: hover over it to see every window that has a reading, drawn or
 not, such as `5h: 61% used · 7d: 41% used · Fable: 22% used`. Set `hover` to `false` to leave it out. Other terminals
 ignore the escape. Inside tmux it only reaches iTerm2 with `allow-passthrough` on and the sequence wrapped for
-passthrough, which superline doesn't do.
+passthrough, which superline doesn't do. The Claude Code status line leaves it out, since Claude Code drops it.
 
 **Threshold.** `threshold` is a percent-used warning level. When any visible lane crosses it, the whole widget
 background switches to the theme's `modules.ai_usage.threshold_bg` color.
@@ -636,13 +645,95 @@ Every text color (`fg`, or a property ending in `_fg`) can also make its text bo
 `clean_italic` and `clean_underline` with `clean_fg`. So `"git": { "clean_bold": true }` draws the branch name in
 bold while the working tree is clean. Separators and the rest of the prompt are never affected.
 
+## Claude Code status line
+
+superline can also draw the [status line](https://code.claude.com/docs/en/statusline) at the bottom of Claude Code.
+Set it up with:
+
+```bash
+superline install claude-code
+```
+
+This points `statusLine` in `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) at
+`superline claude-code`, and writes the default layout to `$HOME/.config/superline/claude-code.json`. If another status
+line command is already set, it is left alone unless you pass `--force`. To wire it up by hand instead:
+
+```json
+{ "statusLine": { "type": "command", "command": "superline claude-code", "padding": 0 } }
+```
+
+The layout file has the same format as `config.json` - a `theme` and a list of `rows` with `left` and `right` sides -
+and its `theme` names the same kind of theme file, so the prompt and the status line can share one. Edit it with
+`superline config --claude-code`, which previews it with sample session data. Every row is drawn in full, and a row
+whose widgets all have nothing to show is left out rather than drawn as a blank line.
+
+Claude Code passes the session's data to the command on stdin. superline moves into the session's working directory
+before drawing, so `cwd`, `read_only`, `git`, `kubernetes` and the language modules describe the directory Claude is
+working in. Two widgets also read the session data:
+
+- `ai_usage` with `"provider": "claude"` shows the five-hour and seven-day rate limits Claude Code reports, without
+  asking the `claude` CLI. The Fable window and credits lane still come from the CLI's cached reading. Claude Code only
+  reports rate limits for Pro and Max subscriptions, after the first response; until then the widget falls back to the
+  cached reading as in the prompt.
+- `pr` falls back to the pull request (or GitLab merge request) Claude Code reports when the `gh` lookup has none yet.
+  That one carries no CI status, so it shows without the status dot.
+
+The shell-only widgets (`cmd`, `last_cmd_duration`, `shell`, `jobs`) have no shell to read in the status line.
+
+The right side is aligned to `$COLUMNS` less a four-column margin, since Claude Code indents its status line. If the
+right side wraps or sits too far in, change the margin with `--margin <n>`, or set the width outright with
+`--columns <n>`, in the `command`.
+
+![The default Claude Code status line](https://raw.githubusercontent.com/alxhill/superline/main/site/img/config/claude_code-default.png)
+
+### Claude Code widgets
+
+These draw only in `superline claude-code`, and each one is left out while Claude Code has nothing for it to show
+(no vim mode, no agent, no cost yet, and so on). Their theme properties are under the module's own name, e.g.
+`modules.claude_model.effort_fg`.
+
+| Widget | Shows | Options |
+|--------|-------|---------|
+| `claude_model` | The model name, then the reasoning effort (`low` to `max`) in the theme's `effort_fg`, with a lightning bolt while fast mode is on. | `effort` and `fast_mode` (both default `true`) hide either part. |
+| `claude_context` | How full the context window is. | `display` takes the `ai_usage` styles (default `"percentage"`) and `width` sets the cells of a bar or block (default `5`); `tokens: true` adds the tokens in use out of the window size, e.g. `92k/200k`; `threshold` switches to the theme's `threshold_bg` at that percentage. |
+| `claude_cost` | The session's estimated cost in USD, e.g. `$3.47`. | |
+| `claude_duration` | How long the session has run, e.g. `1h 5m`. | `api: true` shows the time spent waiting on the API instead. |
+| `claude_lines` | Lines added and removed, `+412 -87`, in the theme's `added_fg` and `removed_fg`. | |
+| `claude_cache` | The prompt cache's hit ratio, on `warm_bg` while the cache is warm and `cold_bg` once it has expired. | |
+| `claude_vim` | The vim mode while vim mode is on, on `normal_bg`, `insert_bg` or `visual_bg`. | |
+| `claude_agent` | The agent name when Claude Code runs with `--agent`. | |
+| `claude_session` | The session's name or generated title. | `max_length` (default `30`) cuts longer names short; `0` never does. |
+
+```json
+{
+  "theme": "rainbow",
+  "rows": [
+    {
+      "left": [
+        { "separator": "round" },
+        { "padding": 0 },
+        "claude_model",
+        { "claude_context": { "display": "bar", "threshold": 80 } },
+        { "padding": 1 },
+        { "cwd": { "max_length": 40, "wanted_seg_num": 4 } },
+        "git",
+        "pr"
+      ],
+      "right": ["claude_lines", "claude_cost", { "ai_usage": { "provider": "claude" } }, { "padding": 0 }]
+    }
+  ]
+}
+```
+
 ## Commands
 
 | Command | What it does |
 |---------|--------------|
 | `superline install <shell>` | Append the prompt loader to the shell's config file. |
 | `superline init <shell>` | Print the loader snippet to stdout instead. |
-| `superline config` | Edit the config in an interactive terminal editor with a live prompt preview. `--config <path>` edits another file. |
+| `superline config` | Edit the config in an interactive terminal editor with a live prompt preview. `--config <path>` edits another file, and `--claude-code` edits the Claude Code status line layout. |
+| `superline install claude-code` | Point Claude Code's status line at superline. `--force` replaces another status line command. |
+| `superline claude-code` | Draw the Claude Code status line from the session data on stdin. `--sample` draws sample data instead, to try a layout from the terminal. |
 | `superline clear-caches` | Wipe cached git status, PR lookups and AI usage so the next prompt starts cold. |
 | `superline upgrade [VERSION]` | Replace the binary with the latest (or given) release's prebuilt one. `--check` only reports whether one is available. Also available as `superline update`. |
 

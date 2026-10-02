@@ -479,6 +479,195 @@
       }
     ]
   },
+  "claude_code": {
+    "claude_code": true,
+    "cols": 150,
+    "variants": [
+      {
+        "name": "default",
+        "label": "The default layout",
+        "fixture": "git-dirty",
+        "config": {
+          "theme": "rainbow",
+          "rows": [
+            {
+              "left": [
+                {
+                  "separator": "round"
+                },
+                {
+                  "padding": 0
+                },
+                "claude_model",
+                {
+                  "claude_context": {
+                    "threshold": 80
+                  }
+                },
+                {
+                  "padding": 1
+                },
+                "read_only",
+                {
+                  "cwd": {
+                    "max_length": 40,
+                    "wanted_seg_num": 4
+                  }
+                },
+                "git",
+                "pr"
+              ],
+              "right": [
+                "claude_lines",
+                "claude_cost",
+                {
+                  "ai_usage": {
+                    "provider": "claude",
+                    "threshold": 90
+                  }
+                },
+                {
+                  "padding": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "claude_model": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "Model, effort level and fast mode",
+        "row": {
+          "left": [
+            "claude_model"
+          ]
+        }
+      }
+    ]
+  },
+  "claude_context": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "A ten-cell block, with the tokens in use",
+        "row": {
+          "left": [
+            {
+              "claude_context": {
+                "display": "block",
+                "width": 10,
+                "tokens": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "claude_cost": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "Session cost",
+        "row": {
+          "left": [
+            "claude_cost"
+          ]
+        }
+      }
+    ]
+  },
+  "claude_duration": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "Session duration",
+        "row": {
+          "left": [
+            "claude_duration"
+          ]
+        }
+      }
+    ]
+  },
+  "claude_lines": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "Lines added and removed",
+        "row": {
+          "left": [
+            "claude_lines"
+          ]
+        }
+      }
+    ]
+  },
+  "claude_cache": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "Warm cache hit ratio",
+        "row": {
+          "left": [
+            "claude_cache"
+          ]
+        }
+      }
+    ]
+  },
+  "claude_vim": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "INSERT mode",
+        "row": {
+          "left": [
+            "claude_vim"
+          ]
+        }
+      }
+    ]
+  },
+  "claude_agent": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "Running as an agent",
+        "row": {
+          "left": [
+            "claude_agent"
+          ]
+        }
+      }
+    ]
+  },
+  "claude_session": {
+    "claude_code": true,
+    "variants": [
+      {
+        "name": "default",
+        "label": "Session name",
+        "row": {
+          "left": [
+            "claude_session"
+          ]
+        }
+      }
+    ]
+  },
   "python": {
     "variants": [
       {

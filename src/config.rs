@@ -3,6 +3,8 @@ use std::time::Duration;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
+use crate::claude_code::ClaudeCodeStatus;
+
 pub const DEFAULT_GIT_STATUS_TIMEOUT_MS: u64 = 250;
 
 pub trait TerminalRuntimeMetadata {
@@ -14,6 +16,17 @@ pub trait TerminalRuntimeMetadata {
     /// Number of background jobs reported by the interactive shell.
     fn job_count(&self) -> usize {
         0
+    }
+
+    /// The session data Claude Code passed to `superline claude-code`.
+    fn claude_code(&self) -> Option<&ClaudeCodeStatus> {
+        None
+    }
+
+    /// Whether the output reaches a terminal that can show hover text.
+    /// Claude Code redraws its status line itself and drops the escapes.
+    fn hover_text(&self) -> bool {
+        true
     }
 }
 
@@ -294,6 +307,55 @@ pub enum LineSegment {
         /// percentage. On by default.
         #[serde(default = "default_true")]
         hover: bool,
+        /// Cells in a `bar`, `capped_bar` or `block` display.
+        #[serde(default = "default_meter_width")]
+        width: usize,
+    },
+    /// Claude Code's model, with its effort level and fast mode. The
+    /// `claude_*` widgets only draw in `superline claude-code`.
+    ClaudeModel {
+        /// Show the reasoning effort after the model. On by default.
+        #[serde(default = "default_true")]
+        effort: bool,
+        /// Show an icon while fast mode is on. On by default.
+        #[serde(default = "default_true")]
+        fast_mode: bool,
+    },
+    /// How full the session's context window is.
+    ClaudeContext {
+        #[serde(default)]
+        display: UsageDisplay,
+        /// Also show the tokens used out of the window size.
+        #[serde(default)]
+        tokens: bool,
+        /// Switch to the threshold background at this percentage.
+        threshold: Option<f64>,
+        /// Cells in a `bar`, `capped_bar` or `block` display.
+        #[serde(default = "default_meter_width")]
+        width: usize,
+    },
+    /// The session's estimated cost in USD.
+    ClaudeCost,
+    /// How long the session has been running.
+    ClaudeDuration {
+        /// Show the time spent waiting on the API instead.
+        #[serde(default)]
+        api: bool,
+    },
+    /// Lines added and removed this session.
+    ClaudeLines,
+    /// The prompt cache's hit ratio, on a background that shows whether it
+    /// is still warm.
+    ClaudeCache,
+    /// The vim mode, while vim mode is on.
+    ClaudeVim,
+    /// The agent name, when running with `--agent`.
+    ClaudeAgent,
+    /// The session's name or title.
+    ClaudeSession {
+        /// Cut longer names short; 0 never cuts.
+        #[serde(default = "default_session_max_length")]
+        max_length: usize,
     },
     User,
     Username,
@@ -312,6 +374,35 @@ pub enum LineSegment {
 
 fn default_true() -> bool {
     true
+}
+
+pub const DEFAULT_SESSION_MAX_LENGTH: usize = 30;
+
+/// Cells in a bar or block display unless a widget's `width` says otherwise.
+pub const DEFAULT_METER_WIDTH: usize = 5;
+
+/// The widest bar or block a widget's `width` can ask for.
+pub const MAX_METER_WIDTH: usize = 50;
+
+fn default_meter_width() -> usize {
+    DEFAULT_METER_WIDTH
+}
+
+fn deserialize_meter_width<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let width = usize::deserialize(deserializer)?;
+    if !(1..=MAX_METER_WIDTH).contains(&width) {
+        return Err(de::Error::custom(format!(
+            "width must be from 1 to {MAX_METER_WIDTH}"
+        )));
+    }
+    Ok(width)
+}
+
+fn default_session_max_length() -> usize {
+    DEFAULT_SESSION_MAX_LENGTH
 }
 
 fn default_git_status_timeout_ms() -> u64 {
@@ -427,6 +518,42 @@ enum KnownLineSegment {
         /// percentage. On by default.
         #[serde(default = "default_true")]
         hover: bool,
+        #[serde(
+            default = "default_meter_width",
+            deserialize_with = "deserialize_meter_width"
+        )]
+        width: usize,
+    },
+    ClaudeModel {
+        #[serde(default = "default_true")]
+        effort: bool,
+        #[serde(default = "default_true")]
+        fast_mode: bool,
+    },
+    ClaudeContext {
+        #[serde(default)]
+        display: UsageDisplay,
+        #[serde(default)]
+        tokens: bool,
+        threshold: Option<f64>,
+        #[serde(
+            default = "default_meter_width",
+            deserialize_with = "deserialize_meter_width"
+        )]
+        width: usize,
+    },
+    ClaudeCost,
+    ClaudeDuration {
+        #[serde(default)]
+        api: bool,
+    },
+    ClaudeLines,
+    ClaudeCache,
+    ClaudeVim,
+    ClaudeAgent,
+    ClaudeSession {
+        #[serde(default = "default_session_max_length")]
+        max_length: usize,
     },
     User,
     Username,
@@ -502,6 +629,7 @@ impl From<KnownLineSegment> for LineSegment {
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
                 hover,
+                width,
             } => LineSegment::AiUsage {
                 provider,
                 session,
@@ -519,7 +647,31 @@ impl From<KnownLineSegment> for LineSegment {
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
                 hover,
+                width,
             },
+            KnownLineSegment::ClaudeModel { effort, fast_mode } => {
+                LineSegment::ClaudeModel { effort, fast_mode }
+            }
+            KnownLineSegment::ClaudeContext {
+                display,
+                tokens,
+                threshold,
+                width,
+            } => LineSegment::ClaudeContext {
+                display,
+                tokens,
+                threshold,
+                width,
+            },
+            KnownLineSegment::ClaudeCost => LineSegment::ClaudeCost,
+            KnownLineSegment::ClaudeDuration { api } => LineSegment::ClaudeDuration { api },
+            KnownLineSegment::ClaudeLines => LineSegment::ClaudeLines,
+            KnownLineSegment::ClaudeCache => LineSegment::ClaudeCache,
+            KnownLineSegment::ClaudeVim => LineSegment::ClaudeVim,
+            KnownLineSegment::ClaudeAgent => LineSegment::ClaudeAgent,
+            KnownLineSegment::ClaudeSession { max_length } => {
+                LineSegment::ClaudeSession { max_length }
+            }
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Username => LineSegment::Username,
             KnownLineSegment::Cmd => LineSegment::Cmd,
@@ -617,6 +769,15 @@ pub(crate) const KNOWN_SEGMENT_NAMES: &[&str] = &[
     "ai_usage",
     "user",
     "username",
+    "claude_model",
+    "claude_context",
+    "claude_cost",
+    "claude_duration",
+    "claude_lines",
+    "claude_cache",
+    "claude_vim",
+    "claude_agent",
+    "claude_session",
     "cmd",
     "last_cmd_duration",
     "padding",
@@ -690,6 +851,69 @@ fn widgets(segments: Vec<LineSegment>) -> Vec<Widget> {
     segments.into_iter().map(Widget::from).collect()
 }
 
+impl Config {
+    /// The layout `superline claude-code` writes for a fresh install.
+    pub fn claude_code_default() -> Config {
+        Config {
+            theme: "rainbow".into(),
+            update: UpdateConfig::default(),
+            rows: vec![CommandLine {
+                left: widgets(vec![
+                    LineSegment::Separator(SeparatorStyle::Round),
+                    LineSegment::Padding(0),
+                    LineSegment::ClaudeModel {
+                        effort: true,
+                        fast_mode: true,
+                    },
+                    LineSegment::ClaudeContext {
+                        display: UsageDisplay::Percentage,
+                        tokens: false,
+                        threshold: Some(80.0),
+                        width: DEFAULT_METER_WIDTH,
+                    },
+                    LineSegment::Padding(1),
+                    LineSegment::ReadOnly,
+                    LineSegment::Cwd {
+                        max_length: 40,
+                        wanted_seg_num: 4,
+                        resolve_symlinks: false,
+                    },
+                    LineSegment::Git {
+                        status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                        backend: GitBackend::Auto,
+                        worktrees: true,
+                    },
+                    LineSegment::Pr { status: true },
+                ]),
+                right: Some(widgets(vec![
+                    LineSegment::ClaudeLines,
+                    LineSegment::ClaudeCost,
+                    LineSegment::AiUsage {
+                        provider: UsageProvider::Claude,
+                        session: true,
+                        weekly: true,
+                        fable: false,
+                        display: UsageDisplay::Percentage,
+                        threshold: Some(90.0),
+                        session_label: None,
+                        weekly_label: None,
+                        fable_label: None,
+                        credits: false,
+                        credits_display: None,
+                        credits_label: None,
+                        credits_only_when_limited: false,
+                        session_time_remaining: false,
+                        session_time_remaining_only_at_limit: 0.0,
+                        hover: true,
+                        width: DEFAULT_METER_WIDTH,
+                    },
+                    LineSegment::Padding(0),
+                ])),
+            }],
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -732,6 +956,7 @@ impl Default for Config {
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
                             hover: true,
+                            width: DEFAULT_METER_WIDTH,
                         },
                         LineSegment::Padding(1),
                         LineSegment::AiUsage {
@@ -751,6 +976,7 @@ impl Default for Config {
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
                             hover: true,
+                            width: DEFAULT_METER_WIDTH,
                         },
                     ]),
                     right: Some(widgets(vec![LineSegment::Sudo, LineSegment::Battery])),
@@ -805,6 +1031,94 @@ mod tests {
         let reserialized = serde_json::to_string_pretty(&parsed)
             .expect("reparsed config should serialize to JSON");
         assert_eq!(json, reserialized);
+    }
+
+    #[test]
+    fn default_claude_code_layout_round_trips() {
+        let json = serde_json::to_string_pretty(&Config::claude_code_default()).unwrap();
+        let parsed: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(json, serde_json::to_string_pretty(&parsed).unwrap());
+        assert!(!json.contains("unknown"), "{json}");
+    }
+
+    #[test]
+    fn claude_code_segments_parse_with_defaults_and_options() {
+        let cases = [
+            (
+                r#""claude_model""#,
+                LineSegment::ClaudeModel {
+                    effort: true,
+                    fast_mode: true,
+                },
+            ),
+            (
+                r#"{"claude_context":{"display":"bar","tokens":true,"threshold":75}}"#,
+                LineSegment::ClaudeContext {
+                    display: UsageDisplay::Bar,
+                    tokens: true,
+                    threshold: Some(75.0),
+                    width: DEFAULT_METER_WIDTH,
+                },
+            ),
+            (
+                r#""claude_context""#,
+                LineSegment::ClaudeContext {
+                    display: UsageDisplay::Percentage,
+                    tokens: false,
+                    threshold: None,
+                    width: DEFAULT_METER_WIDTH,
+                },
+            ),
+            (r#""claude_cost""#, LineSegment::ClaudeCost),
+            (
+                r#"{"claude_duration":{"api":true}}"#,
+                LineSegment::ClaudeDuration { api: true },
+            ),
+            (r#""claude_lines""#, LineSegment::ClaudeLines),
+            (r#""claude_cache""#, LineSegment::ClaudeCache),
+            (r#""claude_vim""#, LineSegment::ClaudeVim),
+            (r#""claude_agent""#, LineSegment::ClaudeAgent),
+            (
+                r#""claude_session""#,
+                LineSegment::ClaudeSession {
+                    max_length: DEFAULT_SESSION_MAX_LENGTH,
+                },
+            ),
+        ];
+        for (json, expected) in cases {
+            let parsed: LineSegment =
+                serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+            assert_eq!(parsed, expected, "{json}");
+        }
+    }
+
+    #[test]
+    fn meter_width_defaults_to_five_and_must_be_in_range() {
+        let width = |json: &str| match serde_json::from_str::<LineSegment>(json) {
+            Ok(LineSegment::AiUsage { width, .. } | LineSegment::ClaudeContext { width, .. }) => {
+                Ok(width)
+            }
+            Ok(other) => panic!("{json} parsed as {other:?}"),
+            Err(e) => Err(e.to_string()),
+        };
+        assert_eq!(width(r#"{"ai_usage":{"provider":"claude"}}"#), Ok(5));
+        assert_eq!(width(r#""claude_context""#), Ok(5));
+        assert_eq!(
+            width(r#"{"ai_usage":{"provider":"codex","width":12}}"#),
+            Ok(12)
+        );
+        assert_eq!(width(r#"{"claude_context":{"width":1}}"#), Ok(1));
+        assert_eq!(width(r#"{"claude_context":{"width":50}}"#), Ok(50));
+        for json in [
+            r#"{"claude_context":{"width":0}}"#,
+            r#"{"ai_usage":{"provider":"claude","width":51}}"#,
+        ] {
+            let error = width(json).unwrap_err();
+            assert!(
+                error.contains("width must be from 1 to 50"),
+                "{json}: {error}"
+            );
+        }
     }
 
     #[test]
@@ -898,6 +1212,7 @@ mod tests {
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
                 hover: true,
+                width: DEFAULT_METER_WIDTH,
             }
         );
     }
@@ -928,6 +1243,7 @@ mod tests {
                 session_time_remaining: true,
                 session_time_remaining_only_at_limit: 0.8,
                 hover: true,
+                width: DEFAULT_METER_WIDTH,
             }
         );
     }
@@ -987,6 +1303,7 @@ mod tests {
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
                 hover: true,
+                width: DEFAULT_METER_WIDTH,
             }
         );
     }
@@ -1017,6 +1334,7 @@ mod tests {
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
                 hover: true,
+                width: DEFAULT_METER_WIDTH,
             }
         );
     }

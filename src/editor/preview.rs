@@ -10,6 +10,8 @@ use std::thread;
 
 use serde_json::Value;
 
+use super::schema::Scope;
+
 pub struct Request {
     pub config: Value,
     /// The theme being edited, drawn instead of the file the config names.
@@ -26,7 +28,7 @@ pub struct Preview {
 }
 
 impl Preview {
-    pub fn spawn(config_path: &Path) -> Preview {
+    pub fn spawn(config_path: &Path, target: Scope) -> Preview {
         let (requests, request_rx) = mpsc::channel::<Request>();
         let (result_tx, results) = mpsc::channel();
         let config_dir = config_path
@@ -56,7 +58,7 @@ impl Preview {
                         }
                     }
                 }
-                let rendered = render(&request, &config_dir, &temp, &temp_theme);
+                let rendered = render(&request, target, &config_dir, &temp, &temp_theme);
                 if result_tx.send(rendered).is_err() {
                     break;
                 }
@@ -78,7 +80,13 @@ impl Preview {
     }
 }
 
-fn render(request: &Request, config_dir: &Path, temp: &Path, temp_theme: &Path) -> Rendered {
+fn render(
+    request: &Request,
+    target: Scope,
+    config_dir: &Path,
+    temp: &Path,
+    temp_theme: &Path,
+) -> Rendered {
     let mut config = request.config.clone();
     if let Some(theme) = &request.theme {
         let text = serde_json::to_string(theme).map_err(|e| e.to_string())?;
@@ -98,14 +106,22 @@ fn render(request: &Request, config_dir: &Path, temp: &Path, temp_theme: &Path) 
     std::fs::write(temp, text).map_err(|e| format!("could not write preview config: {e}"))?;
 
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let output = Command::new(exe)
-        .arg("preview")
-        .arg("--config")
-        .arg(temp)
-        .args(["-s", "0", "-c", &request.columns.to_string()])
-        .arg(shell_name())
-        // A sample duration so last_cmd_duration has something to show.
-        .arg("1234")
+    let mut command = Command::new(exe);
+    match target {
+        Scope::ClaudeCode => command
+            .args(["claude-code", "--sample", "--preview", "--config"])
+            .arg(temp)
+            .args(["--columns", &request.columns.to_string()]),
+        Scope::Prompt | Scope::Everywhere => command
+            .arg("preview")
+            .arg("--config")
+            .arg(temp)
+            .args(["-s", "0", "-c", &request.columns.to_string()])
+            .arg(shell_name())
+            // A sample duration so last_cmd_duration has something to show.
+            .arg("1234"),
+    };
+    let output = command
         .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("could not run superline: {e}"))?;

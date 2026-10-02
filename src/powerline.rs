@@ -9,9 +9,11 @@ use crate::config;
 use crate::config::{LineSegment, SegmentPadding, SeparatorStyle, TerminalRuntimeMetadata, Widget};
 use crate::debug;
 use crate::modules::{
-    Battery, Cargo, Cmd, Cwd, DefaultPadding, ErrorMessage, Git, Hostname, Java, Jobs, Kubernetes,
-    LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os, Pr, Python, ReadOnly, ShellName,
-    Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows, Username,
+    Battery, Cargo, ClaudeAgent, ClaudeCache, ClaudeContext, ClaudeCost, ClaudeDuration,
+    ClaudeLines, ClaudeModel, ClaudeSession, ClaudeVim, Cmd, Cwd, DefaultPadding, ErrorMessage,
+    Git, Hostname, Java, Jobs, Kubernetes, LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os,
+    Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows,
+    Username,
 };
 use crate::terminal::*;
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -163,6 +165,8 @@ pub struct Powerline {
     separator: Separator,
     direction: Direction,
     last_padding: bool,
+    /// Whether any segment has been drawn.
+    drawn: bool,
     /// The configured padding of the widget being drawn, which replaces the
     /// default each of its segments asks for.
     widget_padding: Option<SegmentPadding>,
@@ -191,6 +195,7 @@ impl Powerline {
             separator: Separator::Chevron,
             direction: Direction::Left,
             last_padding: false,
+            drawn: false,
             widget_padding: None,
             module_padding: SegmentPadding::Large,
             probe: None,
@@ -340,6 +345,7 @@ impl Powerline {
         visible_width: Option<usize>,
     ) {
         let padding = self.widget_padding.unwrap_or(default).into();
+        self.drawn = true;
         let _ = match self.direction {
             Direction::Left => self.write_segment(seg, style, padding, visible_width),
             Direction::Right => self.write_segment_right(seg, style, padding, visible_width),
@@ -388,23 +394,31 @@ impl Powerline {
             Some((glyph, color)) => {
                 // separating space + the glyph itself
                 visible_width += 1 + glyph.width();
-                // Style the glyph in its own colour and attributes, then restore
-                // the segment's so the terminal state matches what the renderer
-                // records for it.
-                let marker = FgColor::from(color);
-                format!(
-                    "{} {}{}{}{}{}",
-                    link,
-                    style.fg.attrs_off(),
-                    marker,
-                    glyph,
-                    marker.attrs_off(),
-                    style.fg
-                )
+                format!("{} {}", link, tinted(glyph, color, &style))
             }
             None => link,
         };
         self.push_segment(seg, style, self.module_padding, Some(visible_width));
+    }
+
+    /// Adds a segment of `text` followed by `suffix` in its own colour, both
+    /// on this segment's background, e.g. the model name and its effort level.
+    pub fn add_two_tone_segment(
+        &mut self,
+        text: &str,
+        suffix: &str,
+        suffix_fg: Color,
+        style: Style,
+    ) {
+        let visible_width = text.width() + 1 + suffix.width();
+        let seg = format!("{} {}", text, tinted(suffix, suffix_fg, &style));
+        self.push_segment(seg, style, self.module_padding, Some(visible_width));
+    }
+
+    /// Whether the row has any segments, as opposed to only layout entries
+    /// or widgets with nothing to show.
+    pub fn has_segments(&self) -> bool {
+        self.drawn
     }
 
     /// Adds a segment made of `pieces`, each with an optional note that
@@ -451,6 +465,7 @@ impl Powerline {
         widgets: &[Widget],
         runtime_data: &impl TerminalRuntimeMetadata,
     ) {
+        let claude = runtime_data.claude_code();
         for widget in widgets {
             self.widget_padding = widget.padding;
             let module = &widget.segment;
@@ -474,7 +489,9 @@ impl Powerline {
                     *backend,
                     *worktrees,
                 )),
-                LineSegment::Pr { status } => self.add_module(Pr::<T>::new(*status)),
+                LineSegment::Pr { status } => self.add_module(
+                    Pr::<T>::new(*status).with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
+                ),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
                 LineSegment::Host | LineSegment::Hostname => self.add_module(Hostname::<T>::new()),
@@ -513,26 +530,53 @@ impl Powerline {
                     session_time_remaining,
                     session_time_remaining_only_at_limit,
                     hover,
-                } => self.add_module(Usage::<T>::new(
-                    *provider,
-                    UsageWindows::new(
-                        UsageWindows::session(*session, session_label.clone()),
-                        UsageWindows::weekly(*weekly, weekly_label.clone()),
-                        UsageWindows::fable(*fable, fable_label.clone()),
-                        UsageWindows::credits(
-                            *credits,
-                            credits_label.clone(),
-                            credits_display.unwrap_or(*display),
-                            *credits_only_when_limited,
-                        ),
+                    width,
+                } => self.add_module(
+                    Usage::<T>::new(
                         *provider,
-                    ),
-                    *display,
-                    *threshold,
-                    *session_time_remaining,
-                    *session_time_remaining_only_at_limit,
-                    *hover,
+                        UsageWindows::new(
+                            UsageWindows::session(*session, session_label.clone()),
+                            UsageWindows::weekly(*weekly, weekly_label.clone()),
+                            UsageWindows::fable(*fable, fable_label.clone()),
+                            UsageWindows::credits(
+                                *credits,
+                                credits_label.clone(),
+                                credits_display.unwrap_or(*display),
+                                *credits_only_when_limited,
+                            ),
+                            *provider,
+                        ),
+                        *display,
+                        *threshold,
+                        *session_time_remaining,
+                        *session_time_remaining_only_at_limit,
+                        *hover && runtime_data.hover_text(),
+                    )
+                    .with_claude_code_limits(claude.and_then(|s| s.rate_limits.as_ref()))
+                    .with_width(*width),
+                ),
+                LineSegment::ClaudeModel { effort, fast_mode } => {
+                    self.add_module(ClaudeModel::<T>::new(claude, *effort, *fast_mode))
+                }
+                LineSegment::ClaudeContext {
+                    display,
+                    tokens,
+                    threshold,
+                    width,
+                } => self.add_module(ClaudeContext::<T>::new(
+                    claude, *display, *width, *tokens, *threshold,
                 )),
+                LineSegment::ClaudeCost => self.add_module(ClaudeCost::<T>::new(claude)),
+                LineSegment::ClaudeDuration { api } => {
+                    self.add_module(ClaudeDuration::<T>::new(claude, *api))
+                }
+                LineSegment::ClaudeLines => self.add_module(ClaudeLines::<T>::new(claude)),
+                LineSegment::ClaudeCache => self.add_module(ClaudeCache::<T>::new(claude)),
+                LineSegment::ClaudeVim => self.add_module(ClaudeVim::<T>::new(claude)),
+                LineSegment::ClaudeAgent => self.add_module(ClaudeAgent::<T>::new(claude)),
+                LineSegment::ClaudeSession { max_length } => {
+                    self.add_module(ClaudeSession::<T>::new(claude, *max_length))
+                }
                 LineSegment::LastCmdDuration { min_run_time } => {
                     self.add_module(LastCmdDuration::<T>::new(
                         runtime_data.last_command_duration(),
@@ -649,6 +693,21 @@ impl Powerline {
     }
 }
 
+/// `text` in its own colour and attributes inside a segment drawn in `style`,
+/// which is restored after it so the terminal state matches what the renderer
+/// records for the segment.
+fn tinted(text: &str, color: Color, style: &Style) -> String {
+    let fg = FgColor::from(color);
+    format!(
+        "{}{}{}{}{}",
+        style.fg.attrs_off(),
+        fg,
+        text,
+        fg.attrs_off(),
+        style.fg
+    )
+}
+
 /// The padding a widget's module declares, as it would draw the widget. `None`
 /// for layout entries that draw no segment.
 pub fn default_padding(widget: &Widget) -> Option<DefaultPadding> {
@@ -686,6 +745,7 @@ macro_rules! probe_schemes {
 probe_schemes!(
     crate::modules::BatteryScheme,
     crate::modules::CargoScheme,
+    crate::modules::ClaudeCodeScheme,
     crate::modules::CmdScheme,
     crate::modules::ErrorMessageScheme,
     crate::modules::ExitCodeScheme,

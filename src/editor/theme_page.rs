@@ -1077,7 +1077,7 @@ fn prop_value_spans(
 mod tests {
     use super::*;
     use crate::editor::model::{Document, Entry};
-    use crate::editor::Page;
+    use crate::editor::{Page, Scope};
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::KeyModifiers;
     use ratatui::Terminal;
@@ -1095,7 +1095,7 @@ mod tests {
         }
         let path = dir.join("config.json");
         std::fs::write(&path, config.to_string()).unwrap();
-        let mut app = App::new(Document::new(config).unwrap(), path);
+        let mut app = App::new(Document::new(config).unwrap(), path, Scope::Prompt);
         app.page = Page::Theme;
         app.load_theme_slot();
         (app, dir)
@@ -1389,7 +1389,11 @@ mod tests {
         )
         .unwrap();
         let config = json!({ "theme": "theme.json", "rows": [{ "left": ["read_only"] }] });
-        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        let mut app = App::new(
+            Document::new(config).unwrap(),
+            dir.join("config.json"),
+            Scope::Prompt,
+        );
         app.load_theme_slot();
 
         let entries = app.theme_doc().unwrap().entries();
@@ -1430,7 +1434,11 @@ mod tests {
         )
         .unwrap();
         let config = json!({ "theme": "theme.json", "rows": [{ "left": ["read_only"] }] });
-        let mut app = App::new(Document::new(config).unwrap(), dir.join("config.json"));
+        let mut app = App::new(
+            Document::new(config).unwrap(),
+            dir.join("config.json"),
+            Scope::Prompt,
+        );
         app.load_theme_slot();
 
         let doc = app.theme_doc().unwrap();

@@ -263,6 +263,53 @@ const TEXT_COLORS: &[TextColor] = &[
     ("cargo", "fg", <T as CargoScheme>::cargo_fg),
     ("ai_usage", "claude_fg", <T as UsageScheme>::claude_usage_fg),
     ("ai_usage", "codex_fg", <T as UsageScheme>::codex_usage_fg),
+    (
+        "claude_model",
+        "fg",
+        <T as ClaudeCodeScheme>::claude_model_fg,
+    ),
+    (
+        "claude_model",
+        "effort_fg",
+        <T as ClaudeCodeScheme>::claude_model_effort_fg,
+    ),
+    (
+        "claude_context",
+        "fg",
+        <T as ClaudeCodeScheme>::claude_context_fg,
+    ),
+    ("claude_cost", "fg", <T as ClaudeCodeScheme>::claude_cost_fg),
+    (
+        "claude_duration",
+        "fg",
+        <T as ClaudeCodeScheme>::claude_duration_fg,
+    ),
+    (
+        "claude_lines",
+        "added_fg",
+        <T as ClaudeCodeScheme>::claude_lines_added_fg,
+    ),
+    (
+        "claude_lines",
+        "removed_fg",
+        <T as ClaudeCodeScheme>::claude_lines_removed_fg,
+    ),
+    (
+        "claude_cache",
+        "fg",
+        <T as ClaudeCodeScheme>::claude_cache_fg,
+    ),
+    ("claude_vim", "fg", <T as ClaudeCodeScheme>::claude_vim_fg),
+    (
+        "claude_agent",
+        "fg",
+        <T as ClaudeCodeScheme>::claude_agent_fg,
+    ),
+    (
+        "claude_session",
+        "fg",
+        <T as ClaudeCodeScheme>::claude_session_fg,
+    ),
     ("os", "fg", <T as OsScheme>::os_fg),
     (
         "memory_usage",

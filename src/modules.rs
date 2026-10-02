@@ -20,6 +20,7 @@ mod readonly;
 mod user;
 
 mod cargo;
+mod claude_code;
 mod cmd_duration;
 mod java;
 mod kubernetes;
@@ -37,6 +38,10 @@ mod usage;
 
 pub use battery::{Battery, BatteryScheme};
 pub use cargo::{Cargo, CargoScheme};
+pub use claude_code::{
+    ClaudeAgent, ClaudeCache, ClaudeCodeScheme, ClaudeContext, ClaudeCost, ClaudeDuration,
+    ClaudeLines, ClaudeModel, ClaudeSession, ClaudeVim,
+};
 pub use cmd::{Cmd, CmdScheme};
 pub use cmd_duration::{LastCmdDuration, LastCmdDurationScheme};
 pub use cwd::{Cwd, CwdScheme};
