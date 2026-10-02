@@ -290,6 +290,10 @@ pub enum LineSegment {
         #[serde(default)]
         session_time_remaining: bool,
         session_time_remaining_only_at_limit: f64,
+        /// Hovering over the provider icon in iTerm2 shows every window's
+        /// percentage. On by default.
+        #[serde(default = "default_true")]
+        hover: bool,
     },
     User,
     Username,
@@ -419,6 +423,10 @@ enum KnownLineSegment {
         session_time_remaining: bool,
         #[serde(default, deserialize_with = "deserialize_unit_interval")]
         session_time_remaining_only_at_limit: f64,
+        /// Hovering over the provider icon in iTerm2 shows every window's
+        /// percentage. On by default.
+        #[serde(default = "default_true")]
+        hover: bool,
     },
     User,
     Username,
@@ -493,6 +501,7 @@ impl From<KnownLineSegment> for LineSegment {
                 credits_only_when_limited,
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
+                hover,
             } => LineSegment::AiUsage {
                 provider,
                 session,
@@ -509,6 +518,7 @@ impl From<KnownLineSegment> for LineSegment {
                 credits_only_when_limited,
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
+                hover,
             },
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Username => LineSegment::Username,
@@ -721,6 +731,7 @@ impl Default for Config {
                             credits_only_when_limited: true,
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
+                            hover: true,
                         },
                         LineSegment::Padding(1),
                         LineSegment::AiUsage {
@@ -739,6 +750,7 @@ impl Default for Config {
                             credits_only_when_limited: true,
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
+                            hover: true,
                         },
                     ]),
                     right: Some(widgets(vec![LineSegment::Sudo, LineSegment::Battery])),
@@ -885,6 +897,7 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                hover: true,
             }
         );
     }
@@ -914,8 +927,22 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: true,
                 session_time_remaining_only_at_limit: 0.8,
+                hover: true,
             }
         );
+    }
+
+    #[test]
+    fn usage_hover_can_be_turned_off() {
+        let hover = |json: &str| match serde_json::from_str::<LineSegment>(json).unwrap() {
+            LineSegment::AiUsage { hover, .. } => hover,
+            other => panic!("not ai_usage: {other:?}"),
+        };
+        assert!(hover(r#"{"ai_usage":{"provider":"claude"}}"#));
+        assert!(hover(r#"{"ai_usage":{"provider":"claude","hover":true}}"#));
+        assert!(!hover(
+            r#"{"ai_usage":{"provider":"claude","hover":false}}"#
+        ));
     }
 
     #[test]
@@ -959,6 +986,7 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                hover: true,
             }
         );
     }
@@ -988,6 +1016,7 @@ mod tests {
                 credits_only_when_limited: true,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                hover: true,
             }
         );
     }

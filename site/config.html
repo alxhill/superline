@@ -859,6 +859,7 @@
             <tr><td><code>credits_only_when_limited</code></td><td>boolean</td><td><code>false</code></td><td>Show credits only once a window has hit 100%, which is when the provider starts spending them.</td></tr>
             <tr><td><code>session_time_remaining</code></td><td>boolean</td><td><code>false</code></td><td>Show a countdown to the five-hour window's reset.</td></tr>
             <tr><td><code>session_time_remaining_only_at_limit</code></td><td>number</td><td><code>0</code></td><td>Fraction from 0 to 1: only show the countdown once the session is at least this full. <code>0.8</code> shows it from 80%.</td></tr>
+            <tr><td><code>hover</code></td><td>boolean</td><td><code>true</code></td><td>In iTerm2, hovering over the provider icon shows every window's percentage. Not added for the <code>percentage</code> and <code>numeric</code> displays.</td></tr>
           </tbody>
         </table>
         <table class="opts styles">
@@ -873,10 +874,11 @@
           </tbody>
         </table>
         <p>
-          A sparkline glyph is too small to read a figure from, so in iTerm2 each lane's glyph carries a hidden
-          annotation: hover over it to see the percentage, such as <code>5h: 61% used</code> or
-          <code>Credits: 25% used</code>. Other terminals ignore it. Inside tmux it only reaches iTerm2 with
-          <code>allow-passthrough</code> on and the sequence wrapped for passthrough, which superline doesn't do.
+          With any display except <code>percentage</code> and <code>numeric</code>, which already print the figures,
+          the provider icon carries an iTerm2 hidden annotation: hover over it to see every window that has a
+          reading, drawn or not, such as <code>5h: 61% used · 7d: 41% used · Fable: 22% used</code>. Other terminals
+          ignore it. Inside tmux it only reaches iTerm2 with <code>allow-passthrough</code> on and the sequence
+          wrapped for passthrough, which superline doesn't do.
         </p>
         <details class="theme-opts" data-theme="ai_usage">
     <summary>Theme options <code>modules.ai_usage</code></summary>

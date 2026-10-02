@@ -63,14 +63,21 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Only the sparkline gets a hover note, on its glyph.
+    // The sparkline and bar widgets get a hover note on their icon, listing
+    // windows they don't draw too. The percentage ones print the figures.
     assert!(
-        stdout.contains("\u{ec82} \x1b]1337;AddHiddenAnnotation=1|5h: 12% used\x07▁"),
+        stdout.contains(
+            "\x1b]1337;AddHiddenAnnotation=1|5h: 12% used · 7d: 68% used · Fable: 33% used\x07\u{ec82} ▁"
+        ),
+        "stdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("\x1b]1337;AddHiddenAnnotation=1|5h: 100% used · 7d: 80% used\x07\u{ec81}"),
         "stdout:\n{stdout}"
     );
     assert_eq!(
         stdout.matches("AddHiddenAnnotation").count(),
-        1,
+        2,
         "stdout:\n{stdout}"
     );
     assert!(stdout.contains("\u{ec82}  F 33%"), "stdout:\n{stdout}");
@@ -208,9 +215,10 @@ fn usage_widget_shows_a_logged_out_provider_instead_of_loading() {
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn sparkline_hover_notes_are_wrapped_for_each_shell() {
-    let root = std::env::temp_dir().join(format!("superline-usage-hover-{}", std::process::id()));
+/// Renders `config` for `shell` against a temporary cache holding `claude`
+/// as the Claude reading, with `theme` as the theme file.
+fn render_usage(name: &str, shell: &str, claude: &str, theme: &str, config: &str) -> String {
+    let root = std::env::temp_dir().join(format!("superline-usage-{name}-{}", std::process::id()));
     let cache_dir = root.join("cache/superline");
     fs::create_dir_all(&cache_dir).expect("create cache directory");
     let fetched_at = SystemTime::now()
@@ -219,45 +227,150 @@ fn sparkline_hover_notes_are_wrapped_for_each_shell() {
         .as_secs();
     fs::write(
         cache_dir.join("usage-claude.json"),
-        format!(r#"{{"fetched_at":{fetched_at},"value":{{"session":61.0,"weekly":null}}}}"#),
+        format!(r#"{{"fetched_at":{fetched_at},"value":{claude}}}"#),
     )
     .expect("write Claude cache");
-
-    let config = root.join("config.json");
+    fs::write(root.join("theme.json"), theme).expect("write theme");
+    let config_path = root.join("config.json");
     fs::write(
-        &config,
-        r#"{"rows": [{"left": [{"ai_usage":{"provider":"claude","display":"sparkline"}}]}]}"#,
+        &config_path,
+        format!(r#"{{"theme":"theme.json","rows":[{config}]}}"#),
     )
     .expect("write config");
 
+    let output = Command::new(BIN)
+        .args(["show", shell, "-s", "0", "-c", "120", "--config"])
+        .arg(&config_path)
+        .env("HOME", &root)
+        .env("USERPROFILE", &root)
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .env("LOCALAPPDATA", root.join("cache"))
+        .output()
+        .expect("render prompt");
+    let _ = fs::remove_dir_all(root);
+    assert!(output.status.success(), "{name} {shell}");
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+const READING: &str = r#"{"session":61.0,"weekly":41.0,"fable":22.0}"#;
+const THEME: &str = r#"{"defaults":{"fg":250,"bg":0},"modules":{}}"#;
+const NOTE: &str = "5h: 61% used · 7d: 41% used · Fable: 22% used";
+
+fn widget(options: &str) -> String {
+    format!(r#"{{"left":[{{"ai_usage":{{"provider":"claude",{options}}}}}]}}"#)
+}
+
+#[test]
+fn usage_hover_note_covers_the_icon_in_each_shell() {
+    let config = widget(r#""display":"sparkline""#);
     for (shell, note) in [
-        ("fish", "\x1b]1337;AddHiddenAnnotation=1|5h: 61% used\x07▅"),
+        (
+            "fish",
+            format!("\x1b]1337;AddHiddenAnnotation=1|{NOTE}\x07\u{ec82} 5h ▅"),
+        ),
         (
             "zsh",
-            "%{\x1b]1337;AddHiddenAnnotation=1|5h: 61%% used\x07%}▅",
+            format!(
+                "%{{\x1b]1337;AddHiddenAnnotation=1|{}\x07%}}\u{ec82} 5h ▅",
+                NOTE.replace('%', "%%")
+            ),
         ),
-        ("bash", r"\[\e]1337;AddHiddenAnnotation=1|5h: 61% used\a\]▅"),
+        (
+            "bash",
+            format!(
+                r"\[\e]1337;AddHiddenAnnotation=1|{NOTE}\a\]{}",
+                "\u{ec82} 5h ▅"
+            ),
+        ),
     ] {
-        let output = Command::new(BIN)
-            .args(["show", shell, "-s", "0", "-c", "120", "--config"])
-            .arg(&config)
-            .env("HOME", &root)
-            .env("USERPROFILE", &root)
-            .env("XDG_CACHE_HOME", root.join("cache"))
-            .env("LOCALAPPDATA", root.join("cache"))
-            .output()
-            .expect("render prompt");
-
-        assert!(output.status.success(), "{shell}");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains(note), "{shell} stdout:\n{stdout}");
-        // The weekly lane has no reading, so nothing to hover over.
+        let stdout = render_usage("hover-shells", shell, READING, THEME, &config);
+        assert!(stdout.contains(&note), "{shell} stdout:\n{stdout}");
         assert_eq!(
             stdout.matches("AddHiddenAnnotation").count(),
             1,
             "{shell} stdout:\n{stdout}"
         );
     }
+}
 
-    let _ = fs::remove_dir_all(root);
+#[test]
+fn usage_hover_note_is_only_drawn_where_the_figures_are_hidden() {
+    let note = format!("\x1b]1337;AddHiddenAnnotation=1|{NOTE}\x07\u{ec82}");
+    for display in ["bar", "capped_bar", "block", "sparkline"] {
+        // Only the session lane is drawn, but every reading is listed.
+        let config = widget(&format!(r#""display":"{display}","weekly":false"#));
+        let stdout = render_usage("hover-displays", "fish", READING, THEME, &config);
+        assert!(stdout.contains(&note), "{display} stdout:\n{stdout}");
+    }
+
+    let no_icon = r#"{"defaults":{"fg":250,"bg":0},"modules":{"ai_usage":{"claude_icon":""}}}"#;
+    let no_readings = r#"{"session":null,"weekly":null}"#;
+    for (case, reading, theme, options) in [
+        ("percentage", READING, THEME, r#""display":"percentage""#),
+        ("numeric", READING, THEME, r#""display":"numeric""#),
+        (
+            "hover off",
+            READING,
+            THEME,
+            r#""display":"sparkline","hover":false"#,
+        ),
+        ("no icon", READING, no_icon, r#""display":"sparkline""#),
+        (
+            "no readings",
+            no_readings,
+            THEME,
+            r#""display":"sparkline""#,
+        ),
+    ] {
+        let stdout = render_usage("hover-none", "fish", reading, theme, &widget(options));
+        assert!(stdout.contains("5h"), "{case} stdout:\n{stdout}");
+        assert!(
+            !stdout.contains("AddHiddenAnnotation"),
+            "{case} stdout:\n{stdout}"
+        );
+    }
+}
+
+/// The text a terminal shows for `prompt`, without its escapes.
+fn visible(prompt: &str) -> String {
+    let mut out = String::new();
+    let mut chars = prompt.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\x1b' => match chars.next() {
+                Some('[') => {
+                    chars.find(|c| c.is_ascii_alphabetic());
+                }
+                Some(']') => {
+                    chars.find(|&c| c == '\x07');
+                }
+                _ => {}
+            },
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+#[test]
+fn usage_hover_note_takes_no_columns() {
+    // Every row but the last is padded out to the right side by superline.
+    let rows = |hover: bool| {
+        format!(
+            r#"{{"left":[{{"ai_usage":{{"provider":"claude","display":"sparkline","hover":{hover}}}}}],"right":[{{"text":"end"}}]}},{{"left":[{{"text":"next"}}]}}"#
+        )
+    };
+    let with_note = render_usage("hover-width", "fish", READING, THEME, &rows(true));
+    let without = render_usage("hover-width", "fish", READING, THEME, &rows(false));
+    assert!(with_note.contains("AddHiddenAnnotation"), "{with_note}");
+    assert_ne!(with_note, without);
+    assert_eq!(visible(&with_note), visible(&without));
+    let first_row = visible(&with_note)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    assert!(first_row.ends_with("end "), "{first_row:?}");
+    // 120 columns, less the one superline keeps free.
+    assert_eq!(first_row.chars().count(), 119, "{first_row:?}");
 }
