@@ -791,6 +791,10 @@ impl TerminalRuntimeMetadata for &ClaudeCodeRuntime {
     fn claude_code(&self) -> Option<&ClaudeCodeStatus> {
         self.status.as_ref()
     }
+
+    fn hover_text(&self) -> bool {
+        false
+    }
 }
 
 /// Claude Code blanks its status line when the command fails or prints

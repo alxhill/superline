@@ -22,6 +22,12 @@ pub trait TerminalRuntimeMetadata {
     fn claude_code(&self) -> Option<&ClaudeCodeStatus> {
         None
     }
+
+    /// Whether the output reaches a terminal that can show hover text.
+    /// Claude Code redraws its status line itself and drops the escapes.
+    fn hover_text(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -267,6 +267,17 @@ fn ai_usage_shows_the_rate_limits_claude_code_reports() {
 }
 
 #[test]
+fn ai_usage_leaves_out_the_hover_text_claude_code_would_drop() {
+    let scratch = Scratch::new("hover");
+    let layout = scratch.layout(
+        r#"[{ "left": [{ "ai_usage": { "provider": "claude", "display": "sparkline" } }] }]"#,
+    );
+    let output = scratch.render(&["--config", layout.to_str().unwrap()], SESSION);
+    assert!(visible(&output).contains("5h"), "{output:?}");
+    assert!(!output.contains("1337"), "{output:?}");
+}
+
+#[test]
 fn pr_falls_back_to_the_pull_request_claude_code_reports() {
     let scratch = Scratch::new("pr");
     let layout = scratch.layout(r#"[{ "left": ["pr"] }]"#);

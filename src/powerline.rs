@@ -550,7 +550,7 @@ impl Powerline {
                         *threshold,
                         *session_time_remaining,
                         *session_time_remaining_only_at_limit,
-                        *hover,
+                        *hover && runtime_data.hover_text(),
                     )
                     .with_claude_code_limits(claude.and_then(|s| s.rate_limits.as_ref()))
                     .with_width(*width),
