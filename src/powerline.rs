@@ -491,8 +491,9 @@ impl Powerline {
                     *worktrees,
                     *repo,
                 )),
-                LineSegment::Pr { status } => self.add_module(
-                    Pr::<T>::new(*status).with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
+                LineSegment::Pr { status, diff } => self.add_module(
+                    Pr::<T>::new(*status, *diff)
+                        .with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
                 ),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),

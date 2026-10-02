@@ -43,7 +43,10 @@
       "closed_fg": "white",
       "status_success_fg": "light_green",
       "status_failure_fg": "warning_red",
-      "status_pending_fg": "dark_yellow"
+      "status_pending_fg": "dark_yellow",
+      "diff_added_fg": "light_green",
+      "diff_removed_fg": "warning_red",
+      "diff_bg": 236
     },
     "kubernetes": {
       "fg": "white",

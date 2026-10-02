@@ -454,13 +454,14 @@ Status is produced by one of two backends, chosen with `backend`:
 
 A clickable link to the GitHub pull request for the current branch, looked up via the `gh` CLI. The segment color
 reflects the PR state (draft, open, merged, closed). With `status` on (the default) a colored dot follows the PR
-number showing CI check status: green for success, red for failure, yellow for pending.
+number showing CI check status: green for success, red for failure, yellow for pending. With `diff` on (off by
+default) the PR's added and deleted line counts follow in a segment of their own, as `+426 -35`.
 
 The lookup runs in the background and is cached, so it never blocks the prompt - the link appears on a later prompt
 once the result is ready. The module is skipped entirely on `main`, `master` and `develop`.
 
 ```json
-{ "pr": { "status": false } }
+{ "pr": { "status": false, "diff": true } }
 ```
 
 #### ai_usage

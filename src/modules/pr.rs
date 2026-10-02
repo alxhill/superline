@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::claude_code::PullRequest;
-use crate::colors::Color;
+use crate::colors::{self, Color};
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
@@ -21,6 +21,8 @@ const SKIP_BRANCHES: &[&str] = &["develop", "main", "master", "HEAD"];
 pub struct Pr<S> {
     /// Whether to append the CI check-status dot after the PR number.
     show_status: bool,
+    /// Whether to append the PR's added and deleted line counts.
+    show_diff: bool,
     /// The PR Claude Code passed to its status line, shown when the `gh`
     /// lookup has none.
     reported: Option<PrInfo>,
@@ -30,6 +32,8 @@ pub struct Pr<S> {
 pub trait PrScheme: DefaultColors {
     const PR_ICON: &'static str = "\u{ea64}"; // nf-cod-git_pull_request
     const PR_STATUS_ICON: &'static str = "\u{25cf}"; // ● black circle
+    const PR_DIFF_ADDED_FG: Color = colors::green();
+    const PR_DIFF_REMOVED_FG: Color = colors::red();
 
     fn pr_draft_fg() -> Color {
         Self::default_fg()
@@ -71,18 +75,29 @@ pub trait PrScheme: DefaultColors {
     fn pr_status_icon() -> &'static str {
         Self::PR_STATUS_ICON
     }
+
+    fn pr_diff_added_fg() -> Color {
+        Self::PR_DIFF_ADDED_FG
+    }
+    fn pr_diff_removed_fg() -> Color {
+        Self::PR_DIFF_REMOVED_FG
+    }
+    fn pr_diff_bg() -> Color {
+        Self::default_bg()
+    }
 }
 
 impl<S: PrScheme> Default for Pr<S> {
     fn default() -> Self {
-        Self::new(true)
+        Self::new(true, false)
     }
 }
 
 impl<S: PrScheme> Pr<S> {
-    pub fn new(show_status: bool) -> Pr<S> {
+    pub fn new(show_status: bool, show_diff: bool) -> Pr<S> {
         Pr {
             show_status,
+            show_diff,
             reported: None,
             scheme: PhantomData,
         }
@@ -153,6 +168,16 @@ pub struct PrInfo {
     /// compatibility with caches written before this field existed.
     #[serde(default)]
     checks: Option<CheckStatus>,
+    /// Lines added and deleted across the PR. `None` for caches written
+    /// before this field existed and for the PR Claude Code reports.
+    #[serde(default)]
+    diff: Option<Diff>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Diff {
+    additions: u64,
+    deletions: u64,
 }
 
 impl PrInfo {
@@ -168,6 +193,7 @@ impl PrInfo {
                 PrState::Open
             },
             checks: None,
+            diff: None,
         })
     }
 }
@@ -192,7 +218,7 @@ impl Source for PrLookup {
         hash_id(&(&self.repo_root, &self.branch))
     }
 
-    /// Always fetches the check status too - rendering it is a display-time
+    /// Always fetches the check status and diff too - rendering it is a display-time
     /// choice, so the cache stays the same regardless of config.
     fn fetch(&self) -> Option<Option<PrInfo>> {
         Some(fetch_pr(&self.branch, &self.repo_root))
@@ -236,6 +262,15 @@ impl<S: PrScheme> Module for Pr<S> {
             .filter(|(icon, _)| !icon.is_empty());
 
         powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
+
+        if let Some(diff) = pr.diff.filter(|_| self.show_diff) {
+            powerline.add_two_tone_segment(
+                &format!("+{}", diff.additions),
+                &format!("-{}", diff.deletions),
+                S::pr_diff_removed_fg(),
+                Style::simple(S::pr_diff_added_fg(), S::pr_diff_bg()),
+            );
+        }
     }
 }
 
@@ -255,7 +290,7 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
             "view",
             branch,
             "--json",
-            "number,url,state,isDraft,statusCheckRollup",
+            "number,url,state,isDraft,statusCheckRollup,additions,deletions",
         ])
         .output()
         .ok()?;
@@ -274,6 +309,10 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
         url: gh.url,
         state,
         checks: aggregate(&gh.status_check_rollup),
+        diff: Some(Diff {
+            additions: gh.additions,
+            deletions: gh.deletions,
+        }),
     })
 }
 
@@ -370,6 +409,10 @@ struct GhPr {
     is_draft: bool,
     #[serde(rename = "statusCheckRollup", default)]
     status_check_rollup: Vec<CheckItem>,
+    #[serde(default)]
+    additions: u64,
+    #[serde(default)]
+    deletions: u64,
 }
 
 #[cfg(test)]
