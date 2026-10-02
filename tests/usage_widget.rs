@@ -63,7 +63,16 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\u{ec82} ▁"), "stdout:\n{stdout}");
+    // Only the sparkline gets a hover note, on its glyph.
+    assert!(
+        stdout.contains("\u{ec82} \x1b]1337;AddHiddenAnnotation=1|5h: 12% used\x07▁"),
+        "stdout:\n{stdout}"
+    );
+    assert_eq!(
+        stdout.matches("AddHiddenAnnotation").count(),
+        1,
+        "stdout:\n{stdout}"
+    );
     assert!(stdout.contains("\u{ec82}  F 33%"), "stdout:\n{stdout}");
     // Claude has headroom, so its hidden-until-limited credits lane stays empty.
     assert!(!stdout.contains("$12.50"), "stdout:\n{stdout}");
@@ -195,6 +204,60 @@ fn usage_widget_shows_a_logged_out_provider_instead_of_loading() {
     assert!(!stdout.contains('\u{2026}'), "stdout:\n{stdout}");
     // A logged-out reading has nothing to measure against the threshold.
     assert!(!stdout.contains("\x1b[48;5;160m"), "stdout:\n{stdout}");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn sparkline_hover_notes_are_wrapped_for_each_shell() {
+    let root = std::env::temp_dir().join(format!("superline-usage-hover-{}", std::process::id()));
+    let cache_dir = root.join("cache/superline");
+    fs::create_dir_all(&cache_dir).expect("create cache directory");
+    let fetched_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("current time")
+        .as_secs();
+    fs::write(
+        cache_dir.join("usage-claude.json"),
+        format!(r#"{{"fetched_at":{fetched_at},"value":{{"session":61.0,"weekly":null}}}}"#),
+    )
+    .expect("write Claude cache");
+
+    let config = root.join("config.json");
+    fs::write(
+        &config,
+        r#"{"rows": [{"left": [{"ai_usage":{"provider":"claude","display":"sparkline"}}]}]}"#,
+    )
+    .expect("write config");
+
+    for (shell, note) in [
+        ("fish", "\x1b]1337;AddHiddenAnnotation=1|5h: 61% used\x07▅"),
+        (
+            "zsh",
+            "%{\x1b]1337;AddHiddenAnnotation=1|5h: 61%% used\x07%}▅",
+        ),
+        ("bash", r"\[\e]1337;AddHiddenAnnotation=1|5h: 61% used\a\]▅"),
+    ] {
+        let output = Command::new(BIN)
+            .args(["show", shell, "-s", "0", "-c", "120", "--config"])
+            .arg(&config)
+            .env("HOME", &root)
+            .env("USERPROFILE", &root)
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .env("LOCALAPPDATA", root.join("cache"))
+            .output()
+            .expect("render prompt");
+
+        assert!(output.status.success(), "{shell}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains(note), "{shell} stdout:\n{stdout}");
+        // The weekly lane has no reading, so nothing to hover over.
+        assert_eq!(
+            stdout.matches("AddHiddenAnnotation").count(),
+            1,
+            "{shell} stdout:\n{stdout}"
+        );
+    }
 
     let _ = fs::remove_dir_all(root);
 }

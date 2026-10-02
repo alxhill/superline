@@ -497,6 +497,11 @@ providers, or the same provider with different windows and styles. Provider labe
 { "ai_usage": { "provider": "codex", "display": "bar" } }
 ```
 
+**Hover text.** With `"sparkline"`, each lane's glyph carries an iTerm2 hidden annotation, so hovering over it shows
+the percentage, such as `5h: 61% used`, `7d: 41% used` or `Credits: 25% used`. A lane with no reading gets none.
+Other terminals ignore the escape. Inside tmux it only reaches iTerm2 with `allow-passthrough` on and the sequence
+wrapped for passthrough, which superline doesn't do.
+
 **Threshold.** `threshold` is a percent-used warning level. When any visible lane crosses it, the whole widget
 background switches to the theme's `modules.ai_usage.threshold_bg` color.
 

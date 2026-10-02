@@ -872,6 +872,12 @@
             <tr><td><code>"numeric"</code></td><td><code>num</code></td><td>Raw figures for credits; same as <code>percentage</code> for windows.</td></tr>
           </tbody>
         </table>
+        <p>
+          A sparkline glyph is too small to read a figure from, so in iTerm2 each lane's glyph carries a hidden
+          annotation: hover over it to see the percentage, such as <code>5h: 61% used</code> or
+          <code>Credits: 25% used</code>. Other terminals ignore it. Inside tmux it only reaches iTerm2 with
+          <code>allow-passthrough</code> on and the sequence wrapped for passthrough, which superline doesn't do.
+        </p>
         <details class="theme-opts" data-theme="ai_usage">
     <summary>Theme options <code>modules.ai_usage</code></summary>
     <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>claude_fg</code></td><td>color</td><td>Claude widget text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>claude_bg</code></td><td>color</td><td>Claude widget background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>codex_fg</code></td><td>color</td><td>Codex widget text.</td><td><code>defaults.fg</code></td></tr><tr><td><code>codex_bg</code></td><td>color</td><td>Codex widget background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>threshold_bg</code></td><td>color</td><td>Background once a visible lane crosses threshold.</td><td><code>defaults.bg</code></td></tr><tr><td><code>claude_icon</code></td><td>string</td><td>Claude logo that opens the Claude widget.</td><td>U+EC82</td></tr><tr><td><code>codex_icon</code></td><td>string</td><td>OpenAI logo that opens the Codex widget.</td><td>U+EC81</td></tr><tr><td><code>reset_icon</code></td><td>string</td><td>Before the time left until the session window resets.</td><td><code>"↻"</code></td></tr><tr><td><code>loading_icon</code></td><td>string</td><td>In place of a reading until the first refresh lands.</td><td><code>"…"</code></td></tr><tr><td><code>logged_out_icon</code></td><td>string</td><td>In place of a reading when the provider CLI has no signed-in account.</td><td>U+F235</td></tr><tr><td><code>not_installed_icon</code></td><td>string</td><td>In place of a reading when the provider CLI is not installed.</td><td><code>"?"</code></td></tr></tbody></table>

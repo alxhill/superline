@@ -343,7 +343,7 @@ impl<S: UsageScheme> Module for Usage<S> {
         let icon = provider_icon::<S>(self.provider);
         let label = match &lookup {
             Lookup::Ready(reading) if reading.logged_out => {
-                join_non_empty([icon, S::usage_logged_out_icon()])
+                join_non_empty([icon, S::usage_logged_out_icon()]).into()
             }
             Lookup::Ready(reading) => format_usage::<S>(
                 self.provider,
@@ -353,8 +353,8 @@ impl<S: UsageScheme> Module for Usage<S> {
                 self.show_session_time_remaining,
                 self.session_time_remaining_only_at_limit,
             ),
-            Lookup::Loading => join_non_empty([icon, S::usage_loading_icon()]),
-            Lookup::Unavailable => join_non_empty([icon, S::usage_not_installed_icon()]),
+            Lookup::Loading => join_non_empty([icon, S::usage_loading_icon()]).into(),
+            Lookup::Unavailable => join_non_empty([icon, S::usage_not_installed_icon()]).into(),
         };
         if label.is_empty() {
             return;
@@ -366,8 +366,81 @@ impl<S: UsageScheme> Module for Usage<S> {
             })
             .map(|_| S::usage_threshold_bg())
             .unwrap_or(bg);
-        powerline.add_segment(label, Style::simple(default_fg, bg));
+        powerline.add_annotated_segment(label.pieces(), Style::simple(default_fg, bg));
     }
+}
+
+/// The widget's text in pieces, each with the note shown when hovering over
+/// it in iTerm2.
+#[derive(Debug, Default)]
+struct UsageLabel {
+    pieces: Vec<(String, Option<String>)>,
+}
+
+impl UsageLabel {
+    fn push(&mut self, text: impl Into<String>) {
+        self.pieces.push((text.into(), None));
+    }
+
+    /// A lane's label and reading. A sparkline is a single glyph, so its
+    /// glyph carries the lane's percentage as a hover note.
+    fn push_lane(
+        &mut self,
+        lane: &str,
+        label: &str,
+        used_percent: Option<f64>,
+        display: UsageDisplay,
+    ) {
+        match hover_note(lane, used_percent, display) {
+            Some(note) => {
+                let (prefix, value) = format_window_parts(label, used_percent, display);
+                self.push(prefix);
+                self.pieces.push((value, Some(note)));
+            }
+            None => self.push(format_window(label, used_percent, display)),
+        }
+    }
+
+    fn pieces(&self) -> impl Iterator<Item = (&str, Option<&str>)> {
+        self.pieces
+            .iter()
+            .map(|(text, note)| (text.as_str(), note.as_deref()))
+    }
+
+    fn is_empty(&self) -> bool {
+        self.pieces.iter().all(|(text, _)| text.is_empty())
+    }
+
+    #[cfg(test)]
+    fn text(&self) -> String {
+        self.pieces.iter().map(|(text, _)| text.as_str()).collect()
+    }
+
+    #[cfg(test)]
+    fn notes(&self) -> Vec<&str> {
+        self.pieces
+            .iter()
+            .filter_map(|(_, note)| note.as_deref())
+            .collect()
+    }
+}
+
+impl From<String> for UsageLabel {
+    fn from(text: String) -> Self {
+        let mut label = UsageLabel::default();
+        label.push(text);
+        label
+    }
+}
+
+/// What hovering over a lane's sparkline glyph shows. `lane` is a fixed name,
+/// since the configured label may be empty or a glyph.
+fn hover_note(lane: &str, used_percent: Option<f64>, display: UsageDisplay) -> Option<String> {
+    if display != UsageDisplay::Sparkline {
+        return None;
+    }
+    let percent = used_percent.filter(|percent| percent.is_finite())?;
+    Some(format!("{lane}: {:.0}% used", percent.clamp(0.0, 100.0)))
 }
 
 fn provider_icon<S: UsageScheme>(provider: UsageProvider) -> &'static str {
@@ -391,28 +464,28 @@ fn format_usage<S: UsageScheme>(
     display: UsageDisplay,
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: f64,
-) -> String {
+) -> UsageLabel {
     let icon = provider_icon::<S>(provider);
-    let mut parts = if icon.is_empty() {
-        vec![]
-    } else {
-        vec![icon.to_string(), " ".to_string()]
-    };
-    for (window, used_percent) in [
-        (&windows.session, cache.session),
-        (&windows.weekly, cache.weekly),
-        (&windows.fable, cache.fable),
+    let mut parts = UsageLabel::default();
+    if !icon.is_empty() {
+        parts.push(format!("{icon} "));
+    }
+    for (lane, window, used_percent) in [
+        ("5h", &windows.session, cache.session),
+        ("7d", &windows.weekly, cache.weekly),
+        ("Fable", &windows.fable, cache.fable),
     ] {
         if window.enabled {
-            parts.push(format_window(&window.label, used_percent, display));
+            parts.push_lane(lane, &window.label, used_percent, display);
         }
     }
     if windows.credits_visible(cache) {
-        parts.push(format_credits(
+        format_credits(
+            &mut parts,
             &windows.credits.window.label,
             cache.credits.as_ref(),
             windows.credits.display,
-        ));
+        );
     }
     if show_session_time_remaining
         && cache.session_resets_at.is_some()
@@ -428,7 +501,7 @@ fn format_usage<S: UsageScheme>(
             ])
         ));
     }
-    parts.join("")
+    parts
 }
 
 fn format_time_remaining(resets_at: Option<u64>) -> String {
@@ -450,10 +523,22 @@ fn format_remaining_duration(remaining: u64) -> String {
     }
 }
 
-fn format_credits(label: &str, credits: Option<&CreditsUsage>, display: UsageDisplay) -> String {
+fn format_credits(
+    parts: &mut UsageLabel,
+    label: &str,
+    credits: Option<&CreditsUsage>,
+    display: UsageDisplay,
+) {
     match (display, credits) {
-        (UsageDisplay::Numeric, Some(credits)) => format!("{label}{}", credits.numeric()),
-        _ => format_window(label, credits.and_then(CreditsUsage::percent_used), display),
+        (UsageDisplay::Numeric, Some(credits)) => {
+            parts.push(format!("{label}{}", credits.numeric()))
+        }
+        _ => parts.push_lane(
+            "Credits",
+            label,
+            credits.and_then(CreditsUsage::percent_used),
+            display,
+        ),
     }
 }
 
@@ -1592,6 +1677,12 @@ mod tests {
         }
     }
 
+    fn credits_label(label: &str, credits: Option<&CreditsUsage>, display: UsageDisplay) -> String {
+        let mut parts = UsageLabel::default();
+        format_credits(&mut parts, label, credits, display);
+        parts.text()
+    }
+
     const DOLLARS: CreditsUsage = CreditsUsage {
         used: 50.0,
         limit: 100.0,
@@ -1613,7 +1704,8 @@ mod tests {
                 UsageDisplay::Sparkline,
                 false,
                 0.0,
-            ),
+            )
+            .text(),
             "\u{ec82} 5h ▁ C $50/$100"
         );
 
@@ -1623,22 +1715,22 @@ mod tests {
             unit: CreditsUnit::Count,
         };
         assert_eq!(
-            format_credits("", Some(&count), UsageDisplay::Numeric),
+            credits_label("", Some(&count), UsageDisplay::Numeric),
             "411/12000"
         );
         assert_eq!(
-            format_credits("", Some(&DOLLARS), UsageDisplay::Percentage),
+            credits_label("", Some(&DOLLARS), UsageDisplay::Percentage),
             "50%"
         );
         assert_eq!(
-            format_credits("", Some(&DOLLARS), UsageDisplay::Bar),
+            credits_label("", Some(&DOLLARS), UsageDisplay::Bar),
             "▄▄▄▁▁"
         );
         assert_eq!(
-            format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
+            credits_label("", Some(&DOLLARS), UsageDisplay::Sparkline),
             "▄"
         );
-        assert_eq!(format_credits("C", None, UsageDisplay::Numeric), "C–");
+        assert_eq!(credits_label("C", None, UsageDisplay::Numeric), "C–");
         assert_eq!(format_amount(12.5, CreditsUnit::Dollars), "$12.50");
         assert_eq!(format_amount(1234.0, CreditsUnit::Dollars), "$1234");
     }
@@ -1658,7 +1750,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
-            ),
+            )
+            .text(),
             "\u{ec81} 40%"
         );
         assert_eq!(
@@ -1669,7 +1762,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
-            ),
+            )
+            .text(),
             "\u{ec81} 100% C $50/$100"
         );
     }
@@ -1694,6 +1788,7 @@ mod tests {
                 true,
                 0.8,
             )
+            .text()
         };
 
         assert!(!format(&cache).contains('↻'));
@@ -1722,7 +1817,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 true,
                 0.0,
-            ),
+            )
+            .text(),
             "5h 12% 2h 1m"
         );
         assert_eq!(
@@ -1733,7 +1829,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 true,
                 0.0,
-            ),
+            )
+            .text(),
             "\u{ec82} 5h 12% ↻ 2h 1m"
         );
     }
@@ -1795,7 +1892,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
-            ),
+            )
+            .text(),
             "\u{ec82} 5h 12%"
         );
         assert_eq!(
@@ -1806,7 +1904,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
-            ),
+            )
+            .text(),
             "\u{ec81}  7d 68%"
         );
         assert_eq!(
@@ -1817,7 +1916,8 @@ mod tests {
                 UsageDisplay::Percentage,
                 false,
                 0.0,
-            ),
+            )
+            .text(),
             "\u{ec82} 5h 12% 7d 68% F 33%"
         );
         assert_eq!(
@@ -1828,7 +1928,8 @@ mod tests {
                 UsageDisplay::Sparkline,
                 false,
                 0.0,
-            ),
+            )
+            .text(),
             "\u{ec82} ▁▅"
         );
     }
@@ -1913,6 +2014,114 @@ mod tests {
             format_window("7d", Some(100.0), UsageDisplay::Sparkline),
             "7d█"
         );
+    }
+
+    #[test]
+    fn sparkline_lanes_carry_their_percentage_as_a_hover_note() {
+        let reading = UsageReading {
+            session: Some(61.0),
+            weekly: Some(41.0),
+            fable: Some(22.4),
+            credits: Some(CreditsUsage {
+                used: 25.0,
+                limit: 100.0,
+                unit: CreditsUnit::Dollars,
+            }),
+            session_resets_at: None,
+            logged_out: false,
+        };
+        let windows = with_credits(
+            windows(UsageProvider::Claude, true, true, true, Some("")),
+            UsageDisplay::Sparkline,
+            false,
+        );
+        let label = format_usage::<TestTheme>(
+            UsageProvider::Claude,
+            &reading,
+            &windows,
+            UsageDisplay::Sparkline,
+            false,
+            0.0,
+        );
+        assert_eq!(label.text(), "\u{ec82} ▅▃▂ C ▂");
+        assert_eq!(
+            label.notes(),
+            [
+                "5h: 61% used",
+                "7d: 41% used",
+                "Fable: 22% used",
+                "Credits: 25% used"
+            ]
+        );
+        // Each note sits on its lane's glyph, not on the label before it.
+        assert!(label
+            .pieces()
+            .filter(|(_, note)| note.is_some())
+            .all(|(text, _)| text.chars().count() == 1));
+    }
+
+    #[test]
+    fn only_sparkline_readings_get_hover_notes() {
+        for display in [
+            UsageDisplay::Percentage,
+            UsageDisplay::Numeric,
+            UsageDisplay::Bar,
+            UsageDisplay::CappedBar,
+            UsageDisplay::Block,
+        ] {
+            let windows = with_credits(
+                windows(UsageProvider::Claude, true, true, true, None),
+                display,
+                false,
+            );
+            let label = format_usage::<TestTheme>(
+                UsageProvider::Claude,
+                &cache(61.0, Some(DOLLARS)),
+                &windows,
+                display,
+                false,
+                0.0,
+            );
+            assert!(label.notes().is_empty(), "{display:?}");
+        }
+
+        let missing = UsageReading {
+            session: None,
+            weekly: Some(f64::NAN),
+            fable: None,
+            credits: None,
+            session_resets_at: None,
+            logged_out: false,
+        };
+        let windows = with_credits(
+            windows(UsageProvider::Claude, true, true, true, None),
+            UsageDisplay::Sparkline,
+            false,
+        );
+        let label = format_usage::<TestTheme>(
+            UsageProvider::Claude,
+            &missing,
+            &windows,
+            UsageDisplay::Sparkline,
+            false,
+            0.0,
+        );
+        assert_eq!(label.text(), "\u{ec82} 5h – 7d – F – C –");
+        assert!(label.notes().is_empty());
+    }
+
+    #[test]
+    fn hover_notes_use_whole_clamped_percentages() {
+        assert_eq!(
+            hover_note("5h", Some(61.4), UsageDisplay::Sparkline).as_deref(),
+            Some("5h: 61% used")
+        );
+        assert_eq!(
+            hover_note("7d", Some(130.0), UsageDisplay::Sparkline).as_deref(),
+            Some("7d: 100% used")
+        );
+        assert_eq!(hover_note("5h", None, UsageDisplay::Sparkline), None);
+        assert_eq!(hover_note("5h", Some(61.0), UsageDisplay::Bar), None);
     }
 
     #[test]
