@@ -1,5 +1,6 @@
-//! The bundled `rainbow`, `simple` and `gruvbox` themes are installed into the config
-//! directory as ordinary theme files the first time a config names them.
+//! The bundled `rainbow`, `simple` and `gruvbox` themes are read from the binary
+//! when a config names one that has no file in the config directory, and no
+//! file is written for them.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -68,11 +69,7 @@ fn bundled_theme_names_resolve_with_or_without_json() {
     ] {
         let dir = scratch_dir(&format!("resolve-{theme}"));
         let output = run("preview", &write_config(&dir, theme));
-        assert_eq!(
-            fs::read_to_string(dir.join(file)).unwrap(),
-            fs::read_to_string(repo_theme(file)).unwrap(),
-            "{theme} installs {file}"
-        );
+        assert!(!dir.join(file).exists(), "{theme} wrote {file}");
         assert_eq!(
             output.stdout,
             drawn_with_repo_theme("preview", file),
@@ -128,5 +125,51 @@ fn a_read_only_config_dir_still_draws_the_bundled_theme() {
     assert!(output.status.success(), "{output:?}");
     assert!(!installed);
     assert_eq!(output.stdout, drawn_with_repo_theme("show", "simple.json"));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_relative_claude_code_config_resolves_before_changing_into_the_session() {
+    let dir = scratch_dir("relative");
+    let session = dir.join("session");
+    fs::create_dir_all(dir.join("conf")).unwrap();
+    fs::create_dir_all(&session).unwrap();
+    fs::write(
+        dir.join("conf/ocean.json"),
+        r#"{ "defaults": { "fg": 1, "bg": 2 }, "modules": {} }"#,
+    )
+    .unwrap();
+    fs::write(
+        dir.join("conf/config.json"),
+        r#"{ "theme": "ocean", "rows": [{ "left": [{ "text": "hi" }] }], "update": { "disable": true } }"#,
+    )
+    .unwrap();
+    let status = serde_json::json!({ "cwd": session, "workspace": { "current_dir": session } });
+    let draw = |config: &Path| {
+        let mut child = Command::new(BIN)
+            .args(["claude-code", "--columns", "80", "--config"])
+            .arg(config)
+            .current_dir(&dir)
+            .env("XDG_CACHE_HOME", dir.join("cache"))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("failed to run superline");
+        use std::io::Write;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(status.to_string().as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    };
+
+    let relative = draw(Path::new("conf/config.json"));
+    assert!(relative.contains("hi"), "{relative}");
+    assert_eq!(relative, draw(&dir.join("conf/config.json")));
+    assert_eq!(fs::read_dir(&session).unwrap().count(), 0);
     let _ = fs::remove_dir_all(dir);
 }

@@ -1,6 +1,6 @@
 //! The theme picker: the bundled themes and the theme files next to the
 //! config, each drawn in the preview while it is highlighted. Choosing a
-//! bundled theme installs its file into the config directory.
+//! bundled theme writes no file; editing it and saving does.
 
 use std::path::{Path, PathBuf};
 
@@ -26,8 +26,8 @@ pub(super) struct ThemeChoice {
     /// The name the config gives it.
     name: String,
     path: PathBuf,
-    /// A bundled theme whose file is not in the config directory yet.
-    installs: bool,
+    /// A bundled theme with no file in the config directory.
+    built_in: bool,
     theme: Result<Value, String>,
 }
 
@@ -76,7 +76,7 @@ impl App {
         };
         ThemeChoice {
             name,
-            installs: !exists && bundled.is_some(),
+            built_in: !exists && bundled.is_some(),
             path,
             theme,
         }
@@ -92,7 +92,7 @@ impl App {
         }
     }
 
-    /// Points the config at a theme, installing a bundled theme's file.
+    /// Points the config at a theme.
     pub(super) fn use_theme(&mut self, name: &str) -> bool {
         let name = name.trim();
         if name.is_empty() {
@@ -100,7 +100,6 @@ impl App {
             return false;
         }
         let path = theme_path(self.config_dir(), name);
-        let installs = !path.exists() && bundled_theme(self.config_dir(), &path).is_some();
         if let Err(error) =
             self.doc
                 .set_option(Target::Settings, schema::THEME.key, Some(Value::from(name)))
@@ -118,20 +117,7 @@ impl App {
         }
         self.changed();
         self.load_theme_slot();
-        if self.status.as_ref().is_some_and(|status| status.error) {
-            return true;
-        }
-        let file = path
-            .file_name()
-            .map_or_else(String::new, |f| f.to_string_lossy().into_owned());
-        self.set_status(
-            if installs && path.exists() {
-                format!("Switched to {name} and installed {file} (s to save the config)")
-            } else {
-                format!("Switched to {name} (s to save the config)")
-            },
-            false,
-        );
+        self.set_status(format!("Switched to {name} (s to save the config)"), false);
         true
     }
 
@@ -244,10 +230,7 @@ impl App {
                     Ok(_) if Some(&choice.path) == current.as_ref() => {
                         Span::raw("  in use").green()
                     }
-                    Ok(_) if choice.installs => {
-                        Span::raw(format!("  built in, installs {}", file_name(&choice.path)))
-                            .dark_gray()
-                    }
+                    Ok(_) if choice.built_in => Span::raw("  built in").dark_gray(),
                     Ok(_) => Span::raw(format!("  {}", file_name(&choice.path))).dark_gray(),
                 };
                 spans.push(about);

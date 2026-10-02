@@ -6,7 +6,8 @@
 //! immediately reads it back. If that round-trip ever broke, a fresh install
 //! would fail to render a prompt. This test drives the real binary against a
 //! throwaway `$HOME` to make sure that path stays healthy, and that the
-//! `rainbow` theme the default config names is installed next to it.
+//! `rainbow` theme the default config names draws without a file being written
+//! for it.
 
 use std::fs;
 use std::path::PathBuf;
@@ -46,16 +47,11 @@ fn default_config_parses_with_compiled_binary() {
         config_path.display(),
     );
 
-    // The default config names `rainbow`, so its theme file is installed next
-    // to it.
+    // The default config names `rainbow`, which is read from the binary.
     let theme_path = home.join(".config/superline/rainbow.json");
-    let bundled =
-        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes/rainbow.json"))
-            .expect("read themes/rainbow.json");
-    assert_eq!(
-        fs::read_to_string(&theme_path).ok().as_deref(),
-        Some(bundled.as_str()),
-        "binary did not install the rainbow theme at {}\nstderr:\n{stderr}",
+    assert!(
+        !theme_path.exists(),
+        "binary wrote the bundled rainbow theme to {}",
         theme_path.display(),
     );
     assert!(

@@ -16,9 +16,7 @@ use crate::modules::{
     PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme,
     UnknownScheme, UsageScheme, UserScheme,
 };
-use crate::themes::{
-    bundled_theme, install_theme, theme_path, CompleteTheme, DefaultColors, RAINBOW,
-};
+use crate::themes::{bundled_theme, theme_path, CompleteTheme, DefaultColors, RAINBOW};
 use crate::update::UpdateScheme;
 
 /// The theme prompts are drawn with: a theme file, loaded once per process by
@@ -145,13 +143,12 @@ impl CustomTheme {
     }
 
     /// Loads the theme file a config's `theme` value names (see
-    /// [`theme_path`]), first installing a bundled theme's file the config
-    /// directory is missing.
+    /// [`theme_path`]), or the bundled theme of that name when its file is not
+    /// in the config directory.
     pub fn load_for_config(config_dir: &Path, theme: &str) -> Result<(), CustomThemeError> {
         let path = theme_path(config_dir, theme);
         if let Some(bundled) = bundled_theme(config_dir, &path) {
-            if install_theme(&path, bundled).is_err() {
-                // A config directory that can't be written still gets its prompt.
+            if path.symlink_metadata().is_err() {
                 Self::set_bundled(bundled);
                 return Ok(());
             }

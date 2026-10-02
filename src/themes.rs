@@ -11,14 +11,12 @@ use crate::modules::{
     UsageScheme, UserScheme,
 };
 use crate::update::UpdateScheme;
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 mod custom;
 
-/// The theme files superline installs into the config directory when a
-/// config names one that isn't there yet.
+/// The themes built into superline, by the file name a config uses for them.
+/// One is read from the binary unless its file is in the config directory.
 pub(crate) const BUNDLED_THEMES: &[(&str, &str)] = &[
     ("rainbow.json", RAINBOW),
     ("simple.json", include_str!("../themes/simple.json")),
@@ -48,22 +46,6 @@ pub(crate) fn bundled_theme(config_dir: &Path, path: &Path) -> Option<&'static s
         .iter()
         .find(|(file, _)| config_dir.join(file) == path)
         .map(|(_, text)| *text)
-}
-
-/// Writes a theme file unless something is already at `path`, as the default
-/// `config.json` is.
-pub(crate) fn install_theme(path: &Path, text: &str) -> io::Result<()> {
-    if path.symlink_metadata().is_ok() {
-        return Ok(());
-    }
-    // Prompts in several shells can start at once, so each writes its own
-    // copy and renames it into place, and none reads a half-written file.
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let temp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
-    fs::write(&temp, text)?;
-    fs::rename(&temp, path).inspect_err(|_| {
-        let _ = fs::remove_file(&temp);
-    })
 }
 
 pub trait DefaultColors {
@@ -162,20 +144,5 @@ mod tests {
         );
         assert_eq!(bundled_theme(dir, &dir.join("ocean.json")), None);
         assert_eq!(bundled_theme(dir, Path::new("/etc/rainbow.json")), None);
-    }
-
-    #[test]
-    fn installing_a_theme_never_replaces_a_file() {
-        let dir = std::env::temp_dir().join(format!("superline-install-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("rainbow.json");
-        install_theme(&path, RAINBOW).unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), RAINBOW);
-        fs::write(&path, "{}").unwrap();
-        install_theme(&path, RAINBOW).unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "{}");
-        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
-        let _ = fs::remove_dir_all(dir);
     }
 }
