@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0](https://github.com/alxhill/superline/compare/v0.26.0...v0.27.0) - 2026-10-02
+
+### Added
+
+- add a Claude Code status line mode ([#191](https://github.com/alxhill/superline/pull/191))
+
 ## [0.26.0](https://github.com/alxhill/superline/compare/v0.25.1...v0.26.0) - 2026-10-02
 
 ### Added
