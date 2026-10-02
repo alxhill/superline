@@ -190,14 +190,16 @@ fn widget_options_turn_parts_off() {
     let layout = scratch.layout(
         r#"[{ "left": [
             { "claude_model": { "effort": false, "fast_mode": false } },
-            { "claude_context": { "display": "block" } }
+            { "claude_context": { "display": "block" } },
+            { "claude_context": { "display": "bar", "width": 10 } }
         ] }]"#,
     );
     let line = visible(&scratch.render(&["--config", layout.to_str().unwrap()], SESSION));
     assert!(line.contains("Opus 5.5 "), "{line:?}");
     assert!(!line.contains("high"), "{line:?}");
     assert!(!line.contains('\u{f140b}'), "{line:?}");
-    assert!(line.contains("██░░░"), "{line:?}");
+    assert!(line.contains(" ██▒░░ "), "{line:?}");
+    assert!(line.contains(" ▄▄▄▄▄▁▁▁▁▁ "), "{line:?}");
 }
 
 #[test]

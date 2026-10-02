@@ -378,6 +378,16 @@ const LAST_CMD_DURATION: &[OptionSpec] = &[required(
     "Only show commands that ran at least this many milliseconds.",
 )];
 
+const METER_WIDTH: OptionSpec = opt(
+    "width",
+    Kind::Int {
+        default: Some(crate::config::DEFAULT_METER_WIDTH as i64),
+        min: 1,
+        max: crate::config::MAX_METER_WIDTH as i64,
+    },
+    "Cells in a bar, capped_bar or block display.",
+);
+
 const AI_USAGE: &[OptionSpec] = &[
     required(
         "provider",
@@ -402,6 +412,7 @@ const AI_USAGE: &[OptionSpec] = &[
         },
         "How each window is drawn.",
     ),
+    METER_WIDTH,
     opt(
         "threshold",
         Kind::Float {
@@ -496,6 +507,7 @@ const CLAUDE_CONTEXT: &[OptionSpec] = &[
         },
         "How the share of the context window in use is drawn.",
     ),
+    METER_WIDTH,
     boolean(
         "tokens",
         false,

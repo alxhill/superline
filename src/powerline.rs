@@ -508,6 +508,7 @@ impl Powerline {
                     credits_only_when_limited,
                     session_time_remaining,
                     session_time_remaining_only_at_limit,
+                    width,
                 } => self.add_module(
                     Usage::<T>::new(
                         *provider,
@@ -528,7 +529,8 @@ impl Powerline {
                         *session_time_remaining,
                         *session_time_remaining_only_at_limit,
                     )
-                    .with_claude_code_limits(claude.and_then(|s| s.rate_limits.as_ref())),
+                    .with_claude_code_limits(claude.and_then(|s| s.rate_limits.as_ref()))
+                    .with_width(*width),
                 ),
                 LineSegment::ClaudeModel { effort, fast_mode } => {
                     self.add_module(ClaudeModel::<T>::new(claude, *effort, *fast_mode))
@@ -537,8 +539,9 @@ impl Powerline {
                     display,
                     tokens,
                     threshold,
+                    width,
                 } => self.add_module(ClaudeContext::<T>::new(
-                    claude, *display, *tokens, *threshold,
+                    claude, *display, *width, *tokens, *threshold,
                 )),
                 LineSegment::ClaudeCost => self.add_module(ClaudeCost::<T>::new(claude)),
                 LineSegment::ClaudeDuration { api } => {

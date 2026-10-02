@@ -297,6 +297,9 @@ pub enum LineSegment {
         #[serde(default)]
         session_time_remaining: bool,
         session_time_remaining_only_at_limit: f64,
+        /// Cells in a `bar`, `capped_bar` or `block` display.
+        #[serde(default = "default_meter_width")]
+        width: usize,
     },
     /// Claude Code's model, with its effort level and fast mode. The
     /// `claude_*` widgets only draw in `superline claude-code`.
@@ -317,6 +320,9 @@ pub enum LineSegment {
         tokens: bool,
         /// Switch to the threshold background at this percentage.
         threshold: Option<f64>,
+        /// Cells in a `bar`, `capped_bar` or `block` display.
+        #[serde(default = "default_meter_width")]
+        width: usize,
     },
     /// The session's estimated cost in USD.
     ClaudeCost,
@@ -361,6 +367,29 @@ fn default_true() -> bool {
 }
 
 pub const DEFAULT_SESSION_MAX_LENGTH: usize = 30;
+
+/// Cells in a bar or block display unless a widget's `width` says otherwise.
+pub const DEFAULT_METER_WIDTH: usize = 5;
+
+/// The widest bar or block a widget's `width` can ask for.
+pub const MAX_METER_WIDTH: usize = 50;
+
+fn default_meter_width() -> usize {
+    DEFAULT_METER_WIDTH
+}
+
+fn deserialize_meter_width<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let width = usize::deserialize(deserializer)?;
+    if !(1..=MAX_METER_WIDTH).contains(&width) {
+        return Err(de::Error::custom(format!(
+            "width must be from 1 to {MAX_METER_WIDTH}"
+        )));
+    }
+    Ok(width)
+}
 
 fn default_session_max_length() -> usize {
     DEFAULT_SESSION_MAX_LENGTH
@@ -475,6 +504,11 @@ enum KnownLineSegment {
         session_time_remaining: bool,
         #[serde(default, deserialize_with = "deserialize_unit_interval")]
         session_time_remaining_only_at_limit: f64,
+        #[serde(
+            default = "default_meter_width",
+            deserialize_with = "deserialize_meter_width"
+        )]
+        width: usize,
     },
     ClaudeModel {
         #[serde(default = "default_true")]
@@ -488,6 +522,11 @@ enum KnownLineSegment {
         #[serde(default)]
         tokens: bool,
         threshold: Option<f64>,
+        #[serde(
+            default = "default_meter_width",
+            deserialize_with = "deserialize_meter_width"
+        )]
+        width: usize,
     },
     ClaudeCost,
     ClaudeDuration {
@@ -575,6 +614,7 @@ impl From<KnownLineSegment> for LineSegment {
                 credits_only_when_limited,
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
+                width,
             } => LineSegment::AiUsage {
                 provider,
                 session,
@@ -591,6 +631,7 @@ impl From<KnownLineSegment> for LineSegment {
                 credits_only_when_limited,
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
+                width,
             },
             KnownLineSegment::ClaudeModel { effort, fast_mode } => {
                 LineSegment::ClaudeModel { effort, fast_mode }
@@ -599,10 +640,12 @@ impl From<KnownLineSegment> for LineSegment {
                 display,
                 tokens,
                 threshold,
+                width,
             } => LineSegment::ClaudeContext {
                 display,
                 tokens,
                 threshold,
+                width,
             },
             KnownLineSegment::ClaudeCost => LineSegment::ClaudeCost,
             KnownLineSegment::ClaudeDuration { api } => LineSegment::ClaudeDuration { api },
@@ -810,6 +853,7 @@ impl Config {
                         display: UsageDisplay::Percentage,
                         tokens: false,
                         threshold: Some(80.0),
+                        width: DEFAULT_METER_WIDTH,
                     },
                     LineSegment::Padding(1),
                     LineSegment::ReadOnly,
@@ -844,6 +888,7 @@ impl Config {
                         credits_only_when_limited: false,
                         session_time_remaining: false,
                         session_time_remaining_only_at_limit: 0.0,
+                        width: DEFAULT_METER_WIDTH,
                     },
                     LineSegment::Padding(0),
                 ])),
@@ -893,6 +938,7 @@ impl Default for Config {
                             credits_only_when_limited: true,
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
+                            width: DEFAULT_METER_WIDTH,
                         },
                         LineSegment::Padding(1),
                         LineSegment::AiUsage {
@@ -911,6 +957,7 @@ impl Default for Config {
                             credits_only_when_limited: true,
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
+                            width: DEFAULT_METER_WIDTH,
                         },
                     ]),
                     right: Some(widgets(vec![LineSegment::Sudo, LineSegment::Battery])),
@@ -991,6 +1038,7 @@ mod tests {
                     display: UsageDisplay::Bar,
                     tokens: true,
                     threshold: Some(75.0),
+                    width: DEFAULT_METER_WIDTH,
                 },
             ),
             (
@@ -999,6 +1047,7 @@ mod tests {
                     display: UsageDisplay::Percentage,
                     tokens: false,
                     threshold: None,
+                    width: DEFAULT_METER_WIDTH,
                 },
             ),
             (r#""claude_cost""#, LineSegment::ClaudeCost),
@@ -1021,6 +1070,35 @@ mod tests {
             let parsed: LineSegment =
                 serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
             assert_eq!(parsed, expected, "{json}");
+        }
+    }
+
+    #[test]
+    fn meter_width_defaults_to_five_and_must_be_in_range() {
+        let width = |json: &str| match serde_json::from_str::<LineSegment>(json) {
+            Ok(LineSegment::AiUsage { width, .. } | LineSegment::ClaudeContext { width, .. }) => {
+                Ok(width)
+            }
+            Ok(other) => panic!("{json} parsed as {other:?}"),
+            Err(e) => Err(e.to_string()),
+        };
+        assert_eq!(width(r#"{"ai_usage":{"provider":"claude"}}"#), Ok(5));
+        assert_eq!(width(r#""claude_context""#), Ok(5));
+        assert_eq!(
+            width(r#"{"ai_usage":{"provider":"codex","width":12}}"#),
+            Ok(12)
+        );
+        assert_eq!(width(r#"{"claude_context":{"width":1}}"#), Ok(1));
+        assert_eq!(width(r#"{"claude_context":{"width":50}}"#), Ok(50));
+        for json in [
+            r#"{"claude_context":{"width":0}}"#,
+            r#"{"ai_usage":{"provider":"claude","width":51}}"#,
+        ] {
+            let error = width(json).unwrap_err();
+            assert!(
+                error.contains("width must be from 1 to 50"),
+                "{json}: {error}"
+            );
         }
     }
 
@@ -1114,6 +1192,7 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                width: DEFAULT_METER_WIDTH,
             }
         );
     }
@@ -1143,6 +1222,7 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: true,
                 session_time_remaining_only_at_limit: 0.8,
+                width: DEFAULT_METER_WIDTH,
             }
         );
     }
@@ -1188,6 +1268,7 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                width: DEFAULT_METER_WIDTH,
             }
         );
     }
@@ -1217,6 +1298,7 @@ mod tests {
                 credits_only_when_limited: true,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                width: DEFAULT_METER_WIDTH,
             }
         );
     }

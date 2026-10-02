@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use crate::cache::{Cached, Lookup, Source};
 use crate::claude_code::{RateLimitWindow, RateLimits};
 use crate::colors::Color;
-use crate::config::{SegmentPadding, UsageDisplay, UsageProvider};
+use crate::config::{SegmentPadding, UsageDisplay, UsageProvider, DEFAULT_METER_WIDTH};
 use crate::platform::resolve_binary;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
@@ -25,12 +25,12 @@ use crate::{Powerline, Style};
 
 use super::{DefaultPadding, Module};
 
-const BAR_WIDTH: usize = 5;
 const BAR_LEFT_CAP: char = '▗';
 const BAR_RIGHT_CAP: char = '▖';
 const BAR_EMPTY: char = '▁';
 const BAR_FILLED: char = '▄';
 const BLOCK_EMPTY: char = '░';
+const BLOCK_HALF: char = '▒';
 const BLOCK_FILLED: char = '█';
 const SPARKLINE: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
@@ -61,6 +61,8 @@ pub struct Usage<S> {
     /// The rate limits Claude Code reported to its status line, shown instead
     /// of the ones read from the CLI.
     reported: Option<UsageReading>,
+    /// Cells in a bar or block display.
+    width: usize,
     scheme: PhantomData<S>,
 }
 
@@ -218,8 +220,15 @@ impl<S: UsageScheme> Usage<S> {
             show_session_time_remaining,
             session_time_remaining_only_at_limit,
             reported: None,
+            width: DEFAULT_METER_WIDTH,
             scheme: PhantomData,
         }
+    }
+
+    /// Draws bar and block displays `width` cells wide.
+    pub fn with_width(mut self, width: usize) -> Self {
+        self.width = width;
+        self
     }
 
     /// Uses the rate limits Claude Code passed to its status line, when this
@@ -397,6 +406,7 @@ impl<S: UsageScheme> Module for Usage<S> {
                 reading,
                 &self.windows,
                 self.display,
+                self.width,
                 self.show_session_time_remaining,
                 self.session_time_remaining_only_at_limit,
             ),
@@ -436,6 +446,7 @@ fn format_usage<S: UsageScheme>(
     cache: &UsageReading,
     windows: &UsageWindows,
     display: UsageDisplay,
+    width: usize,
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: f64,
 ) -> String {
@@ -451,7 +462,7 @@ fn format_usage<S: UsageScheme>(
         (&windows.fable, cache.fable),
     ] {
         if window.enabled {
-            parts.push(format_window(&window.label, used_percent, display));
+            parts.push(format_window(&window.label, used_percent, display, width));
         }
     }
     if windows.credits_visible(cache) {
@@ -459,6 +470,7 @@ fn format_usage<S: UsageScheme>(
             &windows.credits.window.label,
             cache.credits.as_ref(),
             windows.credits.display,
+            width,
         ));
     }
     if show_session_time_remaining
@@ -497,19 +509,31 @@ fn format_remaining_duration(remaining: u64) -> String {
     }
 }
 
-fn format_credits(label: &str, credits: Option<&CreditsUsage>, display: UsageDisplay) -> String {
+fn format_credits(
+    label: &str,
+    credits: Option<&CreditsUsage>,
+    display: UsageDisplay,
+    width: usize,
+) -> String {
     match (display, credits) {
         (UsageDisplay::Numeric, Some(credits)) => format!("{label}{}", credits.numeric()),
-        _ => format_window(label, credits.and_then(CreditsUsage::percent_used), display),
+        _ => format_window(
+            label,
+            credits.and_then(CreditsUsage::percent_used),
+            display,
+            width,
+        ),
     }
 }
 
+/// `width` is the number of cells in a bar or block display.
 pub(super) fn format_window(
     label: &str,
     used_percent: Option<f64>,
     display: UsageDisplay,
+    width: usize,
 ) -> String {
-    let (prefix, value) = format_window_parts(label, used_percent, display);
+    let (prefix, value) = format_window_parts(label, used_percent, display, width);
     format!("{prefix}{value}")
 }
 
@@ -517,6 +541,7 @@ fn format_window_parts(
     label: &str,
     used_percent: Option<f64>,
     display: UsageDisplay,
+    width: usize,
 ) -> (String, String) {
     let prefix = if !label.is_empty() {
         label.to_string()
@@ -530,15 +555,9 @@ fn format_window_parts(
     let value = match display {
         // Rate-limit windows only report a percentage, so numeric falls back to it.
         UsageDisplay::Percentage | UsageDisplay::Numeric => format!("{percent:.0}%"),
-        UsageDisplay::Bar => format_bar(percent, false),
-        UsageDisplay::CappedBar => format_bar(percent, true),
-        UsageDisplay::Block => {
-            let filled = filled_cells(percent);
-            let mut block = String::with_capacity(BAR_WIDTH * 3);
-            block.extend(std::iter::repeat_n(BLOCK_FILLED, filled));
-            block.extend(std::iter::repeat_n(BLOCK_EMPTY, BAR_WIDTH - filled));
-            block
-        }
+        UsageDisplay::Bar => format_bar(percent, false, width),
+        UsageDisplay::CappedBar => format_bar(percent, true, width),
+        UsageDisplay::Block => format_block(percent, width),
         UsageDisplay::Sparkline => {
             let index = ((percent / 100.0) * (SPARKLINE.len() - 1) as f64).round() as usize;
             SPARKLINE[index].to_string()
@@ -550,22 +569,34 @@ fn format_window_parts(
 /// The bar is a half-height baseline that fills left to right one whole cell
 /// at a time. With caps it gains half-height end stubs that a full bar merges
 /// with into one solid block.
-fn format_bar(percent: f64, capped: bool) -> String {
-    let filled = filled_cells(percent);
-    let mut bar = String::with_capacity(BAR_WIDTH + 2);
+fn format_bar(percent: f64, capped: bool, width: usize) -> String {
+    let filled = filled_cells(percent, width);
+    let mut bar = String::with_capacity((width + 2) * 3);
     if capped {
         bar.push(BAR_LEFT_CAP);
     }
     bar.extend(std::iter::repeat_n(BAR_FILLED, filled));
-    bar.extend(std::iter::repeat_n(BAR_EMPTY, BAR_WIDTH - filled));
+    bar.extend(std::iter::repeat_n(BAR_EMPTY, width - filled));
     if capped {
         bar.push(BAR_RIGHT_CAP);
     }
     bar
 }
 
-fn filled_cells(percent: f64) -> usize {
-    ((percent / 100.0) * BAR_WIDTH as f64).round() as usize
+/// Full-height cells that fill left to right, in half-cell steps: a cell the
+/// reading only reaches halfway into is drawn half shaded.
+fn format_block(percent: f64, width: usize) -> String {
+    let halves = ((percent / 100.0) * width as f64 * 2.0).round() as usize;
+    let (filled, half) = (halves / 2, halves % 2);
+    let mut block = String::with_capacity(width * 3);
+    block.extend(std::iter::repeat_n(BLOCK_FILLED, filled));
+    block.extend(std::iter::repeat_n(BLOCK_HALF, half));
+    block.extend(std::iter::repeat_n(BLOCK_EMPTY, width - filled - half));
+    block
+}
+
+fn filled_cells(percent: f64, width: usize) -> usize {
+    ((percent / 100.0) * width as f64).round() as usize
 }
 
 fn threshold_reached(cache: &UsageReading, windows: &UsageWindows, threshold: Option<f64>) -> bool {
@@ -1662,6 +1693,7 @@ mod tests {
                 &cache(12.0, Some(DOLLARS)),
                 &windows,
                 UsageDisplay::Sparkline,
+                DEFAULT_METER_WIDTH,
                 false,
                 0.0,
             ),
@@ -1674,22 +1706,35 @@ mod tests {
             unit: CreditsUnit::Count,
         };
         assert_eq!(
-            format_credits("", Some(&count), UsageDisplay::Numeric),
+            format_credits("", Some(&count), UsageDisplay::Numeric, DEFAULT_METER_WIDTH),
             "411/12000"
         );
         assert_eq!(
-            format_credits("", Some(&DOLLARS), UsageDisplay::Percentage),
+            format_credits(
+                "",
+                Some(&DOLLARS),
+                UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH
+            ),
             "50%"
         );
         assert_eq!(
-            format_credits("", Some(&DOLLARS), UsageDisplay::Bar),
+            format_credits("", Some(&DOLLARS), UsageDisplay::Bar, DEFAULT_METER_WIDTH),
             "▄▄▄▁▁"
         );
         assert_eq!(
-            format_credits("", Some(&DOLLARS), UsageDisplay::Sparkline),
+            format_credits(
+                "",
+                Some(&DOLLARS),
+                UsageDisplay::Sparkline,
+                DEFAULT_METER_WIDTH
+            ),
             "▄"
         );
-        assert_eq!(format_credits("C", None, UsageDisplay::Numeric), "C–");
+        assert_eq!(
+            format_credits("C", None, UsageDisplay::Numeric, DEFAULT_METER_WIDTH),
+            "C–"
+        );
         assert_eq!(format_amount(12.5, CreditsUnit::Dollars), "$12.50");
         assert_eq!(format_amount(1234.0, CreditsUnit::Dollars), "$1234");
     }
@@ -1707,6 +1752,7 @@ mod tests {
                 &cache(40.0, Some(DOLLARS)),
                 &windows,
                 UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
                 false,
                 0.0,
             ),
@@ -1718,6 +1764,7 @@ mod tests {
                 &cache(100.0, Some(DOLLARS)),
                 &windows,
                 UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
                 false,
                 0.0,
             ),
@@ -1742,6 +1789,7 @@ mod tests {
                 cache,
                 &windows,
                 UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
                 true,
                 0.8,
             )
@@ -1771,6 +1819,7 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Claude, true, false, false, None),
                 UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
                 true,
                 0.0,
             ),
@@ -1782,6 +1831,7 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Claude, true, false, false, None),
                 UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
                 true,
                 0.0,
             ),
@@ -1799,7 +1849,7 @@ mod tests {
     #[test]
     fn numeric_display_falls_back_to_percentage_for_rate_limit_windows() {
         assert_eq!(
-            format_window("5h", Some(61.0), UsageDisplay::Numeric),
+            format_window("5h", Some(61.0), UsageDisplay::Numeric, DEFAULT_METER_WIDTH),
             "5h61%"
         );
     }
@@ -1844,6 +1894,7 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Claude, true, false, false, None),
                 UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
                 false,
                 0.0,
             ),
@@ -1855,6 +1906,7 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Codex, false, true, false, None),
                 UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
                 false,
                 0.0,
             ),
@@ -1866,6 +1918,7 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Claude, true, true, true, None),
                 UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
                 false,
                 0.0,
             ),
@@ -1877,6 +1930,7 @@ mod tests {
                 &cache,
                 &windows(UsageProvider::Claude, true, true, false, Some("")),
                 UsageDisplay::Sparkline,
+                DEFAULT_METER_WIDTH,
                 false,
                 0.0,
             ),
@@ -1900,68 +1954,150 @@ mod tests {
 
     #[test]
     fn bar_display_is_clamped_and_fixed_width() {
-        assert_eq!(format_window("5h", Some(0.0), UsageDisplay::Bar), "5h▁▁▁▁▁");
         assert_eq!(
-            format_window("5h", Some(10.0), UsageDisplay::Bar),
+            format_window("5h", Some(0.0), UsageDisplay::Bar, DEFAULT_METER_WIDTH),
+            "5h▁▁▁▁▁"
+        );
+        assert_eq!(
+            format_window("5h", Some(10.0), UsageDisplay::Bar, DEFAULT_METER_WIDTH),
             "5h▄▁▁▁▁"
         );
         assert_eq!(
-            format_window("5h", Some(61.0), UsageDisplay::Bar),
+            format_window("5h", Some(61.0), UsageDisplay::Bar, DEFAULT_METER_WIDTH),
             "5h▄▄▄▁▁"
         );
         assert_eq!(
-            format_window("7d", Some(120.0), UsageDisplay::Bar),
+            format_window("7d", Some(120.0), UsageDisplay::Bar, DEFAULT_METER_WIDTH),
             "7d▄▄▄▄▄"
         );
-        assert_eq!(format_window("7d", None, UsageDisplay::Bar), "7d–");
+        assert_eq!(
+            format_window("7d", None, UsageDisplay::Bar, DEFAULT_METER_WIDTH),
+            "7d–"
+        );
+    }
+
+    #[test]
+    fn block_display_half_fills_the_cell_a_reading_ends_in() {
+        let block = |percent| format_window("", Some(percent), UsageDisplay::Block, 5);
+        assert_eq!(block(10.0), "▒░░░░");
+        assert_eq!(block(20.0), "█░░░░");
+        assert_eq!(block(46.0), "██▒░░");
+        assert_eq!(block(50.0), "██▒░░");
+        assert_eq!(block(54.0), "██▒░░");
+        assert_eq!(block(56.0), "███░░");
+        assert_eq!(block(92.0), "████▒");
+        assert_eq!(block(96.0), "█████");
+    }
+
+    #[test]
+    fn bar_and_block_displays_take_their_width() {
+        assert_eq!(
+            format_window("", Some(50.0), UsageDisplay::Bar, 10),
+            "▄▄▄▄▄▁▁▁▁▁"
+        );
+        assert_eq!(
+            format_window("", Some(50.0), UsageDisplay::CappedBar, 2),
+            "▗▄▁▖"
+        );
+        assert_eq!(
+            format_window("", Some(25.0), UsageDisplay::Block, 10),
+            "██▒░░░░░░░"
+        );
+        assert_eq!(format_window("", Some(100.0), UsageDisplay::Block, 1), "█");
+        assert_eq!(format_window("", Some(0.0), UsageDisplay::Block, 1), "░");
+        // The other displays have no cells to widen.
+        assert_eq!(
+            format_window("", Some(50.0), UsageDisplay::Percentage, 10),
+            "50%"
+        );
+        assert_eq!(
+            format_window("", Some(100.0), UsageDisplay::Sparkline, 10),
+            "█"
+        );
     }
 
     #[test]
     fn block_display_shades_the_empty_cells() {
         assert_eq!(
-            format_window("5h", Some(0.0), UsageDisplay::Block),
+            format_window("5h", Some(0.0), UsageDisplay::Block, DEFAULT_METER_WIDTH),
             "5h░░░░░"
         );
         assert_eq!(
-            format_window("5h", Some(61.0), UsageDisplay::Block),
+            format_window("5h", Some(61.0), UsageDisplay::Block, DEFAULT_METER_WIDTH),
             "5h███░░"
         );
         assert_eq!(
-            format_window("7d", Some(120.0), UsageDisplay::Block),
+            format_window("7d", Some(120.0), UsageDisplay::Block, DEFAULT_METER_WIDTH),
             "7d█████"
         );
-        assert_eq!(format_window("7d", None, UsageDisplay::Block), "7d–");
+        assert_eq!(
+            format_window("7d", None, UsageDisplay::Block, DEFAULT_METER_WIDTH),
+            "7d–"
+        );
     }
 
     #[test]
     fn capped_bar_display_wraps_the_bar_in_end_caps() {
         assert_eq!(
-            format_window("5h", Some(0.0), UsageDisplay::CappedBar),
+            format_window(
+                "5h",
+                Some(0.0),
+                UsageDisplay::CappedBar,
+                DEFAULT_METER_WIDTH
+            ),
             "5h▗▁▁▁▁▁▖"
         );
         assert_eq!(
-            format_window("5h", Some(61.0), UsageDisplay::CappedBar),
+            format_window(
+                "5h",
+                Some(61.0),
+                UsageDisplay::CappedBar,
+                DEFAULT_METER_WIDTH
+            ),
             "5h▗▄▄▄▁▁▖"
         );
         assert_eq!(
-            format_window("7d", Some(100.0), UsageDisplay::CappedBar),
+            format_window(
+                "7d",
+                Some(100.0),
+                UsageDisplay::CappedBar,
+                DEFAULT_METER_WIDTH
+            ),
             "7d▗▄▄▄▄▄▖"
         );
-        assert_eq!(format_window("7d", None, UsageDisplay::CappedBar), "7d–");
+        assert_eq!(
+            format_window("7d", None, UsageDisplay::CappedBar, DEFAULT_METER_WIDTH),
+            "7d–"
+        );
     }
 
     #[test]
     fn sparkline_display_uses_one_glyph_per_window() {
         assert_eq!(
-            format_window("5h", Some(0.0), UsageDisplay::Sparkline),
+            format_window(
+                "5h",
+                Some(0.0),
+                UsageDisplay::Sparkline,
+                DEFAULT_METER_WIDTH
+            ),
             "5h "
         );
         assert_eq!(
-            format_window("5h", Some(61.0), UsageDisplay::Sparkline),
+            format_window(
+                "5h",
+                Some(61.0),
+                UsageDisplay::Sparkline,
+                DEFAULT_METER_WIDTH
+            ),
             "5h▅"
         );
         assert_eq!(
-            format_window("7d", Some(100.0), UsageDisplay::Sparkline),
+            format_window(
+                "7d",
+                Some(100.0),
+                UsageDisplay::Sparkline,
+                DEFAULT_METER_WIDTH
+            ),
             "7d█"
         );
     }

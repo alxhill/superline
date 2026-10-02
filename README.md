@@ -491,12 +491,19 @@ providers, or the same provider with different windows and styles. Provider labe
 | `"percentage"` (default) | `percent`, `percents`, `percentages`, `pct` | `5h 61%` | Percent used as a number. |
 | `"bar"` | `bars` | `5h ▄▄▄▁▁` | A five-cell half-height bar that fills left to right. |
 | `"capped_bar"` | `capped_bars`, `capped` | `5h ▗▄▄▄▁▁▖` | The same bar with end caps. |
-| `"block"` | `blocks` | `5h ███░░` | Five full-height cells, shaded when empty. |
+| `"block"` | `blocks` | `5h ███░░` | Five full-height cells, shaded when empty, filling in half-cell steps: a cell the reading ends halfway into is drawn `▒`, so 50% is `██▒░░`. |
 | `"sparkline"` | `sparklines`, `spark`, `sparks` | `5h ▅` | One glyph per window. |
 | `"numeric"` | `number`, `numbers`, `num` | `5h 61%` | Raw figures for the credits lane; same as `percentage` for the rate-limit windows. |
 
 ```json
 { "ai_usage": { "provider": "codex", "display": "bar" } }
+```
+
+**Width.** `width` sets how many cells the `bar`, `capped_bar` and `block` styles draw, from `1` to `50` (default
+`5`). The other styles ignore it.
+
+```json
+{ "ai_usage": { "provider": "claude", "display": "block", "width": 10 } }
 ```
 
 **Threshold.** `threshold` is a percent-used warning level. When any visible lane crosses it, the whole widget
@@ -682,7 +689,7 @@ These draw only in `superline claude-code`, and each one is left out while Claud
 | Widget | Shows | Options |
 |--------|-------|---------|
 | `claude_model` | The model name, then the reasoning effort (`low` to `max`) in the theme's `effort_fg`, with a lightning bolt while fast mode is on. | `effort` and `fast_mode` (both default `true`) hide either part. |
-| `claude_context` | How full the context window is. | `display` takes the `ai_usage` styles (default `"percentage"`); `tokens: true` adds the tokens in use out of the window size, e.g. `92k/200k`; `threshold` switches to the theme's `threshold_bg` at that percentage. |
+| `claude_context` | How full the context window is. | `display` takes the `ai_usage` styles (default `"percentage"`) and `width` sets the cells of a bar or block (default `5`); `tokens: true` adds the tokens in use out of the window size, e.g. `92k/200k`; `threshold` switches to the theme's `threshold_bg` at that percentage. |
 | `claude_cost` | The session's estimated cost in USD, e.g. `$3.47`. | |
 | `claude_duration` | How long the session has run, e.g. `1h 5m`. | `api: true` shows the time spent waiting on the API instead. |
 | `claude_lines` | Lines added and removed, `+412 -87`, in the theme's `added_fg` and `removed_fg`. | |

@@ -555,12 +555,13 @@
     "variants": [
       {
         "name": "default",
-        "label": "As a bar, with the tokens in use",
+        "label": "A ten-cell block, with the tokens in use",
         "row": {
           "left": [
             {
               "claude_context": {
-                "display": "bar",
+                "display": "block",
+                "width": 10,
                 "tokens": true
               }
             }

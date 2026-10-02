@@ -860,6 +860,7 @@
             <tr><td><code>weekly</code></td><td>boolean</td><td><code>true</code></td><td>Show the seven-day window.</td></tr>
             <tr><td><code>fable</code></td><td>boolean</td><td><code>false</code></td><td>Show Claude's weekly Fable window. Ignored for Codex.</td></tr>
             <tr><td><code>display</code></td><td>string</td><td><code>"percentage"</code></td><td>How each window is drawn; see the styles below.</td></tr>
+            <tr><td><code>width</code></td><td>number</td><td><code>5</code></td><td>Cells in a <code>bar</code>, <code>capped_bar</code> or <code>block</code> display, from 1 to 50.</td></tr>
             <tr><td><code>threshold</code></td><td>number</td><td>none</td><td>Percent used at which the whole widget switches to the theme's <code>ai_usage.threshold_bg</code>. Any visible lane counts, credits included.</td></tr>
             <tr><td><code>session_label</code></td><td>string</td><td><code>"5h "</code></td><td rowspan="3">Labels for each window. The spaces keep adjacent windows apart; <code>""</code> drops the label.</td></tr>
             <tr><td><code>weekly_label</code></td><td>string</td><td><code>" 7d "</code></td></tr>
@@ -878,7 +879,7 @@
             <tr><td><code>"percentage"</code></td><td><code>percent</code>, <code>pct</code></td><td><code>5h 61%</code></td></tr>
             <tr><td><code>"bar"</code></td><td><code>bars</code></td><td><code>5h ▄▄▄▁▁</code></td></tr>
             <tr><td><code>"capped_bar"</code></td><td><code>capped</code></td><td><code>5h ▗▄▄▄▁▁▖</code></td></tr>
-            <tr><td><code>"block"</code></td><td><code>blocks</code></td><td><code>5h ███░░</code></td></tr>
+            <tr><td><code>"block"</code></td><td><code>blocks</code></td><td><code>5h ███░░</code>; a cell the reading ends halfway into is <code>▒</code></td></tr>
             <tr><td><code>"sparkline"</code></td><td><code>spark</code></td><td><code>5h ▅</code></td></tr>
             <tr><td><code>"numeric"</code></td><td><code>num</code></td><td>Raw figures for credits; same as <code>percentage</code> for windows.</td></tr>
           </tbody>
@@ -1026,6 +1027,7 @@
           <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
           <tbody>
             <tr><td><code>display</code></td><td>string</td><td><code>"percentage"</code></td><td>Any of the <a href="#ai_usage"><code>ai_usage</code></a> display styles.</td></tr>
+            <tr><td><code>width</code></td><td>number</td><td><code>5</code></td><td>Cells in a <code>bar</code>, <code>capped_bar</code> or <code>block</code> display, from 1 to 50.</td></tr>
             <tr><td><code>tokens</code></td><td>boolean</td><td><code>false</code></td><td>Also show the tokens in use out of the window size, e.g. <code>92k/200k</code>.</td></tr>
             <tr><td><code>threshold</code></td><td>number</td><td>unset</td><td>Switch to the theme's <code>threshold_bg</code> at this percentage.</td></tr>
           </tbody>
@@ -1036,9 +1038,15 @@
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="claude_context/default">
-  <div class="ex-label">As a bar, with the tokens in use</div>
-  <figure class="term shot"><img src="img/config/claude_context-default.png" width="233" height="48" loading="lazy" alt="The claude_context example: As a bar, with the tokens in use."></figure>
-  <pre class="json"><code>{ <span class="k">"claude_context"</span>: { <span class="k">"display"</span>: <span class="s">"bar"</span>, <span class="k">"tokens"</span>: <span class="n">true</span> } }</code></pre>
+  <div class="ex-label">A ten-cell block, with the tokens in use</div>
+  <figure class="term shot"><img src="img/config/claude_context-default.png" width="284" height="48" loading="lazy" alt="The claude_context example: A ten-cell block, with the tokens in use."></figure>
+  <pre class="json"><code>{
+  <span class="k">"claude_context"</span>: {
+    <span class="k">"display"</span>: <span class="s">"block"</span>,
+    <span class="k">"width"</span>: <span class="n">10</span>,
+    <span class="k">"tokens"</span>: <span class="n">true</span>
+  }
+}</code></pre>
 </div><!-- /example -->
         </div>
       </section>
