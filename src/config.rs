@@ -297,6 +297,10 @@ pub enum LineSegment {
         #[serde(default)]
         session_time_remaining: bool,
         session_time_remaining_only_at_limit: f64,
+        /// Hovering over the provider icon in iTerm2 shows every window's
+        /// percentage. On by default.
+        #[serde(default = "default_true")]
+        hover: bool,
         /// Cells in a `bar`, `capped_bar` or `block` display.
         #[serde(default = "default_meter_width")]
         width: usize,
@@ -504,6 +508,10 @@ enum KnownLineSegment {
         session_time_remaining: bool,
         #[serde(default, deserialize_with = "deserialize_unit_interval")]
         session_time_remaining_only_at_limit: f64,
+        /// Hovering over the provider icon in iTerm2 shows every window's
+        /// percentage. On by default.
+        #[serde(default = "default_true")]
+        hover: bool,
         #[serde(
             default = "default_meter_width",
             deserialize_with = "deserialize_meter_width"
@@ -614,6 +622,7 @@ impl From<KnownLineSegment> for LineSegment {
                 credits_only_when_limited,
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
+                hover,
                 width,
             } => LineSegment::AiUsage {
                 provider,
@@ -631,6 +640,7 @@ impl From<KnownLineSegment> for LineSegment {
                 credits_only_when_limited,
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
+                hover,
                 width,
             },
             KnownLineSegment::ClaudeModel { effort, fast_mode } => {
@@ -888,6 +898,7 @@ impl Config {
                         credits_only_when_limited: false,
                         session_time_remaining: false,
                         session_time_remaining_only_at_limit: 0.0,
+                        hover: true,
                         width: DEFAULT_METER_WIDTH,
                     },
                     LineSegment::Padding(0),
@@ -938,6 +949,7 @@ impl Default for Config {
                             credits_only_when_limited: true,
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
+                            hover: true,
                             width: DEFAULT_METER_WIDTH,
                         },
                         LineSegment::Padding(1),
@@ -957,6 +969,7 @@ impl Default for Config {
                             credits_only_when_limited: true,
                             session_time_remaining: false,
                             session_time_remaining_only_at_limit: 0.0,
+                            hover: true,
                             width: DEFAULT_METER_WIDTH,
                         },
                     ]),
@@ -1192,6 +1205,7 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                hover: true,
                 width: DEFAULT_METER_WIDTH,
             }
         );
@@ -1222,9 +1236,23 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: true,
                 session_time_remaining_only_at_limit: 0.8,
+                hover: true,
                 width: DEFAULT_METER_WIDTH,
             }
         );
+    }
+
+    #[test]
+    fn usage_hover_can_be_turned_off() {
+        let hover = |json: &str| match serde_json::from_str::<LineSegment>(json).unwrap() {
+            LineSegment::AiUsage { hover, .. } => hover,
+            other => panic!("not ai_usage: {other:?}"),
+        };
+        assert!(hover(r#"{"ai_usage":{"provider":"claude"}}"#));
+        assert!(hover(r#"{"ai_usage":{"provider":"claude","hover":true}}"#));
+        assert!(!hover(
+            r#"{"ai_usage":{"provider":"claude","hover":false}}"#
+        ));
     }
 
     #[test]
@@ -1268,6 +1296,7 @@ mod tests {
                 credits_only_when_limited: false,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                hover: true,
                 width: DEFAULT_METER_WIDTH,
             }
         );
@@ -1298,6 +1327,7 @@ mod tests {
                 credits_only_when_limited: true,
                 session_time_remaining: false,
                 session_time_remaining_only_at_limit: 0.0,
+                hover: true,
                 width: DEFAULT_METER_WIDTH,
             }
         );

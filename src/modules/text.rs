@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::config::SegmentPadding;
-use crate::terminal::{Shell, SHELL};
+use crate::terminal::{escape_for_shell, SHELL};
 use crate::themes::DefaultColors;
 use crate::{Powerline, Style};
 
@@ -60,26 +60,10 @@ fn sanitize(text: &str) -> String {
     sanitized
 }
 
-/// Escape prompt-language syntax after the terminal controls are gone.
-///
-/// Bash expands `$`, backticks and backslash sequences in `PS1`; zsh expands
-/// `%` sequences. The other supported shells receive the rendered prompt as
-/// ordinary text, so their values need no additional quoting here.
-fn escape_for_shell(text: &str, shell: Option<&Shell>) -> String {
-    match shell {
-        Some(Shell::Bash) => text
-            .replace('\\', "\\\\")
-            .replace('$', "\\$")
-            .replace('`', "\\`"),
-        Some(Shell::Zsh) => text.replace('%', "%%"),
-        Some(Shell::Bare) | None => text.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{escape_for_shell, sanitize};
-    use crate::terminal::Shell;
+    use super::sanitize;
+    use crate::terminal::{escape_for_shell, Shell};
 
     #[test]
     fn preserves_unicode_and_printable_special_characters() {

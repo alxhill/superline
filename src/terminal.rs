@@ -151,6 +151,65 @@ impl std::fmt::Display for Hyperlink<'_> {
     }
 }
 
+/// An iTerm2 hidden annotation: hovering over the next `cells` columns shows
+/// `message`. It is printed just before the text it covers and takes no
+/// columns itself, so it gets the same per-shell wrapping as the colour
+/// escapes. Terminals that don't know OSC 1337 ignore it.
+pub struct Annotation<'a> {
+    pub cells: usize,
+    pub message: &'a str,
+}
+
+impl std::fmt::Display for Annotation<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write_annotation(
+            f,
+            SHELL.get().expect("shell not specified!"),
+            self.cells,
+            self.message,
+        )
+    }
+}
+
+fn write_annotation(
+    f: &mut std::fmt::Formatter,
+    shell: &Shell,
+    cells: usize,
+    message: &str,
+) -> std::fmt::Result {
+    // Control characters could end the sequence early, and iTerm2 splits the
+    // payload on `|`, so neither may reach the terminal.
+    let message: String = message
+        .chars()
+        .filter(|c| !c.is_control() && *c != '|')
+        .collect();
+    let message = escape_for_shell(&message, Some(shell));
+    match shell {
+        Shell::Bash => write!(f, r#"\[\e]1337;AddHiddenAnnotation={cells}|{message}\a\]"#),
+        Shell::Bare => write!(f, "\x1b]1337;AddHiddenAnnotation={cells}|{message}\x07"),
+        Shell::Zsh => write!(
+            f,
+            "%{{\x1b]1337;AddHiddenAnnotation={cells}|{message}\x07%}}"
+        ),
+    }
+}
+
+/// Escape prompt-language syntax in text that contains no terminal controls.
+///
+/// Bash expands `$`, backticks and backslash sequences in `PS1`; zsh expands
+/// `%` sequences. The other supported shells receive the rendered prompt as
+/// ordinary text, so their values need no additional quoting here.
+pub fn escape_for_shell(text: &str, shell: Option<&Shell>) -> String {
+    match shell {
+        Some(Shell::Bash) => text
+            .replace('\\', "\\\\")
+            .replace('$', "\\$")
+            .replace('`', "\\`"),
+        Some(Shell::Zsh) => text.replace('%', "%%"),
+        Some(Shell::Bare) | None => text.to_string(),
+    }
+}
+
 impl std::fmt::Display for Reset {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match SHELL.get().expect("shell not specified!") {
@@ -173,6 +232,58 @@ mod tests {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             write_sgr(f, self.0, &self.1)
         }
+    }
+
+    /// An annotation for an explicit shell, since `SHELL` is set once per
+    /// process.
+    struct Note<'a>(&'a Shell, usize, &'a str);
+
+    impl std::fmt::Display for Note<'_> {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write_annotation(f, self.0, self.1, self.2)
+        }
+    }
+
+    #[test]
+    fn annotations_are_wrapped_for_each_shell() {
+        let note = |shell| Note(shell, 1, "5h: 61% used").to_string();
+        assert_eq!(
+            note(&Shell::Bash),
+            r"\[\e]1337;AddHiddenAnnotation=1|5h: 61% used\a\]"
+        );
+        assert_eq!(
+            note(&Shell::Zsh),
+            "%{\x1b]1337;AddHiddenAnnotation=1|5h: 61%% used\x07%}"
+        );
+        assert_eq!(
+            note(&Shell::Bare),
+            "\x1b]1337;AddHiddenAnnotation=1|5h: 61% used\x07"
+        );
+    }
+
+    #[test]
+    fn annotation_messages_cannot_break_out_of_the_escape() {
+        let message = "a\x07b\x1bc|d\ne\u{9b}f";
+        for shell in [Shell::Bash, Shell::Zsh, Shell::Bare] {
+            let note = Note(&shell, 2, message).to_string();
+            assert!(note.contains("=2|abcdef"), "{shell:?}: {note:?}");
+        }
+        assert_eq!(
+            Note(&Shell::Bare, 2, message).to_string(),
+            "\x1b]1337;AddHiddenAnnotation=2|abcdef\x07"
+        );
+    }
+
+    #[test]
+    fn annotation_messages_escape_prompt_syntax() {
+        assert_eq!(
+            Note(&Shell::Bash, 1, r"$(x) `y` \z").to_string(),
+            r"\[\e]1337;AddHiddenAnnotation=1|\$(x) \`y\` \\z\a\]"
+        );
+        assert_eq!(
+            Note(&Shell::Zsh, 1, "100% %n").to_string(),
+            "%{\x1b]1337;AddHiddenAnnotation=1|100%% %%n\x07%}"
+        );
     }
 
     const BOLD_UNDERLINE: TextAttrs = TextAttrs {
