@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod claude_code;
 pub mod colors;
 pub mod config;
 pub mod debug;

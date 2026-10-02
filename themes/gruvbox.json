@@ -53,6 +53,15 @@
     "jobs": { "fg": 13 },
     "last_cmd_duration": { "time_icon": "" },
     "os": { "fg": 15, "bg": 64 },
-    "local_ip": { "fg": 111 }
+    "local_ip": { "fg": 111 },
+    "claude_model": { "fg": 229, "bg": 166, "effort_fg": 223, "effort_italic": true },
+    "claude_context": { "fg": 229, "bg": 66, "threshold_bg": 167 },
+    "claude_cost": { "fg": 235, "bg": 142 },
+    "claude_duration": { "fg": 245, "bg": 237 },
+    "claude_lines": { "added_fg": 142, "removed_fg": 167, "bg": 237 },
+    "claude_cache": { "fg": 229, "warm_bg": 72, "cold_bg": 239 },
+    "claude_vim": { "fg": 235, "normal_bg": 109, "insert_bg": 142, "visual_bg": 175 },
+    "claude_agent": { "fg": 229, "bg": 132 },
+    "claude_session": { "fg": 250, "bg": 239 }
   }
 }

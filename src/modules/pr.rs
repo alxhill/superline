@@ -6,6 +6,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
+use crate::claude_code::PullRequest;
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
@@ -20,6 +21,9 @@ const SKIP_BRANCHES: &[&str] = &["develop", "main", "master", "HEAD"];
 pub struct Pr<S> {
     /// Whether to append the CI check-status dot after the PR number.
     show_status: bool,
+    /// The PR Claude Code passed to its status line, shown when the `gh`
+    /// lookup has none.
+    reported: Option<PrInfo>,
     scheme: PhantomData<S>,
 }
 
@@ -79,8 +83,14 @@ impl<S: PrScheme> Pr<S> {
     pub fn new(show_status: bool) -> Pr<S> {
         Pr {
             show_status,
+            reported: None,
             scheme: PhantomData,
         }
+    }
+
+    pub fn with_claude_code_pr(mut self, pr: Option<&PullRequest>) -> Pr<S> {
+        self.reported = pr.and_then(PrInfo::from_claude_code);
+        self
     }
 }
 
@@ -145,6 +155,23 @@ pub struct PrInfo {
     checks: Option<CheckStatus>,
 }
 
+impl PrInfo {
+    /// Claude Code reports the review state rather than the CI checks, so no
+    /// status dot is shown for it.
+    fn from_claude_code(pr: &PullRequest) -> Option<PrInfo> {
+        Some(PrInfo {
+            number: pr.number?,
+            url: pr.url.clone()?,
+            state: if pr.is_draft() {
+                PrState::Draft
+            } else {
+                PrState::Open
+            },
+            checks: None,
+        })
+    }
+}
+
 /// The PR for one branch of one repository, looked up through `gh`.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PrLookup {
@@ -178,17 +205,18 @@ impl<S: PrScheme> Module for Pr<S> {
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        let Some((branch, repo_root)) = current_branch_and_root() else {
-            return;
-        };
-        if SKIP_BRANCHES.contains(&branch.as_str()) {
-            return;
-        }
-
         // Render whatever we have right now (possibly slightly stale); a
         // missing or stale lookup is refreshed for a later prompt. There is no
         // loading state: the segment simply appears once the result is in.
-        let Lookup::Ready(Some(pr)) = Cached::new(PrLookup { branch, repo_root }).load() else {
+        let looked_up = current_branch_and_root()
+            .filter(|(branch, _)| !SKIP_BRANCHES.contains(&branch.as_str()))
+            .and_then(|(branch, repo_root)| {
+                match Cached::new(PrLookup { branch, repo_root }).load() {
+                    Lookup::Ready(pr) => pr,
+                    Lookup::Loading | Lookup::Unavailable => None,
+                }
+            });
+        let Some(pr) = looked_up.or_else(|| self.reported.take()) else {
             return;
         };
 

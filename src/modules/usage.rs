@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::cache::{Cached, Lookup, Source};
+use crate::claude_code::{RateLimitWindow, RateLimits};
 use crate::colors::Color;
 use crate::config::{SegmentPadding, UsageDisplay, UsageProvider};
 use crate::platform::resolve_binary;
@@ -57,6 +58,9 @@ pub struct Usage<S> {
     threshold: Option<f64>,
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: f64,
+    /// The rate limits Claude Code reported to its status line, shown instead
+    /// of the ones read from the CLI.
+    reported: Option<UsageReading>,
     scheme: PhantomData<S>,
 }
 
@@ -213,8 +217,39 @@ impl<S: UsageScheme> Usage<S> {
             threshold: threshold.filter(|threshold| threshold.is_finite()),
             show_session_time_remaining,
             session_time_remaining_only_at_limit,
+            reported: None,
             scheme: PhantomData,
         }
+    }
+
+    /// Uses the rate limits Claude Code passed to its status line, when this
+    /// widget shows Claude's.
+    pub fn with_claude_code_limits(mut self, limits: Option<&RateLimits>) -> Self {
+        if self.provider == UsageProvider::Claude {
+            self.reported = limits.and_then(UsageReading::from_rate_limits);
+        }
+        self
+    }
+
+    /// The reading to draw: Claude Code's report when there is one, with the
+    /// windows it does not cover (fable, credits) filled in from the CLI.
+    fn lookup(&mut self) -> Lookup<UsageReading> {
+        let cached = || {
+            Cached::new(UsageLookup {
+                provider: self.provider,
+            })
+            .load()
+        };
+        let Some(mut reported) = self.reported.take() else {
+            return cached();
+        };
+        if self.windows.fable.enabled || self.windows.credits.window.enabled {
+            if let Lookup::Ready(cli) = cached() {
+                reported.fable = cli.fable;
+                reported.credits = cli.credits;
+            }
+        }
+        Lookup::Ready(reported)
     }
 }
 
@@ -236,6 +271,21 @@ pub struct UsageReading {
 }
 
 impl UsageReading {
+    fn from_rate_limits(limits: &RateLimits) -> Option<Self> {
+        let percent = |window: &Option<RateLimitWindow>| {
+            window.as_ref().and_then(|window| window.used_percentage)
+        };
+        let reading = Self {
+            session: percent(&limits.five_hour),
+            weekly: percent(&limits.seven_day),
+            fable: None,
+            credits: None,
+            session_resets_at: limits.five_hour.as_ref().and_then(|w| w.resets_at),
+            logged_out: false,
+        };
+        (reading.session.is_some() || reading.weekly.is_some()).then_some(reading)
+    }
+
     fn logged_out() -> Self {
         Self {
             session: None,
@@ -334,10 +384,7 @@ impl<S: UsageScheme> Module for Usage<S> {
             return;
         }
 
-        let lookup = Cached::new(UsageLookup {
-            provider: self.provider,
-        })
-        .load();
+        let lookup = self.lookup();
 
         let (default_fg, bg) = provider_style::<S>(self.provider);
         let icon = provider_icon::<S>(self.provider);
@@ -457,7 +504,11 @@ fn format_credits(label: &str, credits: Option<&CreditsUsage>, display: UsageDis
     }
 }
 
-fn format_window(label: &str, used_percent: Option<f64>, display: UsageDisplay) -> String {
+pub(super) fn format_window(
+    label: &str,
+    used_percent: Option<f64>,
+    display: UsageDisplay,
+) -> String {
     let (prefix, value) = format_window_parts(label, used_percent, display);
     format!("{prefix}{value}")
 }

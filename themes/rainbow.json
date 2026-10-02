@@ -70,6 +70,15 @@
     "update": { "fg": "white", "bg": "nice_purple" },
     "error": { "fg": "white", "bg": "warning_red" },
     "unknown": { "fg": "white", "bg": "warning_red" },
-    "exit_code": { "fg": "white", "bg": "red" }
+    "exit_code": { "fg": "white", "bg": "red" },
+    "claude_model": { "fg": "black", "bg": 173, "effort_fg": 52 },
+    "claude_context": { "fg": "white", "bg": "mid_grey", "threshold_bg": "warning_red" },
+    "claude_cost": { "fg": "black", "bg": 150 },
+    "claude_duration": { "fg": "mid_grey", "bg": "dark_grey" },
+    "claude_lines": { "added_fg": "light_green", "removed_fg": "light_red", "bg": 236 },
+    "claude_cache": { "fg": "white", "warm_bg": "turquoise_blue", "cold_bg": "dark_blue" },
+    "claude_vim": { "fg": "white", "normal_bg": "blue", "insert_bg": "forest_green", "visual_bg": "nice_purple" },
+    "claude_agent": { "fg": "white", "bg": "nice_purple" },
+    "claude_session": { "fg": "light_grey", "bg": "mid_grey" }
   }
 }

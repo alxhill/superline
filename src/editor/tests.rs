@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::model::{Document, Entry, SegPos, Side, Target};
 use super::theme::{ThemeDoc, STARTER_THEME};
-use super::{draw_scrollbar, load, option_value_spans, App};
+use super::{draw_scrollbar, load, option_value_spans, App, Scope};
 
 const WIDTH: u16 = 100;
 const HEIGHT: u16 = 30;
@@ -47,7 +47,7 @@ fn theme_page(dir: &Path) -> App {
     )
     .unwrap();
     std::fs::write(dir.join("theme.json"), STARTER_THEME).unwrap();
-    let mut app = App::new(load(&config).unwrap(), config);
+    let mut app = App::new(load(&config).unwrap(), config, Scope::Prompt);
     app.load_theme_slot();
     press(&mut app, KeyCode::Char('2'), 1);
     app
@@ -181,7 +181,11 @@ fn padding_shows_the_widget_default_it_falls_back_to() {
         "git",
         { "python": { "padding": "small" } },
     ] }] });
-    let mut app = App::new(Document::new(config).unwrap(), dir.0.join("config.json"));
+    let mut app = App::new(
+        Document::new(config).unwrap(),
+        dir.0.join("config.json"),
+        Scope::Prompt,
+    );
     app.load_theme_slot();
     let shown = |app: &App, index| {
         let options = app.doc.options(Target::Segment(left(index)));
@@ -204,7 +208,11 @@ fn padding_shows_the_widget_default_it_falls_back_to() {
 fn widget_padding_cycles_through_its_choices_and_unset() {
     let dir = Scratch::new();
     let config = json!({ "theme": "rainbow", "rows": [{ "left": ["battery"] }] });
-    let mut app = App::new(Document::new(config).unwrap(), dir.0.join("config.json"));
+    let mut app = App::new(
+        Document::new(config).unwrap(),
+        dir.0.join("config.json"),
+        Scope::Prompt,
+    );
     let battery = left(0);
     app.select(Entry::Segment(battery));
     press(&mut app, KeyCode::Enter, 1);

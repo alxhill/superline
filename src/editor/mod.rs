@@ -34,6 +34,7 @@ use crate::config::Widget;
 use crate::powerline::default_padding;
 use model::{describe, show_value, widget_spec, Document, Entry, SegPos, Side, Target};
 use preview::{Preview, Request};
+pub use schema::Scope;
 use schema::{Kind, OptionSpec, WidgetSpec, WIDGETS};
 use theme_page::ThemePage;
 
@@ -41,11 +42,12 @@ use theme_page::ThemePage;
 /// the preview is redrawn this often even when nothing was edited.
 const PREVIEW_REFRESH: Duration = Duration::from_secs(2);
 
-/// Opens the editor on `path` and runs until the user quits.
-pub fn run(path: &Path) -> io::Result<()> {
+/// Opens the editor on `path`, a layout for `target` (the shell prompt or the
+/// Claude Code status line), and runs until the user quits.
+pub fn run(path: &Path, target: Scope) -> io::Result<()> {
     let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let doc = load(&path).map_err(io::Error::other)?;
-    let mut app = App::new(doc, path);
+    let mut app = App::new(doc, path, target);
 
     loop {
         let mut terminal = ratatui::try_init()?;
@@ -131,6 +133,7 @@ struct Status {
 
 struct App {
     page: Page,
+    target: Scope,
     doc: Document,
     path: PathBuf,
     theme: ThemePage,
@@ -155,13 +158,14 @@ struct App {
 }
 
 impl App {
-    fn new(doc: Document, path: PathBuf) -> App {
+    fn new(doc: Document, path: PathBuf, target: Scope) -> App {
         let entries = doc.entries();
         let theme_choices = theme_choices(&path);
         App {
             page: Page::Layout,
             theme: ThemePage::new(),
-            preview: Preview::spawn(&path),
+            preview: Preview::spawn(&path, target),
+            target,
             doc,
             path,
             entries,
@@ -314,11 +318,11 @@ impl App {
         }
     }
 
-    fn picker_matches(filter: &str) -> Vec<&'static WidgetSpec> {
+    fn picker_matches(target: Scope, filter: &str) -> Vec<&'static WidgetSpec> {
         let filter = filter.to_lowercase();
         WIDGETS
             .iter()
-            .filter(|spec| spec.listed)
+            .filter(|spec| spec.listed && spec.scope.fits(target))
             .filter(|spec| {
                 spec.name.contains(&filter)
                     || spec.aliases.iter().any(|a| a.contains(&filter))
@@ -567,7 +571,7 @@ impl App {
                 mut filter,
                 mut selected,
             } => {
-                let matches = Self::picker_matches(&filter);
+                let matches = Self::picker_matches(self.target, &filter);
                 match key.code {
                     KeyCode::Esc => return,
                     KeyCode::Enter => {
@@ -828,7 +832,9 @@ impl App {
         self.draw_footer(frame, bottom);
 
         match &self.mode {
-            Mode::Picker { filter, selected } => draw_picker(frame, area, filter, *selected),
+            Mode::Picker { filter, selected } => {
+                draw_picker(frame, area, self.target, filter, *selected)
+            }
             Mode::ColorPicker { code, .. } => self.draw_color_picker(frame, area, *code),
             Mode::IconBrowser { query, selected } => {
                 self.draw_icon_browser(frame, area, query, *selected)
@@ -1309,8 +1315,8 @@ fn centered(area: Rect, width: u16, height: u16) -> Rect {
     }
 }
 
-fn draw_picker(frame: &mut Frame, area: Rect, filter: &str, selected: usize) {
-    let matches = App::picker_matches(filter);
+fn draw_picker(frame: &mut Frame, area: Rect, target: Scope, filter: &str, selected: usize) {
+    let matches = App::picker_matches(target, filter);
     let popup = centered(area, 72, (matches.len() as u16 + 4).max(8));
     frame.render_widget(Clear, popup);
     let block = panel(" Add widget ", true);

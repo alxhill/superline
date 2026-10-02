@@ -152,6 +152,74 @@
       ["not_installed_icon", "string", "In place of a reading when the provider CLI is not installed.", "\"?\""]
     ]
   },
+  "claude_model": {
+    "properties": [
+      ["fg", "color", "The model name (Claude Code status line).", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["effort_fg", "color", "The reasoning effort after the model name.", "fg"],
+      ["icon", "string", "Before the model name; \"\" hides it.", "U+EC82"],
+      ["fast_icon", "string", "After the model name while fast mode is on; \"\" hides it.", "U+F140B"]
+    ]
+  },
+  "claude_context": {
+    "properties": [
+      ["fg", "color", "The context window reading.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["threshold_bg", "color", "Background once the window is fuller than the widget's threshold.", "defaults.bg"],
+      ["icon", "string", "Before the reading; \"\" hides it.", "U+F029A"]
+    ]
+  },
+  "claude_cost": {
+    "properties": [
+      ["fg", "color", "The session cost.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "claude_duration": {
+    "properties": [
+      ["fg", "color", "The session duration.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["icon", "string", "Before the duration; \"\" hides it.", "U+F051B"]
+    ]
+  },
+  "claude_lines": {
+    "properties": [
+      ["added_fg", "color", "The count of lines added.", "defaults.fg"],
+      ["removed_fg", "color", "The count of lines removed.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
+  "claude_cache": {
+    "properties": [
+      ["fg", "color", "The prompt cache hit ratio.", "defaults.fg"],
+      ["warm_bg", "color", "Background while the cache is warm.", "defaults.bg"],
+      ["cold_bg", "color", "Background once the cache has gone cold.", "warm_bg"],
+      ["icon", "string", "Before the hit ratio; \"\" hides it.", "U+F00E8"]
+    ]
+  },
+  "claude_vim": {
+    "properties": [
+      ["fg", "color", "The vim mode.", "defaults.fg"],
+      ["normal_bg", "color", "Background in NORMAL mode.", "defaults.bg"],
+      ["insert_bg", "color", "Background in INSERT mode.", "normal_bg"],
+      ["visual_bg", "color", "Background in VISUAL and VISUAL LINE modes.", "normal_bg"],
+      ["icon", "string", "Before the mode; \"\" hides it.", "U+E62B"]
+    ]
+  },
+  "claude_agent": {
+    "properties": [
+      ["fg", "color", "The agent name.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["icon", "string", "Before the agent name; \"\" hides it.", "U+EC67"]
+    ]
+  },
+  "claude_session": {
+    "properties": [
+      ["fg", "color", "The session name.", "defaults.fg"],
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["icon", "string", "Before the session name; \"\" hides it.", "U+EC4F"]
+    ]
+  },
   "os": {
     "properties": [
       ["fg", "color", "The icon.", "defaults.fg"],

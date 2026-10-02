@@ -540,7 +540,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor::Page;
+    use crate::editor::{Page, Scope};
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
     use serde_json::json;
@@ -640,7 +640,7 @@ mod tests {
         let rows = json!({ "theme": "theme.json", "rows": [{ "left": ["cwd"] }] });
         std::fs::write(&config, rows.to_string()).unwrap();
 
-        let mut app = App::new(crate::editor::load(&config).unwrap(), config);
+        let mut app = App::new(crate::editor::load(&config).unwrap(), config, Scope::Prompt);
         app.page = Page::Theme;
         app.load_theme_slot();
         let cwd = ThemeEntry::Module("cwd".into());

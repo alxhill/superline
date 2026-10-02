@@ -3,6 +3,8 @@ use std::time::Duration;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
+use crate::claude_code::ClaudeCodeStatus;
+
 pub const DEFAULT_GIT_STATUS_TIMEOUT_MS: u64 = 250;
 
 pub trait TerminalRuntimeMetadata {
@@ -14,6 +16,11 @@ pub trait TerminalRuntimeMetadata {
     /// Number of background jobs reported by the interactive shell.
     fn job_count(&self) -> usize {
         0
+    }
+
+    /// The session data Claude Code passed to `superline claude-code`.
+    fn claude_code(&self) -> Option<&ClaudeCodeStatus> {
+        None
     }
 }
 
@@ -291,6 +298,49 @@ pub enum LineSegment {
         session_time_remaining: bool,
         session_time_remaining_only_at_limit: f64,
     },
+    /// Claude Code's model, with its effort level and fast mode. The
+    /// `claude_*` widgets only draw in `superline claude-code`.
+    ClaudeModel {
+        /// Show the reasoning effort after the model. On by default.
+        #[serde(default = "default_true")]
+        effort: bool,
+        /// Show an icon while fast mode is on. On by default.
+        #[serde(default = "default_true")]
+        fast_mode: bool,
+    },
+    /// How full the session's context window is.
+    ClaudeContext {
+        #[serde(default)]
+        display: UsageDisplay,
+        /// Also show the tokens used out of the window size.
+        #[serde(default)]
+        tokens: bool,
+        /// Switch to the threshold background at this percentage.
+        threshold: Option<f64>,
+    },
+    /// The session's estimated cost in USD.
+    ClaudeCost,
+    /// How long the session has been running.
+    ClaudeDuration {
+        /// Show the time spent waiting on the API instead.
+        #[serde(default)]
+        api: bool,
+    },
+    /// Lines added and removed this session.
+    ClaudeLines,
+    /// The prompt cache's hit ratio, on a background that shows whether it
+    /// is still warm.
+    ClaudeCache,
+    /// The vim mode, while vim mode is on.
+    ClaudeVim,
+    /// The agent name, when running with `--agent`.
+    ClaudeAgent,
+    /// The session's name or title.
+    ClaudeSession {
+        /// Cut longer names short; 0 never cuts.
+        #[serde(default = "default_session_max_length")]
+        max_length: usize,
+    },
     User,
     Username,
     Cmd,
@@ -308,6 +358,12 @@ pub enum LineSegment {
 
 fn default_true() -> bool {
     true
+}
+
+pub const DEFAULT_SESSION_MAX_LENGTH: usize = 30;
+
+fn default_session_max_length() -> usize {
+    DEFAULT_SESSION_MAX_LENGTH
 }
 
 fn default_git_status_timeout_ms() -> u64 {
@@ -420,6 +476,32 @@ enum KnownLineSegment {
         #[serde(default, deserialize_with = "deserialize_unit_interval")]
         session_time_remaining_only_at_limit: f64,
     },
+    ClaudeModel {
+        #[serde(default = "default_true")]
+        effort: bool,
+        #[serde(default = "default_true")]
+        fast_mode: bool,
+    },
+    ClaudeContext {
+        #[serde(default)]
+        display: UsageDisplay,
+        #[serde(default)]
+        tokens: bool,
+        threshold: Option<f64>,
+    },
+    ClaudeCost,
+    ClaudeDuration {
+        #[serde(default)]
+        api: bool,
+    },
+    ClaudeLines,
+    ClaudeCache,
+    ClaudeVim,
+    ClaudeAgent,
+    ClaudeSession {
+        #[serde(default = "default_session_max_length")]
+        max_length: usize,
+    },
     User,
     Username,
     Cmd,
@@ -510,6 +592,27 @@ impl From<KnownLineSegment> for LineSegment {
                 session_time_remaining,
                 session_time_remaining_only_at_limit,
             },
+            KnownLineSegment::ClaudeModel { effort, fast_mode } => {
+                LineSegment::ClaudeModel { effort, fast_mode }
+            }
+            KnownLineSegment::ClaudeContext {
+                display,
+                tokens,
+                threshold,
+            } => LineSegment::ClaudeContext {
+                display,
+                tokens,
+                threshold,
+            },
+            KnownLineSegment::ClaudeCost => LineSegment::ClaudeCost,
+            KnownLineSegment::ClaudeDuration { api } => LineSegment::ClaudeDuration { api },
+            KnownLineSegment::ClaudeLines => LineSegment::ClaudeLines,
+            KnownLineSegment::ClaudeCache => LineSegment::ClaudeCache,
+            KnownLineSegment::ClaudeVim => LineSegment::ClaudeVim,
+            KnownLineSegment::ClaudeAgent => LineSegment::ClaudeAgent,
+            KnownLineSegment::ClaudeSession { max_length } => {
+                LineSegment::ClaudeSession { max_length }
+            }
             KnownLineSegment::User => LineSegment::User,
             KnownLineSegment::Username => LineSegment::Username,
             KnownLineSegment::Cmd => LineSegment::Cmd,
@@ -607,6 +710,15 @@ pub(crate) const KNOWN_SEGMENT_NAMES: &[&str] = &[
     "ai_usage",
     "user",
     "username",
+    "claude_model",
+    "claude_context",
+    "claude_cost",
+    "claude_duration",
+    "claude_lines",
+    "claude_cache",
+    "claude_vim",
+    "claude_agent",
+    "claude_session",
     "cmd",
     "last_cmd_duration",
     "padding",
@@ -678,6 +790,66 @@ pub enum SeparatorStyle {
 
 fn widgets(segments: Vec<LineSegment>) -> Vec<Widget> {
     segments.into_iter().map(Widget::from).collect()
+}
+
+impl Config {
+    /// The layout `superline claude-code` writes for a fresh install.
+    pub fn claude_code_default() -> Config {
+        Config {
+            theme: "rainbow".into(),
+            update: UpdateConfig::default(),
+            rows: vec![CommandLine {
+                left: widgets(vec![
+                    LineSegment::Separator(SeparatorStyle::Round),
+                    LineSegment::Padding(0),
+                    LineSegment::ClaudeModel {
+                        effort: true,
+                        fast_mode: true,
+                    },
+                    LineSegment::ClaudeContext {
+                        display: UsageDisplay::Percentage,
+                        tokens: false,
+                        threshold: Some(80.0),
+                    },
+                    LineSegment::Padding(1),
+                    LineSegment::ReadOnly,
+                    LineSegment::Cwd {
+                        max_length: 40,
+                        wanted_seg_num: 4,
+                        resolve_symlinks: false,
+                    },
+                    LineSegment::Git {
+                        status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                        backend: GitBackend::Auto,
+                        worktrees: true,
+                    },
+                    LineSegment::Pr { status: true },
+                ]),
+                right: Some(widgets(vec![
+                    LineSegment::ClaudeLines,
+                    LineSegment::ClaudeCost,
+                    LineSegment::AiUsage {
+                        provider: UsageProvider::Claude,
+                        session: true,
+                        weekly: true,
+                        fable: false,
+                        display: UsageDisplay::Percentage,
+                        threshold: Some(90.0),
+                        session_label: None,
+                        weekly_label: None,
+                        fable_label: None,
+                        credits: false,
+                        credits_display: None,
+                        credits_label: None,
+                        credits_only_when_limited: false,
+                        session_time_remaining: false,
+                        session_time_remaining_only_at_limit: 0.0,
+                    },
+                    LineSegment::Padding(0),
+                ])),
+            }],
+        }
+    }
 }
 
 impl Default for Config {
@@ -793,6 +965,63 @@ mod tests {
         let reserialized = serde_json::to_string_pretty(&parsed)
             .expect("reparsed config should serialize to JSON");
         assert_eq!(json, reserialized);
+    }
+
+    #[test]
+    fn default_claude_code_layout_round_trips() {
+        let json = serde_json::to_string_pretty(&Config::claude_code_default()).unwrap();
+        let parsed: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(json, serde_json::to_string_pretty(&parsed).unwrap());
+        assert!(!json.contains("unknown"), "{json}");
+    }
+
+    #[test]
+    fn claude_code_segments_parse_with_defaults_and_options() {
+        let cases = [
+            (
+                r#""claude_model""#,
+                LineSegment::ClaudeModel {
+                    effort: true,
+                    fast_mode: true,
+                },
+            ),
+            (
+                r#"{"claude_context":{"display":"bar","tokens":true,"threshold":75}}"#,
+                LineSegment::ClaudeContext {
+                    display: UsageDisplay::Bar,
+                    tokens: true,
+                    threshold: Some(75.0),
+                },
+            ),
+            (
+                r#""claude_context""#,
+                LineSegment::ClaudeContext {
+                    display: UsageDisplay::Percentage,
+                    tokens: false,
+                    threshold: None,
+                },
+            ),
+            (r#""claude_cost""#, LineSegment::ClaudeCost),
+            (
+                r#"{"claude_duration":{"api":true}}"#,
+                LineSegment::ClaudeDuration { api: true },
+            ),
+            (r#""claude_lines""#, LineSegment::ClaudeLines),
+            (r#""claude_cache""#, LineSegment::ClaudeCache),
+            (r#""claude_vim""#, LineSegment::ClaudeVim),
+            (r#""claude_agent""#, LineSegment::ClaudeAgent),
+            (
+                r#""claude_session""#,
+                LineSegment::ClaudeSession {
+                    max_length: DEFAULT_SESSION_MAX_LENGTH,
+                },
+            ),
+        ];
+        for (json, expected) in cases {
+            let parsed: LineSegment =
+                serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+            assert_eq!(parsed, expected, "{json}");
+        }
     }
 
     #[test]

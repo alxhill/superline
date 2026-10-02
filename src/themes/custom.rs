@@ -10,11 +10,11 @@ use thiserror::Error;
 
 use crate::colors::{Color, TextAttrs};
 use crate::modules::{
-    BatteryScheme, CargoScheme, CmdScheme, CwdScheme, ErrorMessageScheme, ExitCodeScheme,
-    GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme, LastCmdDurationScheme,
-    LocalIpScheme, MemoryUsageScheme, NodeScheme, OsKind, OsScheme, PrScheme, PythonScheme,
-    ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme, UnknownScheme, UsageScheme,
-    UserScheme,
+    BatteryScheme, CargoScheme, ClaudeCodeScheme, CmdScheme, CwdScheme, ErrorMessageScheme,
+    ExitCodeScheme, GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme,
+    LastCmdDurationScheme, LocalIpScheme, MemoryUsageScheme, NodeScheme, OsKind, OsScheme,
+    PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme,
+    UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{
     bundled_theme, install_theme, theme_path, CompleteTheme, DefaultColors, RAINBOW,
@@ -367,6 +367,94 @@ impl CargoScheme for CustomTheme {
     }
 
     icon_from_json!(icon, cargo, icon, CARGO_ICON);
+}
+
+impl ClaudeCodeScheme for CustomTheme {
+    color_from_json!(claude_model_fg, claude_model, fg, default_fg);
+    color_from_json!(claude_model_bg, claude_model, bg, default_bg);
+    color_from_json!(
+        claude_model_effort_fg,
+        claude_model,
+        effort_fg,
+        claude_model_fg
+    );
+    icon_from_json!(claude_model_icon, claude_model, icon, CLAUDE_MODEL_ICON);
+    icon_from_json!(claude_fast_icon, claude_model, fast_icon, CLAUDE_FAST_ICON);
+
+    color_from_json!(claude_context_fg, claude_context, fg, default_fg);
+    color_from_json!(claude_context_bg, claude_context, bg, default_bg);
+    color_from_json!(
+        claude_context_threshold_bg,
+        claude_context,
+        threshold_bg,
+        alert_bg
+    );
+    icon_from_json!(
+        claude_context_icon,
+        claude_context,
+        icon,
+        CLAUDE_CONTEXT_ICON
+    );
+
+    color_from_json!(claude_cost_fg, claude_cost, fg, default_fg);
+    color_from_json!(claude_cost_bg, claude_cost, bg, default_bg);
+
+    color_from_json!(claude_duration_fg, claude_duration, fg, default_fg);
+    color_from_json!(claude_duration_bg, claude_duration, bg, default_bg);
+    icon_from_json!(
+        claude_duration_icon,
+        claude_duration,
+        icon,
+        CLAUDE_DURATION_ICON
+    );
+
+    color_from_json!(claude_lines_added_fg, claude_lines, added_fg, default_fg);
+    color_from_json!(
+        claude_lines_removed_fg,
+        claude_lines,
+        removed_fg,
+        default_fg
+    );
+    color_from_json!(claude_lines_bg, claude_lines, bg, default_bg);
+
+    color_from_json!(claude_cache_fg, claude_cache, fg, default_fg);
+    color_from_json!(claude_cache_warm_bg, claude_cache, warm_bg, default_bg);
+    color_from_json!(
+        claude_cache_cold_bg,
+        claude_cache,
+        cold_bg,
+        claude_cache_warm_bg
+    );
+    icon_from_json!(claude_cache_icon, claude_cache, icon, CLAUDE_CACHE_ICON);
+
+    color_from_json!(claude_vim_fg, claude_vim, fg, default_fg);
+    color_from_json!(claude_vim_normal_bg, claude_vim, normal_bg, default_bg);
+    color_from_json!(
+        claude_vim_insert_bg,
+        claude_vim,
+        insert_bg,
+        claude_vim_normal_bg
+    );
+    color_from_json!(
+        claude_vim_visual_bg,
+        claude_vim,
+        visual_bg,
+        claude_vim_normal_bg
+    );
+    icon_from_json!(claude_vim_icon, claude_vim, icon, CLAUDE_VIM_ICON);
+
+    color_from_json!(claude_agent_fg, claude_agent, fg, default_fg);
+    color_from_json!(claude_agent_bg, claude_agent, bg, default_bg);
+    icon_from_json!(claude_agent_icon, claude_agent, icon, CLAUDE_AGENT_ICON);
+
+    color_from_json!(claude_session_fg, claude_session, fg, default_fg);
+    color_from_json!(claude_session_bg, claude_session, bg, default_bg);
+    icon_from_json!(
+        claude_session_icon,
+        claude_session,
+        icon,
+        CLAUDE_SESSION_ICON
+    );
 }
 
 impl ErrorMessageScheme for CustomTheme {

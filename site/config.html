@@ -166,6 +166,17 @@
       <a href="#cargo"><code>cargo</code></a>
       <p class="toc-title">AI usage</p>
       <a href="#ai_usage"><code>ai_usage</code></a>
+      <p class="toc-title">Claude Code</p>
+      <a href="#claude-code">The status line</a>
+      <a href="#claude_model"><code>claude_model</code></a>
+      <a href="#claude_context"><code>claude_context</code></a>
+      <a href="#claude_cost"><code>claude_cost</code></a>
+      <a href="#claude_duration"><code>claude_duration</code></a>
+      <a href="#claude_lines"><code>claude_lines</code></a>
+      <a href="#claude_cache"><code>claude_cache</code></a>
+      <a href="#claude_vim"><code>claude_vim</code></a>
+      <a href="#claude_agent"><code>claude_agent</code></a>
+      <a href="#claude_session"><code>claude_session</code></a>
       <p class="toc-title">System</p>
       <a href="#os"><code>os</code></a>
       <a href="#memory_usage"><code>memory_usage</code></a>
@@ -913,6 +924,263 @@
         </div>
       </section>
 
+      <h2 class="group" id="claude-code">Claude Code</h2>
+
+      <section class="component">
+        <p>
+          superline can also draw the <a href="https://code.claude.com/docs/en/statusline">status line</a> at the
+          bottom of Claude Code. <code>superline install claude-code</code> points <code>statusLine</code> in
+          <code>~/.claude/settings.json</code> at <code>superline claude-code</code> (another command is only
+          replaced with <code>--force</code>) and writes the default layout to
+          <code>~/.config/superline/claude-code.json</code>. Or set it by hand:
+        </p>
+        <pre class="json"><code>{ <span class="k">"statusLine"</span>: { <span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"superline claude-code"</span>, <span class="k">"padding"</span>: <span class="n">0</span> } }</code></pre>
+        <p>
+          The layout file takes the same keys as <a href="#file">the config file</a>, and its <code>theme</code>
+          names the same kind of <a href="#themes">theme file</a>, so the prompt and the status line can share one.
+          <code>superline config --claude-code</code> edits it with a preview drawn from sample session data. Every
+          row is drawn in full; a row whose widgets all have nothing to show is left out.
+        </p>
+        <p>
+          Claude Code hands the command the session's data on stdin, and superline moves into the session's
+          directory first, so <a href="#cwd"><code>cwd</code></a>, <a href="#git"><code>git</code></a>, the
+          <a href="#languages">language modules</a> and the rest describe where Claude is working.
+          <a href="#ai_usage"><code>ai_usage</code></a> with <code>"provider": "claude"</code> shows the five-hour and
+          seven-day rate limits Claude Code reports instead of asking the CLI (Pro and Max plans, after the first
+          response), and <a href="#pr"><code>pr</code></a> falls back to the pull request Claude Code reports, without
+          a CI dot, until the <code>gh</code> lookup has one. <code>cmd</code>, <code>last_cmd_duration</code>,
+          <code>shell</code> and <code>jobs</code> have no shell to read there.
+        </p>
+        <p>
+          The right side is aligned to <code>$COLUMNS</code> less a four-column margin, since Claude Code indents
+          the status line. Change it with <code>--margin &lt;n&gt;</code>, or set the width with
+          <code>--columns &lt;n&gt;</code>, in the <code>command</code>.
+        </p>
+        <p>
+          The <code>claude_*</code> widgets below draw only in the status line, and each is left out while Claude
+          Code has nothing for it, such as no vim mode, no agent or no cost yet. The screenshots use sample data.
+        </p>
+        <div class="examples">
+          <div class="example" data-example="claude_code/default">
+  <div class="ex-label">The default layout</div>
+  <figure class="term shot"><img src="img/config/claude_code-default.png" width="1549" height="48" loading="lazy" alt="The claude_code example: The default layout."></figure>
+  <pre class="json"><code>{
+  <span class="k">"theme"</span>: <span class="s">"rainbow"</span>,
+  <span class="k">"rows"</span>: [
+    {
+      <span class="k">"left"</span>: [
+        { <span class="k">"separator"</span>: <span class="s">"round"</span> },
+        { <span class="k">"padding"</span>: <span class="n">0</span> },
+        <span class="s">"claude_model"</span>,
+        { <span class="k">"claude_context"</span>: { <span class="k">"threshold"</span>: <span class="n">80</span> } },
+        { <span class="k">"padding"</span>: <span class="n">1</span> },
+        <span class="s">"read_only"</span>,
+        { <span class="k">"cwd"</span>: { <span class="k">"max_length"</span>: <span class="n">40</span>, <span class="k">"wanted_seg_num"</span>: <span class="n">4</span> } },
+        <span class="s">"git"</span>,
+        <span class="s">"pr"</span>
+      ],
+      <span class="k">"right"</span>: [
+        <span class="s">"claude_lines"</span>,
+        <span class="s">"claude_cost"</span>,
+        { <span class="k">"ai_usage"</span>: { <span class="k">"provider"</span>: <span class="s">"claude"</span>, <span class="k">"threshold"</span>: <span class="n">90</span> } },
+        { <span class="k">"padding"</span>: <span class="n">0</span> }
+      ]
+    }
+  ]
+}</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_model" class="component">
+        <h3><code>claude_model</code></h3>
+        <p>
+          The model Claude Code is running, then the reasoning effort (<code>low</code> to <code>max</code>) in its own color, with a lightning bolt while fast mode is on.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>effort</code></td><td>boolean</td><td><code>true</code></td><td>Show the reasoning effort after the model.</td></tr>
+            <tr><td><code>fast_mode</code></td><td>boolean</td><td><code>true</code></td><td>Show the fast mode icon while it is on.</td></tr>
+          </tbody>
+        </table>
+        <details class="theme-opts" data-theme="claude_model">
+    <summary>Theme options <code>modules.claude_model</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The model name (Claude Code status line).</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>effort_fg</code></td><td>color</td><td>The reasoning effort after the model name.</td><td><code>fg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the model name; "" hides it.</td><td>U+EC82</td></tr><tr><td><code>fast_icon</code></td><td>string</td><td>After the model name while fast mode is on; "" hides it.</td><td>U+F140B</td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_model/default">
+  <div class="ex-label">Model, effort level and fast mode</div>
+  <figure class="term shot"><img src="img/config/claude_model-default.png" width="222" height="48" loading="lazy" alt="The claude_model example: Model, effort level and fast mode."></figure>
+  <pre class="json"><code><span class="s">"claude_model"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_context" class="component">
+        <h3><code>claude_context</code></h3>
+        <p>
+          How full the session's context window is.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>display</code></td><td>string</td><td><code>"percentage"</code></td><td>Any of the <a href="#ai_usage"><code>ai_usage</code></a> display styles.</td></tr>
+            <tr><td><code>tokens</code></td><td>boolean</td><td><code>false</code></td><td>Also show the tokens in use out of the window size, e.g. <code>92k/200k</code>.</td></tr>
+            <tr><td><code>threshold</code></td><td>number</td><td>unset</td><td>Switch to the theme's <code>threshold_bg</code> at this percentage.</td></tr>
+          </tbody>
+        </table>
+        <details class="theme-opts" data-theme="claude_context">
+    <summary>Theme options <code>modules.claude_context</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The context window reading.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>threshold_bg</code></td><td>color</td><td>Background once the window is fuller than the widget's threshold.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the reading; "" hides it.</td><td>U+F029A</td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_context/default">
+  <div class="ex-label">As a bar, with the tokens in use</div>
+  <figure class="term shot"><img src="img/config/claude_context-default.png" width="233" height="48" loading="lazy" alt="The claude_context example: As a bar, with the tokens in use."></figure>
+  <pre class="json"><code>{ <span class="k">"claude_context"</span>: { <span class="k">"display"</span>: <span class="s">"bar"</span>, <span class="k">"tokens"</span>: <span class="n">true</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_cost" class="component">
+        <h3><code>claude_cost</code></h3>
+        <p>
+          The session's estimated cost in USD, as Claude Code works it out.
+        </p>
+        <details class="theme-opts" data-theme="claude_cost">
+    <summary>Theme options <code>modules.claude_cost</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The session cost.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_cost/default">
+  <div class="ex-label">Session cost</div>
+  <figure class="term shot"><img src="img/config/claude_cost-default.png" width="120" height="48" loading="lazy" alt="The claude_cost example: Session cost."></figure>
+  <pre class="json"><code><span class="s">"claude_cost"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_duration" class="component">
+        <h3><code>claude_duration</code></h3>
+        <p>
+          How long the session has been running.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>api</code></td><td>boolean</td><td><code>false</code></td><td>Show the time spent waiting on the API instead.</td></tr>
+          </tbody>
+        </table>
+        <details class="theme-opts" data-theme="claude_duration">
+    <summary>Theme options <code>modules.claude_duration</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The session duration.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the duration; "" hides it.</td><td>U+F051B</td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_duration/default">
+  <div class="ex-label">Session duration</div>
+  <figure class="term shot"><img src="img/config/claude_duration-default.png" width="151" height="48" loading="lazy" alt="The claude_duration example: Session duration."></figure>
+  <pre class="json"><code><span class="s">"claude_duration"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_lines" class="component">
+        <h3><code>claude_lines</code></h3>
+        <p>
+          Lines added and removed this session, each in its own color.
+        </p>
+        <details class="theme-opts" data-theme="claude_lines">
+    <summary>Theme options <code>modules.claude_lines</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>added_fg</code></td><td>color</td><td>The count of lines added.</td><td><code>defaults.fg</code></td></tr><tr><td><code>removed_fg</code></td><td>color</td><td>The count of lines removed.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_lines/default">
+  <div class="ex-label">Lines added and removed</div>
+  <figure class="term shot"><img src="img/config/claude_lines-default.png" width="151" height="48" loading="lazy" alt="The claude_lines example: Lines added and removed."></figure>
+  <pre class="json"><code><span class="s">"claude_lines"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_cache" class="component">
+        <h3><code>claude_cache</code></h3>
+        <p>
+          The prompt cache's hit ratio, on one background while the cache is warm and another once it has gone cold. Left out until Claude Code has seen caching.
+        </p>
+        <details class="theme-opts" data-theme="claude_cache">
+    <summary>Theme options <code>modules.claude_cache</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The prompt cache hit ratio.</td><td><code>defaults.fg</code></td></tr><tr><td><code>warm_bg</code></td><td>color</td><td>Background while the cache is warm.</td><td><code>defaults.bg</code></td></tr><tr><td><code>cold_bg</code></td><td>color</td><td>Background once the cache has gone cold.</td><td><code>warm_bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the hit ratio; "" hides it.</td><td>U+F00E8</td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_cache/default">
+  <div class="ex-label">Warm cache hit ratio</div>
+  <figure class="term shot"><img src="img/config/claude_cache-default.png" width="120" height="48" loading="lazy" alt="The claude_cache example: Warm cache hit ratio."></figure>
+  <pre class="json"><code><span class="s">"claude_cache"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_vim" class="component">
+        <h3><code>claude_vim</code></h3>
+        <p>
+          The vim mode while vim mode is on, with a background per mode.
+        </p>
+        <details class="theme-opts" data-theme="claude_vim">
+    <summary>Theme options <code>modules.claude_vim</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The vim mode.</td><td><code>defaults.fg</code></td></tr><tr><td><code>normal_bg</code></td><td>color</td><td>Background in NORMAL mode.</td><td><code>defaults.bg</code></td></tr><tr><td><code>insert_bg</code></td><td>color</td><td>Background in INSERT mode.</td><td><code>normal_bg</code></td></tr><tr><td><code>visual_bg</code></td><td>color</td><td>Background in VISUAL and VISUAL LINE modes.</td><td><code>normal_bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the mode; "" hides it.</td><td>U+E62B</td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_vim/default">
+  <div class="ex-label">INSERT mode</div>
+  <figure class="term shot"><img src="img/config/claude_vim-default.png" width="151" height="48" loading="lazy" alt="The claude_vim example: INSERT mode."></figure>
+  <pre class="json"><code><span class="s">"claude_vim"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_agent" class="component">
+        <h3><code>claude_agent</code></h3>
+        <p>
+          The agent's name when Claude Code runs with <code>--agent</code>.
+        </p>
+        <details class="theme-opts" data-theme="claude_agent">
+    <summary>Theme options <code>modules.claude_agent</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The agent name.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the agent name; "" hides it.</td><td>U+EC67</td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_agent/default">
+  <div class="ex-label">Running as an agent</div>
+  <figure class="term shot"><img src="img/config/claude_agent-default.png" width="171" height="49" loading="lazy" alt="The claude_agent example: Running as an agent."></figure>
+  <pre class="json"><code><span class="s">"claude_agent"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="claude_session" class="component">
+        <h3><code>claude_session</code></h3>
+        <p>
+          The session's name, from <code>--name</code> or <code>/rename</code>, or its generated title.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>max_length</code></td><td>number</td><td><code>30</code></td><td>Cut longer names short with an ellipsis; <code>0</code> never does.</td></tr>
+          </tbody>
+        </table>
+        <details class="theme-opts" data-theme="claude_session">
+    <summary>Theme options <code>modules.claude_session</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>fg</code></td><td>color</td><td>The session name.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the session name; "" hides it.</td><td>U+EC4F</td></tr></tbody></table>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="claude_session/default">
+  <div class="ex-label">Session name</div>
+  <figure class="term shot"><img src="img/config/claude_session-default.png" width="314" height="48" loading="lazy" alt="The claude_session example: Session name."></figure>
+  <pre class="json"><code><span class="s">"claude_session"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
       <h2 class="group">System</h2>
 
       <section id="os" class="component">
@@ -1244,7 +1512,9 @@
           <tbody>
             <tr><td><code>superline install &lt;shell&gt;</code></td><td>Append the prompt loader to the shell's config file. Safe to run more than once.</td></tr>
             <tr><td><code>superline init &lt;shell&gt;</code></td><td>Print the loader snippet instead.</td></tr>
-            <tr><td><code>superline config</code></td><td>Edit the config in an interactive terminal editor: add, remove, reorder and configure widgets, and edit a custom theme's colours, with a live prompt preview. <code>--config &lt;path&gt;</code> edits another file.</td></tr>
+            <tr><td><code>superline config</code></td><td>Edit the config in an interactive terminal editor: add, remove, reorder and configure widgets, and edit a custom theme's colours, with a live prompt preview. <code>--config &lt;path&gt;</code> edits another file, and <code>--claude-code</code> edits the <a href="#claude-code">Claude Code status line</a> layout.</td></tr>
+            <tr><td><code>superline install claude-code</code></td><td>Point Claude Code's status line at superline. <code>--force</code> replaces another status line command.</td></tr>
+            <tr><td><code>superline claude-code</code></td><td>Draw the Claude Code status line from the session data on stdin. <code>--sample</code> draws sample data, to try a layout in the terminal.</td></tr>
             <tr><td><code>superline clear-caches</code></td><td>Wipe cached git status, PR lookups and AI usage so the next prompt starts cold.</td></tr>
             <tr><td><code>superline upgrade [VERSION]</code></td><td>Replace the binary with the latest (or given) release's prebuilt one. <code>--check</code> only reports whether one is available. Also available as <code>superline update</code>. Homebrew installs use <code>brew upgrade superline</code> instead.</td></tr>
             <tr><td><code>SUPERLINE_DEBUG=1</code></td><td>Print a per-module timing report to stderr after each render.</td></tr>

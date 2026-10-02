@@ -401,6 +401,11 @@ scene_components() {
         "$query | (.config // {theme: \"rainbow\", rows: [.row]}) | .update = {disable: true}" \
         "$manifest" >"$work/$id-$variant.json"
       setup=$(jq -r --arg id "$id" --arg variant "$variant" "$query | .setup // empty" "$manifest")
+      # Claude Code components draw the status line from sample session data
+      # in place of the prompt.
+      if [[ $(jq -r --arg id "$id" '.[$id].claude_code // false' "$manifest") == true ]]; then
+        setup="function fish_prompt; superline claude-code --sample --config ~/.config/superline/config.json --columns $cols; end; function fish_right_prompt; end; ${setup:-true}"
+      fi
       PRE="${FIXTURE_PRE:-true}; ${setup:-true}" capture "$name" "$cols" 10 "$work/$id-$variant.json" "$FIXTURE_DIR" < <(
         jq -r --arg id "$id" --arg variant "$variant" \
           "$query | .commands // [] | .[] | \"Type \\(tojson)\nEnter\nSleep 2.5s\"" "$manifest"
