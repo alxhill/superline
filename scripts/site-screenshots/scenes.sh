@@ -386,7 +386,7 @@ component_fixture() {
 scene_components() {
   local manifest="$here/components.json" id variant fixture cols name home query setup
   jq -r 'to_entries[] | .key as $id | (.value.cols // 90) as $cols
-    | .value.variants[] | [$id, .name, (.fixture // "empty"), $cols] | @tsv' "$manifest" |
+    | .value.variants[] | [$id, .name, (.fixture // "empty"), (.cols // $cols)] | @tsv' "$manifest" |
     while IFS=$'\t' read -r id variant fixture cols; do
       if [[ -n ${COMPONENTS:-} && " $COMPONENTS " != *" $id "* ]]; then
         continue
