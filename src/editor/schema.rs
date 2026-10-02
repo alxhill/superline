@@ -322,6 +322,11 @@ const GIT: &[OptionSpec] = &[
         true,
         "Show the linked-worktree count by the branch, index/count inside one.",
     ),
+    boolean(
+        "remote_link",
+        true,
+        "Show the remote icon, linked to the repo's web page. Off keeps ahead/behind.",
+    ),
 ];
 
 const PR: &[OptionSpec] = &[boolean(
@@ -925,6 +930,6 @@ mod tests {
     fn value_widgets_expose_their_option() {
         assert_eq!(find("padding").unwrap().options()[0].key, "width");
         assert_eq!(find("battery").unwrap().options().len(), 0);
-        assert_eq!(find("git").unwrap().options().len(), 3);
+        assert_eq!(find("git").unwrap().options().len(), 4);
     }
 }

@@ -223,6 +223,11 @@ pub enum LineSegment {
         /// shows when there are none.
         #[serde(default = "default_true")]
         worktrees: bool,
+        /// Show the remote icon and link the remote segment to the
+        /// repository's web page. On by default; with it off the ahead and
+        /// behind counts still show, as plain text.
+        #[serde(default = "default_true")]
+        remote_link: bool,
     },
     Pr {
         /// Append a coloured dot reflecting the PR's CI check status. On by
@@ -441,6 +446,8 @@ enum KnownLineSegment {
         backend: GitBackend,
         #[serde(default = "default_true")]
         worktrees: bool,
+        #[serde(default = "default_true")]
+        remote_link: bool,
     },
     Pr {
         #[serde(default = "default_true")]
@@ -591,10 +598,12 @@ impl From<KnownLineSegment> for LineSegment {
                 status_timeout_ms,
                 backend,
                 worktrees,
+                remote_link,
             } => LineSegment::Git {
                 status_timeout_ms,
                 backend,
                 worktrees,
+                remote_link,
             },
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
@@ -882,6 +891,7 @@ impl Config {
                         status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                         backend: GitBackend::Auto,
                         worktrees: true,
+                        remote_link: true,
                     },
                     LineSegment::Pr { status: true },
                 ]),
@@ -936,6 +946,7 @@ impl Default for Config {
                             status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                             backend: GitBackend::Auto,
                             worktrees: true,
+                            remote_link: true,
                         },
                         LineSegment::Pr { status: true },
                         LineSegment::Padding(2),
@@ -1132,6 +1143,7 @@ mod tests {
                 status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                 backend: GitBackend::Auto,
                 worktrees: true,
+                remote_link: true,
             }
         );
     }
@@ -1147,6 +1159,7 @@ mod tests {
                 status_timeout_ms: 250,
                 backend: GitBackend::Auto,
                 worktrees: true,
+                remote_link: true,
             }
         );
     }
@@ -1168,6 +1181,7 @@ mod tests {
                     status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                     backend: expected,
                     worktrees: true,
+                    remote_link: true,
                 }
             );
         }
@@ -1184,8 +1198,33 @@ mod tests {
                 status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                 backend: GitBackend::Auto,
                 worktrees: false,
+                remote_link: true,
             }
         );
+    }
+
+    #[test]
+    fn git_remote_link_defaults_on_and_can_be_turned_off() {
+        for (json, expected) in [
+            (r#""git""#, true),
+            (r#"{"git":{}}"#, true),
+            (r#"{"git":{"remote_link":true}}"#, true),
+            (r#"{"git":{"remote_link":false}}"#, false),
+        ] {
+            let parsed: LineSegment =
+                serde_json::from_str(json).unwrap_or_else(|_| panic!("{json} should parse"));
+
+            assert_eq!(
+                parsed,
+                LineSegment::Git {
+                    status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
+                    backend: GitBackend::Auto,
+                    worktrees: true,
+                    remote_link: expected,
+                },
+                "{json}"
+            );
+        }
     }
 
     #[test]
@@ -1545,6 +1584,7 @@ mod tests {
                     status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                     backend: GitBackend::Cli,
                     worktrees: true,
+                    remote_link: true,
                 },
                 Some(SegmentPadding::Small),
             ),

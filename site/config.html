@@ -600,7 +600,8 @@
         <h3><code>git</code></h3>
         <p>
           The branch, then modified, untracked and staged counts, then commits ahead of and behind the upstream.
-          A GitHub logo appears when the repo has a remote and links to its web page. A detached HEAD shows the
+          A GitHub logo appears when the repo has a remote and links to its web page;
+          <code>"remote_link": false</code> hides it but keeps the counts. A detached HEAD shows the
           short hash, followed by the branch it's the tip of, if any. When the repo has linked worktrees
           (<code>git worktree add</code>), their count follows the branch. Inside a linked worktree it reads
           <code>index/count</code>, such as <code>3/15</code>, numbered in <code>git worktree list</code> order.
@@ -620,6 +621,7 @@
               <code>"auto"</code> picks by the size of <code>.git/index</code>, and uses gitoxide when <code>git</code> isn't on your <code>PATH</code>.
             </td></tr>
             <tr><td><code>worktrees</code></td><td>boolean</td><td><code>true</code></td><td>Show the linked-worktree count next to the branch, as <code>index/count</code> inside a linked worktree. Nothing shows when there are none.</td></tr>
+            <tr><td><code>remote_link</code></td><td>boolean</td><td><code>true</code></td><td>Show the GitHub logo, linked to the repository's web page. When off, the ahead/behind counts still show, without a link.</td></tr>
           </tbody>
         </table>
         <details class="theme-opts" data-theme="git">
@@ -647,6 +649,10 @@
   <div class="ex-label">Inside the second of two linked worktrees</div>
   <figure class="term shot"><img src="img/config/git-worktrees.png" width="304" height="48" loading="lazy" alt="The git example: Inside the second of two linked worktrees."></figure>
   <pre class="json"><code>{ <span class="k">"git"</span>: { <span class="k">"worktrees"</span>: <span class="n">true</span> } }</code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="git/no-remote-link">
+  <div class="ex-label">Ahead/behind counts without the remote link</div>
+  <pre class="json"><code>{ <span class="k">"git"</span>: { <span class="k">"remote_link"</span>: <span class="n">false</span> } }</code></pre>
 </div><!-- /example -->
         </div>
       </section>

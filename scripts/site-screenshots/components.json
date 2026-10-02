@@ -387,6 +387,20 @@
             }
           ]
         }
+      },
+      {
+        "name": "no-remote-link",
+        "label": "Ahead/behind counts without the remote link",
+        "fixture": "git-dirty",
+        "row": {
+          "left": [
+            {
+              "git": {
+                "remote_link": false
+              }
+            }
+          ]
+        }
       }
     ]
   },

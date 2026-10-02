@@ -34,6 +34,7 @@ pub struct Git<S> {
     status_timeout: Duration,
     backend: GitBackend,
     worktrees: bool,
+    remote_link: bool,
     scheme: PhantomData<S>,
 }
 
@@ -147,15 +148,25 @@ impl<S: GitScheme> Git<S> {
             Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS),
             GitBackend::default(),
             true,
+            true,
         )
     }
 
     /// `worktrees` shows the linked-worktree count next to the branch.
-    pub fn with_config(status_timeout: Duration, backend: GitBackend, worktrees: bool) -> Git<S> {
+    /// `remote_link` shows the remote icon and links the remote segment to
+    /// the repository's web page; without it only the ahead and behind
+    /// counts show.
+    pub fn with_config(
+        status_timeout: Duration,
+        backend: GitBackend,
+        worktrees: bool,
+        remote_link: bool,
+    ) -> Git<S> {
         Git {
             status_timeout,
             backend,
             worktrees,
+            remote_link,
             scheme: PhantomData,
         }
     }
@@ -835,21 +846,41 @@ impl<S: GitScheme> Module for Git<S> {
             S::git_conflicted_bg(),
         );
 
-        if stats.remote {
-            let remote = remote_label(
-                S::git_remote_icon(),
-                (stats.ahead, S::git_ahead_icon()),
-                (stats.behind, S::git_behind_icon()),
-            );
-
-            let style = Style::simple(S::git_remote_fg(), S::git_remote_bg());
-            match &stats.remote_url {
-                _ if remote.is_empty() => {}
-                Some(url) => powerline.add_hyperlink_segment(&remote, url, style, None),
-                None => powerline.add_segment(remote, style),
-            }
+        let style = Style::simple(S::git_remote_fg(), S::git_remote_bg());
+        match remote_segment(
+            &stats,
+            self.remote_link,
+            S::git_remote_icon(),
+            S::git_ahead_icon(),
+            S::git_behind_icon(),
+        ) {
+            Some((label, Some(url))) => powerline.add_hyperlink_segment(&label, url, style, None),
+            Some((label, None)) => powerline.add_segment(label, style),
+            None => {}
         }
     }
+}
+
+/// The remote segment's label and the URL it links to, or `None` when there
+/// is nothing to show. Without `remote_link` the remote icon and the link are
+/// left out, leaving only the ahead and behind counts.
+fn remote_segment<'a>(
+    stats: &'a GitStats,
+    remote_link: bool,
+    remote_icon: &str,
+    ahead_icon: &str,
+    behind_icon: &str,
+) -> Option<(String, Option<&'a str>)> {
+    if !stats.remote {
+        return None;
+    }
+    let icon = if remote_link { remote_icon } else { "" };
+    let label = remote_label(icon, (stats.ahead, ahead_icon), (stats.behind, behind_icon));
+    if label.is_empty() {
+        return None;
+    }
+    let url = stats.remote_url.as_deref().filter(|_| remote_link);
+    Some((label, url))
 }
 
 /// The remote segment: the remote icon, then the ahead and behind counts each
@@ -875,8 +906,8 @@ mod tests {
         branch_label, choose_backend, detached_label, in_list_order, index_entry_count,
         install_prefix_of, linked_common_dir, linked_worktrees, listed_worktrees, parse_head,
         preferred_branch, preferred_remote, prefers_cli_for_index_count, remote_label,
-        remote_web_url, resolve_git_dir, worktree_label, Choice, GitBackend, GitStats, Reason,
-        Worktrees, AUTO_CLI_ENTRY_THRESHOLD,
+        remote_segment, remote_web_url, resolve_git_dir, worktree_label, Choice, GitBackend,
+        GitStats, Reason, Worktrees, AUTO_CLI_ENTRY_THRESHOLD,
     };
 
     fn names(list: &[&str]) -> Vec<String> {
@@ -1046,6 +1077,72 @@ mod tests {
         assert_eq!(remote_label("", (2, "^"), (1, "v")), "2^ 1v");
         assert_eq!(remote_label("", (0, "^"), (1, "")), "1");
         assert_eq!(remote_label("", (0, "^"), (0, "v")), "");
+    }
+
+    fn remote_stats(ahead: u32, behind: u32, remote_url: Option<&str>) -> GitStats {
+        GitStats {
+            untracked: 0,
+            conflicted: 0,
+            non_staged: 0,
+            ahead,
+            behind,
+            staged: 0,
+            remote: true,
+            remote_url: remote_url.map(str::to_owned),
+            branch_name: String::from("main"),
+            worktrees: 0,
+            worktree_index: None,
+        }
+    }
+
+    #[test]
+    fn remote_link_shows_the_icon_and_links_to_the_repository() {
+        let url = "https://github.com/alxhill/superline";
+        let stats = remote_stats(2, 1, Some(url));
+        assert_eq!(
+            remote_segment(&stats, true, "R", "^", "v"),
+            Some((String::from("R 2^ 1v"), Some(url)))
+        );
+
+        let stats = remote_stats(0, 0, Some(url));
+        assert_eq!(
+            remote_segment(&stats, true, "R", "^", "v"),
+            Some((String::from("R"), Some(url)))
+        );
+
+        let stats = remote_stats(0, 0, None);
+        assert_eq!(
+            remote_segment(&stats, true, "R", "^", "v"),
+            Some((String::from("R"), None))
+        );
+    }
+
+    #[test]
+    fn without_remote_link_only_the_counts_show_unlinked() {
+        let url = "https://github.com/alxhill/superline";
+        let stats = remote_stats(2, 1, Some(url));
+        assert_eq!(
+            remote_segment(&stats, false, "R", "^", "v"),
+            Some((String::from("2^ 1v"), None))
+        );
+
+        let stats = remote_stats(0, 3, Some(url));
+        assert_eq!(
+            remote_segment(&stats, false, "R", "^", "v"),
+            Some((String::from("3v"), None))
+        );
+
+        let stats = remote_stats(0, 0, Some(url));
+        assert_eq!(remote_segment(&stats, false, "R", "^", "v"), None);
+    }
+
+    #[test]
+    fn no_remote_means_no_remote_segment() {
+        let mut stats = remote_stats(0, 0, None);
+        stats.remote = false;
+        for remote_link in [true, false] {
+            assert_eq!(remote_segment(&stats, remote_link, "R", "^", "v"), None);
+        }
     }
 
     #[test]

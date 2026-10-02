@@ -419,7 +419,8 @@ The current branch and working-tree status: modified, staged and untracked count
 the upstream. A GitHub logo appears whenever the repo has a remote, and links to the repository's web page (derived
 from the `origin` fetch URL); the ahead/behind counts beside it need an
 upstream tracking ref that still resolves, so they are absent on a branch that was never pushed or whose remote
-branch has been deleted.
+branch has been deleted. `"remote_link": false` hides the logo and its link but keeps the ahead/behind counts, as
+plain text.
 
 A detached HEAD shows the short commit hash. When that commit is the tip of a branch (a worktree created with
 `git worktree add --detach`, or `git checkout origin/main`) the branch follows it, as `1a2b3c4 → main`; local
@@ -436,7 +437,7 @@ shown while a refresh continues in the background for the next prompt. Before an
 `loading…`.
 
 ```json
-{ "git": { "status_timeout_ms": 250, "backend": "auto", "worktrees": true } }
+{ "git": { "status_timeout_ms": 250, "backend": "auto", "worktrees": true, "remote_link": true } }
 ```
 
 Status is produced by one of two backends, chosen with `backend`:
