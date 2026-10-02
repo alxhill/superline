@@ -324,11 +324,18 @@ const GIT: &[OptionSpec] = &[
     ),
 ];
 
-const PR: &[OptionSpec] = &[boolean(
-    "status",
-    true,
-    "Append a coloured dot showing the PR's CI check status.",
-)];
+const PR: &[OptionSpec] = &[
+    boolean(
+        "status",
+        true,
+        "Append a coloured dot showing the PR's CI check status.",
+    ),
+    boolean(
+        "diff",
+        false,
+        "Append the PR's added and deleted line counts.",
+    ),
+];
 
 const PYTHON: &[OptionSpec] = &[
     boolean("version", true, "Show the interpreter version."),

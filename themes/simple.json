@@ -31,7 +31,9 @@
       "closed_bg": 124,
       "status_success_fg": 40,
       "status_failure_fg": 161,
-      "status_pending_fg": 178
+      "status_pending_fg": 178,
+      "diff_added_fg": 40,
+      "diff_removed_fg": 161
     },
     "java": { "bg": "light_grey" },
     "cargo": { "bg": "dark_grey" },

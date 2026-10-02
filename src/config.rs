@@ -229,6 +229,9 @@ pub enum LineSegment {
         /// default; set to `false` to show just the PR number.
         #[serde(default = "default_true")]
         status: bool,
+        /// Append the PR's added and deleted line counts. Off by default.
+        #[serde(default)]
+        diff: bool,
     },
     Python {
         /// Show the interpreter version. On by default: inside a virtual env
@@ -445,6 +448,8 @@ enum KnownLineSegment {
     Pr {
         #[serde(default = "default_true")]
         status: bool,
+        #[serde(default)]
+        diff: bool,
     },
     /// Named `python_env` before the language modules were renamed; both
     /// names parse.
@@ -596,7 +601,7 @@ impl From<KnownLineSegment> for LineSegment {
                 backend,
                 worktrees,
             },
-            KnownLineSegment::Pr { status } => LineSegment::Pr { status },
+            KnownLineSegment::Pr { status, diff } => LineSegment::Pr { status, diff },
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
             KnownLineSegment::Node { version } => LineSegment::Node { version },
             KnownLineSegment::Java { version, jdk } => LineSegment::Java { version, jdk },
@@ -883,7 +888,10 @@ impl Config {
                         backend: GitBackend::Auto,
                         worktrees: true,
                     },
-                    LineSegment::Pr { status: true },
+                    LineSegment::Pr {
+                        status: true,
+                        diff: false,
+                    },
                 ]),
                 right: Some(widgets(vec![
                     LineSegment::ClaudeLines,
@@ -937,7 +945,10 @@ impl Default for Config {
                             backend: GitBackend::Auto,
                             worktrees: true,
                         },
-                        LineSegment::Pr { status: true },
+                        LineSegment::Pr {
+                            status: true,
+                            diff: false,
+                        },
                         LineSegment::Padding(2),
                         LineSegment::AiUsage {
                             provider: UsageProvider::Claude,
@@ -1186,6 +1197,14 @@ mod tests {
                 worktrees: false,
             }
         );
+    }
+
+    #[test]
+    fn pr_diff_is_off_by_default_and_configurable() {
+        for (json, diff) in [(r#""pr""#, false), (r#"{"pr":{"diff":true}}"#, true)] {
+            let parsed: LineSegment = serde_json::from_str(json).expect("pr should parse");
+            assert_eq!(parsed, LineSegment::Pr { status: true, diff }, "{json}");
+        }
     }
 
     #[test]
@@ -1454,7 +1473,13 @@ mod tests {
                 },
             ),
             (r#""cargo""#, LineSegment::Cargo { version: true }),
-            (r#""pr""#, LineSegment::Pr { status: true }),
+            (
+                r#""pr""#,
+                LineSegment::Pr {
+                    status: true,
+                    diff: false,
+                },
+            ),
         ];
 
         for (json, expected) in cases {

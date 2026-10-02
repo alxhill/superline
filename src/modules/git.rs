@@ -845,7 +845,7 @@ impl<S: GitScheme> Module for Git<S> {
             let style = Style::simple(S::git_remote_fg(), S::git_remote_bg());
             match &stats.remote_url {
                 _ if remote.is_empty() => {}
-                Some(url) => powerline.add_hyperlink_segment(&remote, url, style, None),
+                Some(url) => powerline.add_hyperlink_segment(&remote, url, style, &[]),
                 None => powerline.add_segment(remote, style),
             }
         }

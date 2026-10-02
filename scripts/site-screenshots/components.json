@@ -405,14 +405,15 @@
       },
       {
         "name": "full",
-        "label": "All options: CI dot hidden",
+        "label": "All options: CI dot hidden, diff shown",
         "fixture": "pr",
         "row": {
           "left": [
             "git",
             {
               "pr": {
-                "status": false
+                "status": false,
+                "diff": true
               }
             }
           ]

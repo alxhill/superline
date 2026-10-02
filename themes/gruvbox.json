@@ -33,6 +33,8 @@
       "status_success_fg": 142,
       "status_failure_fg": 167,
       "status_pending_fg": 214,
+      "diff_added_fg": 142,
+      "diff_removed_fg": 167,
       "draft_italic": true,
       "open_bold": true
     },

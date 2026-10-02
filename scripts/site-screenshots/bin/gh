@@ -12,5 +12,5 @@ case "$3" in
   feat/nushell) n=139 state=MERGED draft=false checks=$(check COMPLETED '"SUCCESS"') ;;
   *) exit 1 ;;
 esac
-printf '{"number":%s,"url":"%s/%s","state":"%s","isDraft":%s,"statusCheckRollup":%s}\n' \
-  "$n" "$url" "$n" "$state" "$draft" "$checks"
+printf '{"number":%s,"url":"%s/%s","state":"%s","isDraft":%s,"statusCheckRollup":%s,"additions":%s,"deletions":%s}\n' \
+  "$n" "$url" "$n" "$state" "$draft" "$checks" "$((n * 3))" "$((n / 4))"

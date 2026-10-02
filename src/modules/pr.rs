@@ -21,6 +21,8 @@ const SKIP_BRANCHES: &[&str] = &["develop", "main", "master", "HEAD"];
 pub struct Pr<S> {
     /// Whether to append the CI check-status dot after the PR number.
     show_status: bool,
+    /// Whether to append the PR's added and deleted line counts.
+    show_diff: bool,
     /// The PR Claude Code passed to its status line, shown when the `gh`
     /// lookup has none.
     reported: Option<PrInfo>,
@@ -71,18 +73,26 @@ pub trait PrScheme: DefaultColors {
     fn pr_status_icon() -> &'static str {
         Self::PR_STATUS_ICON
     }
+
+    fn pr_diff_added_fg() -> Color {
+        Self::default_fg()
+    }
+    fn pr_diff_removed_fg() -> Color {
+        Self::default_fg()
+    }
 }
 
 impl<S: PrScheme> Default for Pr<S> {
     fn default() -> Self {
-        Self::new(true)
+        Self::new(true, false)
     }
 }
 
 impl<S: PrScheme> Pr<S> {
-    pub fn new(show_status: bool) -> Pr<S> {
+    pub fn new(show_status: bool, show_diff: bool) -> Pr<S> {
         Pr {
             show_status,
+            show_diff,
             reported: None,
             scheme: PhantomData,
         }
@@ -153,6 +163,16 @@ pub struct PrInfo {
     /// compatibility with caches written before this field existed.
     #[serde(default)]
     checks: Option<CheckStatus>,
+    /// Lines added and deleted across the PR. `None` for caches written
+    /// before this field existed and for the PR Claude Code reports.
+    #[serde(default)]
+    diff: Option<Diff>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Diff {
+    additions: u64,
+    deletions: u64,
 }
 
 impl PrInfo {
@@ -168,6 +188,7 @@ impl PrInfo {
                 PrState::Open
             },
             checks: None,
+            diff: None,
         })
     }
 }
@@ -192,7 +213,7 @@ impl Source for PrLookup {
         hash_id(&(&self.repo_root, &self.branch))
     }
 
-    /// Always fetches the check status too - rendering it is a display-time
+    /// Always fetches the check status and diff too - rendering it is a display-time
     /// choice, so the cache stays the same regardless of config.
     fn fetch(&self) -> Option<Option<PrInfo>> {
         Some(fetch_pr(&self.branch, &self.repo_root))
@@ -235,7 +256,19 @@ impl<S: PrScheme> Module for Pr<S> {
             .flatten()
             .filter(|(icon, _)| !icon.is_empty());
 
-        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
+        let mut markers: Vec<(&str, Color)> = marker.into_iter().collect();
+        let diff = pr.diff.filter(|_| self.show_diff).map(|diff| {
+            (
+                format!("+{}", diff.additions),
+                format!("-{}", diff.deletions),
+            )
+        });
+        if let Some((added, removed)) = &diff {
+            markers.push((added, S::pr_diff_added_fg()));
+            markers.push((removed, S::pr_diff_removed_fg()));
+        }
+
+        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), &markers);
     }
 }
 
@@ -255,7 +288,7 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
             "view",
             branch,
             "--json",
-            "number,url,state,isDraft,statusCheckRollup",
+            "number,url,state,isDraft,statusCheckRollup,additions,deletions",
         ])
         .output()
         .ok()?;
@@ -274,6 +307,10 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
         url: gh.url,
         state,
         checks: aggregate(&gh.status_check_rollup),
+        diff: Some(Diff {
+            additions: gh.additions,
+            deletions: gh.deletions,
+        }),
     })
 }
 
@@ -370,6 +407,10 @@ struct GhPr {
     is_draft: bool,
     #[serde(rename = "statusCheckRollup", default)]
     status_check_rollup: Vec<CheckItem>,
+    #[serde(default)]
+    additions: u64,
+    #[serde(default)]
+    deletions: u64,
 }
 
 #[cfg(test)]
