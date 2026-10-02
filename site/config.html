@@ -620,6 +620,7 @@
               <code>"auto"</code> picks by the size of <code>.git/index</code>, and uses gitoxide when <code>git</code> isn't on your <code>PATH</code>.
             </td></tr>
             <tr><td><code>worktrees</code></td><td>boolean</td><td><code>true</code></td><td>Show the linked-worktree count next to the branch, as <code>index/count</code> inside a linked worktree. Nothing shows when there are none.</td></tr>
+            <tr><td><code>repo</code></td><td>boolean</td><td><code>true</code></td><td>Show the remote segment: the GitHub logo linking to the repository and the ahead/behind counts.</td></tr>
           </tbody>
         </table>
         <details class="theme-opts" data-theme="git">
@@ -634,12 +635,13 @@
 </div><!-- /example -->
           <div class="example" data-example="git/full">
   <div class="ex-label">All options, detached HEAD</div>
-  <figure class="term shot"><img src="img/config/git-full.png" width="274" height="48" loading="lazy" alt="The git example: All options, detached HEAD."></figure>
+  <figure class="term shot"><img src="img/config/git-full.png" width="233" height="48" loading="lazy" alt="The git example: All options, detached HEAD."></figure>
   <pre class="json"><code>{
   <span class="k">"git"</span>: {
     <span class="k">"status_timeout_ms"</span>: <span class="n">500</span>,
     <span class="k">"backend"</span>: <span class="s">"cli"</span>,
-    <span class="k">"worktrees"</span>: <span class="n">false</span>
+    <span class="k">"worktrees"</span>: <span class="n">false</span>,
+    <span class="k">"repo"</span>: <span class="n">false</span>
   }
 }</code></pre>
 </div><!-- /example -->

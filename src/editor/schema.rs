@@ -322,6 +322,11 @@ const GIT: &[OptionSpec] = &[
         true,
         "Show the linked-worktree count by the branch, index/count inside one.",
     ),
+    boolean(
+        "repo",
+        true,
+        "Show the remote segment: the repo link and ahead/behind counts.",
+    ),
 ];
 
 const PR: &[OptionSpec] = &[
@@ -932,6 +937,6 @@ mod tests {
     fn value_widgets_expose_their_option() {
         assert_eq!(find("padding").unwrap().options()[0].key, "width");
         assert_eq!(find("battery").unwrap().options().len(), 0);
-        assert_eq!(find("git").unwrap().options().len(), 3);
+        assert_eq!(find("git").unwrap().options().len(), 4);
     }
 }

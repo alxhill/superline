@@ -34,6 +34,7 @@ pub struct Git<S> {
     status_timeout: Duration,
     backend: GitBackend,
     worktrees: bool,
+    repo: bool,
     scheme: PhantomData<S>,
 }
 
@@ -147,15 +148,23 @@ impl<S: GitScheme> Git<S> {
             Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS),
             GitBackend::default(),
             true,
+            true,
         )
     }
 
-    /// `worktrees` shows the linked-worktree count next to the branch.
-    pub fn with_config(status_timeout: Duration, backend: GitBackend, worktrees: bool) -> Git<S> {
+    /// `worktrees` shows the linked-worktree count next to the branch; `repo`
+    /// shows the remote segment with its link and ahead/behind counts.
+    pub fn with_config(
+        status_timeout: Duration,
+        backend: GitBackend,
+        worktrees: bool,
+        repo: bool,
+    ) -> Git<S> {
         Git {
             status_timeout,
             backend,
             worktrees,
+            repo,
             scheme: PhantomData,
         }
     }
@@ -835,7 +844,7 @@ impl<S: GitScheme> Module for Git<S> {
             S::git_conflicted_bg(),
         );
 
-        if stats.remote {
+        if self.repo && stats.remote {
             let remote = remote_label(
                 S::git_remote_icon(),
                 (stats.ahead, S::git_ahead_icon()),
