@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.1](https://github.com/alxhill/superline/compare/v0.27.0...v0.27.1) - 2026-10-02
+
+### Fixed
+
+- close right-side segments once, and show the Claude Code widgets on the website ([#197](https://github.com/alxhill/superline/pull/197))
+- stack the Claude Code section on the website ([#196](https://github.com/alxhill/superline/pull/196))
+
 ## [0.27.0](https://github.com/alxhill/superline/compare/v0.26.0...v0.27.0) - 2026-10-02
 
 ### Added
