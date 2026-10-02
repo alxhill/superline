@@ -436,6 +436,11 @@ const AI_USAGE: &[OptionSpec] = &[
         },
         "Only show the countdown once the session is this full (0 to 1).",
     ),
+    boolean(
+        "hover",
+        true,
+        "In iTerm2, hovering over the icon shows every window's percentage.",
+    ),
 ];
 
 const fn widget(name: &'static str, summary: &'static str, shape: Shape) -> WidgetSpec {

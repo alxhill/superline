@@ -57,6 +57,7 @@ pub struct Usage<S> {
     threshold: Option<f64>,
     show_session_time_remaining: bool,
     session_time_remaining_only_at_limit: f64,
+    hover: bool,
     scheme: PhantomData<S>,
 }
 
@@ -205,6 +206,7 @@ impl<S: UsageScheme> Usage<S> {
         threshold: Option<f64>,
         show_session_time_remaining: bool,
         session_time_remaining_only_at_limit: f64,
+        hover: bool,
     ) -> Self {
         Self {
             provider,
@@ -213,6 +215,7 @@ impl<S: UsageScheme> Usage<S> {
             threshold: threshold.filter(|threshold| threshold.is_finite()),
             show_session_time_remaining,
             session_time_remaining_only_at_limit,
+            hover,
             scheme: PhantomData,
         }
     }
@@ -359,14 +362,53 @@ impl<S: UsageScheme> Module for Usage<S> {
         if label.is_empty() {
             return;
         }
-        let bg = lookup
-            .ready()
-            .filter(|reading| {
-                !reading.logged_out && threshold_reached(reading, &self.windows, self.threshold)
-            })
+        let reading = lookup.ready().filter(|reading| !reading.logged_out);
+        let bg = reading
+            .as_ref()
+            .filter(|reading| threshold_reached(reading, &self.windows, self.threshold))
             .map(|_| S::usage_threshold_bg())
             .unwrap_or(bg);
-        powerline.add_segment(label, Style::simple(default_fg, bg));
+        let note = reading
+            .filter(|_| self.hover)
+            .and_then(|reading| hover_note(&reading, self.display));
+        powerline.add_annotated_segment(
+            label_pieces(&label, icon, note.as_deref()),
+            Style::simple(default_fg, bg),
+        );
+    }
+}
+
+/// What hovering over the provider icon shows: every window that has a
+/// reading, drawn or not, under a fixed name since the configured labels may
+/// be empty or glyphs. The percentage and numeric displays already print
+/// these figures, so they get no note.
+fn hover_note(reading: &UsageReading, display: UsageDisplay) -> Option<String> {
+    if matches!(display, UsageDisplay::Percentage | UsageDisplay::Numeric) {
+        return None;
+    }
+    let windows: Vec<String> = [
+        ("5h", reading.session),
+        ("7d", reading.weekly),
+        ("Fable", reading.fable),
+    ]
+    .into_iter()
+    .filter_map(|(name, percent)| {
+        let percent = percent.filter(|percent| percent.is_finite())?;
+        Some(format!("{name}: {:.0}% used", percent.clamp(0.0, 100.0)))
+    })
+    .collect();
+    (!windows.is_empty()).then(|| windows.join(" · "))
+}
+
+/// Splits `label` so `note` covers the provider icon it starts with.
+fn label_pieces<'a>(
+    label: &'a str,
+    icon: &'a str,
+    note: Option<&'a str>,
+) -> [(&'a str, Option<&'a str>); 2] {
+    match (note, label.strip_prefix(icon)) {
+        (Some(note), Some(rest)) if !icon.is_empty() => [(icon, Some(note)), (rest, None)],
+        _ => [(label, None), ("", None)],
     }
 }
 
@@ -1912,6 +1954,77 @@ mod tests {
         assert_eq!(
             format_window("7d", Some(100.0), UsageDisplay::Sparkline),
             "7d█"
+        );
+    }
+
+    #[test]
+    fn hover_note_lists_every_window_with_a_reading() {
+        let reading = UsageReading {
+            session: Some(61.4),
+            weekly: Some(41.0),
+            fable: Some(22.0),
+            credits: Some(DOLLARS),
+            session_resets_at: None,
+            logged_out: false,
+        };
+        for display in [
+            UsageDisplay::Bar,
+            UsageDisplay::CappedBar,
+            UsageDisplay::Block,
+            UsageDisplay::Sparkline,
+        ] {
+            assert_eq!(
+                hover_note(&reading, display).as_deref(),
+                Some("5h: 61% used · 7d: 41% used · Fable: 22% used"),
+                "{display:?}"
+            );
+        }
+
+        // Codex has no Fable window, and a lane with no reading is left out.
+        let codex = UsageReading {
+            session: None,
+            weekly: Some(130.0),
+            fable: None,
+            ..reading
+        };
+        assert_eq!(
+            hover_note(&codex, UsageDisplay::Bar).as_deref(),
+            Some("7d: 100% used")
+        );
+    }
+
+    #[test]
+    fn displays_that_print_the_figures_get_no_hover_note() {
+        let reading = cache(61.0, None);
+        assert_eq!(hover_note(&reading, UsageDisplay::Percentage), None);
+        assert_eq!(hover_note(&reading, UsageDisplay::Numeric), None);
+
+        let empty = UsageReading {
+            session: None,
+            weekly: Some(f64::NAN),
+            fable: None,
+            credits: Some(DOLLARS),
+            session_resets_at: None,
+            logged_out: false,
+        };
+        assert_eq!(hover_note(&empty, UsageDisplay::Sparkline), None);
+    }
+
+    #[test]
+    fn hover_note_covers_only_the_provider_icon() {
+        let label = "\u{ec82} 5h ▅ 7d ▃";
+        assert_eq!(
+            label_pieces(label, "\u{ec82}", Some("5h: 61% used")),
+            [("\u{ec82}", Some("5h: 61% used")), (" 5h ▅ 7d ▃", None)]
+        );
+        assert_eq!(
+            label_pieces(label, "\u{ec82}", None),
+            [(label, None), ("", None)]
+        );
+        // A theme that hides the icon leaves nothing to hover over.
+        assert_eq!(
+            label_pieces("5h ▅", "", Some("5h: 61% used")),
+            [("5h ▅", None), ("", None)]
         );
     }
 

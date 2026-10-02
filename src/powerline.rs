@@ -407,6 +407,27 @@ impl Powerline {
         self.push_segment(seg, style, self.module_padding, Some(visible_width));
     }
 
+    /// Adds a segment made of `pieces`, each with an optional note that
+    /// iTerm2 shows when hovering over it. The annotation escapes and their
+    /// notes are invisible, so the visible width is that of the text alone.
+    pub fn add_annotated_segment<'a>(
+        &mut self,
+        pieces: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
+        style: Style,
+    ) {
+        let mut seg = String::new();
+        let mut visible_width = 0;
+        for (text, note) in pieces {
+            let cells = text.width();
+            if let Some(message) = note.filter(|_| cells > 0) {
+                let _ = write!(seg, "{}", Annotation { cells, message });
+            }
+            seg.push_str(text);
+            visible_width += cells;
+        }
+        self.push_segment(seg, style, self.module_padding, Some(visible_width));
+    }
+
     pub fn start_right(&mut self) {
         assert_eq!(self.direction, Direction::Left);
         self.close_left_buffer();
@@ -491,6 +512,7 @@ impl Powerline {
                     credits_only_when_limited,
                     session_time_remaining,
                     session_time_remaining_only_at_limit,
+                    hover,
                 } => self.add_module(Usage::<T>::new(
                     *provider,
                     UsageWindows::new(
@@ -509,6 +531,7 @@ impl Powerline {
                     *threshold,
                     *session_time_remaining,
                     *session_time_remaining_only_at_limit,
+                    *hover,
                 )),
                 LineSegment::LastCmdDuration { min_run_time } => {
                     self.add_module(LastCmdDuration::<T>::new(
@@ -794,8 +817,8 @@ mod tests {
         powerline
     }
 
-    /// The text a terminal shows for `buffer`, without its colour and link
-    /// escapes.
+    /// The text a terminal shows for `buffer`, without its colour, link and
+    /// annotation escapes.
     fn visible(buffer: &str) -> String {
         let mut out = String::new();
         let mut chars = buffer.chars().peekable();
@@ -806,7 +829,7 @@ mod tests {
                 }
                 ('\x1b', Some(']')) => {
                     while let Some(c) = chars.next() {
-                        if c == '\x1b' && chars.next() == Some('\\') {
+                        if c == '\x07' || (c == '\x1b' && chars.next() == Some('\\')) {
                             break;
                         }
                     }
@@ -964,6 +987,49 @@ mod tests {
         powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, None);
         assert_eq!(visible(&powerline.left_buffer), " one two #12 ");
         assert_eq!(powerline.left_columns, 5 + 3 + 5);
+    }
+
+    #[test]
+    fn annotation_notes_take_no_columns() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let pieces = [
+            ("5h", None),
+            ("▅", Some("5h: 61% used")),
+            (" 7d", None),
+            ("▃", Some("7d: 41% used")),
+        ];
+        for (padding, before, after) in PADDINGS {
+            let mut powerline = flush_powerline();
+            powerline.widget_padding = Some(padding);
+            powerline.add_annotated_segment(pieces, style.clone());
+            powerline.start_right();
+            powerline.add_annotated_segment(pieces, style.clone());
+
+            let expected = format!("{before}5h▅ 7d▃{after}");
+            let width = 7 + before.len() + after.len();
+            for (buffer, columns) in [
+                (&powerline.left_buffer, powerline.left_columns),
+                (&powerline.right_buffer, powerline.right_columns),
+            ] {
+                assert!(
+                    buffer.contains("\x1b]1337;AddHiddenAnnotation=1|5h: 61% used\x07▅"),
+                    "{buffer:?}"
+                );
+                assert_eq!(visible(buffer), expected, "{padding:?}");
+                assert_eq!(columns, width, "{padding:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn annotated_segment_without_notes_matches_a_plain_one() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let mut annotated = flush_powerline();
+        let mut plain = flush_powerline();
+        annotated.add_annotated_segment([("5h ", None), ("12%", None)], style.clone());
+        plain.add_segment("5h 12%", style);
+        assert_eq!(annotated.left_buffer, plain.left_buffer);
+        assert_eq!(annotated.left_columns, plain.left_columns);
     }
 
     #[test]

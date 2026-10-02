@@ -497,6 +497,12 @@ providers, or the same provider with different windows and styles. Provider labe
 { "ai_usage": { "provider": "codex", "display": "bar" } }
 ```
 
+**Hover text.** With any `display` except `"percentage"` and `"numeric"`, which already print the figures, the
+provider icon carries an iTerm2 hidden annotation: hover over it to see every window that has a reading, drawn or
+not, such as `5h: 61% used · 7d: 41% used · Fable: 22% used`. Set `hover` to `false` to leave it out. Other terminals
+ignore the escape. Inside tmux it only reaches iTerm2 with `allow-passthrough` on and the sequence wrapped for
+passthrough, which superline doesn't do.
+
 **Threshold.** `threshold` is a percent-used warning level. When any visible lane crosses it, the whole widget
 background switches to the theme's `modules.ai_usage.threshold_bg` color.
 
