@@ -10,11 +10,13 @@ use crate::claude_code::ClaudeCodeStatus;
 use crate::colors::{self, Color};
 use crate::config::{SegmentPadding, DEFAULT_GIT_STATUS_TIMEOUT_MS};
 use crate::themes::DefaultColors;
+use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
 
 use super::{DefaultPadding, Module};
 
 pub trait DiffScheme: DefaultColors {
+    const DIFF_ICON: &'static str = "\u{eae1}"; // nf-cod-diff
     const DIFF_ADDED_FG: Color = colors::green();
     const DIFF_REMOVED_FG: Color = colors::red();
 
@@ -26,6 +28,9 @@ pub trait DiffScheme: DefaultColors {
     }
     fn diff_bg() -> Color {
         Self::default_bg()
+    }
+    fn diff_icon() -> &'static str {
+        Self::DIFF_ICON
     }
 }
 
@@ -66,7 +71,7 @@ impl<S: DiffScheme> Module for Diff<'_, S> {
             return;
         }
         powerline.add_two_tone_segment(
-            &format!("+{}", stat.added),
+            &join_non_empty([S::diff_icon(), &format!("+{}", stat.added)]),
             &format!("-{}", stat.removed),
             S::diff_removed_fg(),
             Style::simple(S::diff_added_fg(), S::diff_bg()),

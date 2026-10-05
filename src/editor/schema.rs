@@ -575,7 +575,7 @@ pub const WIDGETS: &[WidgetSpec] = &[
         aliases: &["claude_lines"],
         ..widget(
             "diff",
-            "Lines added and removed: the Claude Code session's, or the working tree's.",
+            "Lines added/removed in the local session.",
             Shape::Unit,
         )
     },

@@ -467,7 +467,8 @@ once the result is ready. The module is skipped entirely on `main`, `master` and
 
 The lines added and deleted in the current branch's pull request, such as `+426 -35`, in a segment of its own. It
 reads the same cached `gh` lookup as `pr`, so it costs no extra requests and appears once that lookup is ready. The
-theme's `pr_diff.added_fg` and `pr_diff.removed_fg` default to green and red.
+theme's `pr_diff.added_fg` and `pr_diff.removed_fg` default to green and red, and `pr_diff.icon` (a
+git-compare glyph) comes first; `""` hides it.
 
 ```json
 "pr_diff"
@@ -479,7 +480,8 @@ Lines added and removed, such as `+412 -87`, in the theme's `diff.added_fg` (gre
 `diff.removed_fg` (red). In a shell prompt it counts the working tree's uncommitted changes against `HEAD`, staged or
 not (untracked files aren't counted), looked up in the background like `git`'s status. In `superline claude-code` it
 shows the lines the Claude Code session has changed instead. Nothing shows when both are zero. `claude_lines` is an
-older name for it, and themes' `claude_lines` colors still apply.
+older name for it, and themes' `claude_lines` colors still apply. `diff.icon` (a diff glyph, distinct from
+`pr_diff`'s) comes first; `""` hides it.
 
 ```json
 "diff"

@@ -103,14 +103,16 @@
     "properties": [
       ["added_fg", "color", "The count of lines added.", "\"green\""],
       ["removed_fg", "color", "The count of lines removed.", "\"red\""],
-      ["bg", "color", "Segment background.", "defaults.bg"]
+      ["bg", "color", "Segment background.", "defaults.bg"],
+      ["icon", "string", "Before the counts; \"\" hides it.", "U+EAE1"]
     ]
   },
   "pr_diff": {
     "properties": [
       ["added_fg", "color", "The count of lines added.", "\"green\""],
       ["removed_fg", "color", "The count of lines deleted.", "\"red\""],
-      ["bg", "color", "Background of the segment.", "defaults.bg"]
+      ["bg", "color", "Background of the segment.", "defaults.bg"],
+      ["icon", "string", "Before the counts; \"\" hides it.", "U+EAFD"]
     ]
   },
   "python": {

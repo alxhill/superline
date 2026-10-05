@@ -555,6 +555,7 @@ impl PrScheme for CustomTheme {
             .with_attrs(Self::get_text_attrs(&["pr_diff"], "removed_fg"))
     }
     color_from_json!(pr_diff_bg, pr_diff, bg, default_bg);
+    icon_from_json!(pr_diff_icon, pr_diff, icon, PR_DIFF_ICON);
 
     icon_from_json!(pr_icon, pr, icon, PR_ICON);
     icon_from_json!(pr_status_icon, pr, status_icon, PR_STATUS_ICON);
@@ -650,6 +651,8 @@ impl DiffScheme for CustomTheme {
             .or_else(|| Self::get_color("claude_lines", "bg"))
             .unwrap_or_else(Self::default_bg)
     }
+
+    icon_from_json!(diff_icon, diff, icon, DIFF_ICON);
 }
 
 impl JobsScheme for CustomTheme {
