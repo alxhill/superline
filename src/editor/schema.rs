@@ -571,6 +571,14 @@ pub const WIDGETS: &[WidgetSpec] = &[
         "Link to the GitHub pull request for the branch.",
         Shape::Object(PR),
     ),
+    WidgetSpec {
+        aliases: &["claude_lines"],
+        ..widget(
+            "diff",
+            "Lines added/removed in the local session.",
+            Shape::Unit,
+        )
+    },
     widget(
         "pr_diff",
         "Lines added and deleted in the branch's pull request.",
@@ -638,11 +646,6 @@ pub const WIDGETS: &[WidgetSpec] = &[
         "claude_duration",
         "How long the Claude Code session has run.",
         Shape::Object(CLAUDE_DURATION),
-    ),
-    claude_widget(
-        "claude_lines",
-        "Lines added and removed this Claude Code session.",
-        Shape::Unit,
     ),
     claude_widget(
         "claude_cache",

@@ -159,6 +159,7 @@
       <a href="#git"><code>git</code></a>
       <a href="#pr"><code>pr</code></a>
       <a href="#pr_diff"><code>pr_diff</code></a>
+      <a href="#diff"><code>diff</code></a>
       <p class="toc-title">Languages</p>
       <a href="#languages">Shared behavior</a>
       <a href="#python"><code>python</code></a>
@@ -173,7 +174,6 @@
       <a href="#claude_context"><code>claude_context</code></a>
       <a href="#claude_cost"><code>claude_cost</code></a>
       <a href="#claude_duration"><code>claude_duration</code></a>
-      <a href="#claude_lines"><code>claude_lines</code></a>
       <a href="#claude_cache"><code>claude_cache</code></a>
       <a href="#claude_vim"><code>claude_vim</code></a>
       <a href="#claude_agent"><code>claude_agent</code></a>
@@ -695,13 +695,36 @@
         </p>
         <details class="theme-opts" data-theme="pr_diff">
     <summary>Theme options <code>modules.pr_diff</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>added_fg</code></td><td>color</td><td>The count of lines added.</td><td><code>"green"</code></td></tr><tr><td><code>removed_fg</code></td><td>color</td><td>The count of lines deleted.</td><td><code>"red"</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Background of the segment.</td><td><code>defaults.bg</code></td></tr></tbody></table>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>added_fg</code></td><td>color</td><td>The count of lines added.</td><td><code>"green"</code></td></tr><tr><td><code>removed_fg</code></td><td>color</td><td>The count of lines deleted.</td><td><code>"red"</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Background of the segment.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the counts; "" hides it.</td><td>U+EAFD</td></tr></tbody></table>
   </details><!-- /theme -->
         <div class="examples">
           <div class="example" data-example="pr_diff/minimal">
   <div class="ex-label">Next to the PR it counts</div>
-  <figure class="term shot"><img src="img/config/pr_diff-minimal.png" width="570" height="48" loading="lazy" alt="The pr_diff example: Next to the PR it counts."></figure>
+  <figure class="term shot"><img src="img/config/pr_diff-minimal.png" width="591" height="48" loading="lazy" alt="The pr_diff example: Next to the PR it counts."></figure>
   <pre class="json"><code><span class="s">"pr_diff"</span></code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="diff" class="component">
+        <h3><code>diff</code></h3>
+        <p>
+          Lines added and removed, such as <code>+412 -87</code>, each in its own color. In a shell prompt it counts
+          the working tree's uncommitted changes against <code>HEAD</code>, staged or not; untracked files aren't
+          counted. In the <a href="#claude-code">Claude Code status line</a> it shows the lines the session has
+          changed instead. Nothing shows when both are zero. No config options; <code>claude_lines</code> is an
+          older name for it.
+        </p>
+        <details class="theme-opts" data-theme="diff">
+    <summary>Theme options <code>modules.diff</code></summary>
+    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>added_fg</code></td><td>color</td><td>The count of lines added.</td><td><code>"green"</code></td></tr><tr><td><code>removed_fg</code></td><td>color</td><td>The count of lines removed.</td><td><code>"red"</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr><tr><td><code>icon</code></td><td>string</td><td>Before the counts; "" hides it.</td><td>U+EAE1</td></tr></tbody></table>
+    <p class="note">Also read from <code>modules.claude_lines</code>, the key this module had before it was renamed.</p>
+  </details><!-- /theme -->
+        <div class="examples">
+          <div class="example" data-example="diff/minimal">
+  <div class="ex-label">Uncommitted changes in a shell prompt</div>
+  <figure class="term shot"><img src="img/config/diff-minimal.png" width="519" height="49" loading="lazy" alt="The diff example: Uncommitted changes in a shell prompt."></figure>
+  <pre class="json"><code><span class="s">"diff"</span></code></pre>
 </div><!-- /example -->
         </div>
       </section>
@@ -1013,7 +1036,7 @@
         <span class="s">"pr"</span>
       ],
       <span class="k">"right"</span>: [
-        <span class="s">"claude_lines"</span>,
+        <span class="s">"diff"</span>,
         <span class="s">"claude_cost"</span>,
         { <span class="k">"ai_usage"</span>: { <span class="k">"provider"</span>: <span class="s">"claude"</span>, <span class="k">"threshold"</span>: <span class="n">90</span> } },
         { <span class="k">"padding"</span>: <span class="n">0</span> }
@@ -1044,7 +1067,7 @@
         { <span class="k">"padding"</span>: <span class="n">1</span> },
         <span class="s">"claude_session"</span>
       ],
-      <span class="k">"right"</span>: [<span class="s">"claude_lines"</span>, <span class="s">"claude_cost"</span>, { <span class="k">"padding"</span>: <span class="n">0</span> }]
+      <span class="k">"right"</span>: [<span class="s">"diff"</span>, <span class="s">"claude_cost"</span>, { <span class="k">"padding"</span>: <span class="n">0</span> }]
     },
     {
       <span class="k">"left"</span>: [
@@ -1163,24 +1186,6 @@
   <div class="ex-label">Session duration</div>
   <figure class="term shot"><img src="img/config/claude_duration-default.png" width="151" height="48" loading="lazy" alt="The claude_duration example: Session duration."></figure>
   <pre class="json"><code><span class="s">"claude_duration"</span></code></pre>
-</div><!-- /example -->
-        </div>
-      </section>
-
-      <section id="claude_lines" class="component">
-        <h3><code>claude_lines</code></h3>
-        <p>
-          Lines added and removed this session, each in its own color.
-        </p>
-        <details class="theme-opts" data-theme="claude_lines">
-    <summary>Theme options <code>modules.claude_lines</code></summary>
-    <table class="opts"><thead><tr><th>Property</th><th>Type</th><th>Styles</th><th>If unset</th></tr></thead><tbody><tr><td><code>added_fg</code></td><td>color</td><td>The count of lines added.</td><td><code>defaults.fg</code></td></tr><tr><td><code>removed_fg</code></td><td>color</td><td>The count of lines removed.</td><td><code>defaults.fg</code></td></tr><tr><td><code>bg</code></td><td>color</td><td>Segment background.</td><td><code>defaults.bg</code></td></tr></tbody></table>
-  </details><!-- /theme -->
-        <div class="examples">
-          <div class="example" data-example="claude_lines/default">
-  <div class="ex-label">Lines added and removed</div>
-  <figure class="term shot"><img src="img/config/claude_lines-default.png" width="151" height="48" loading="lazy" alt="The claude_lines example: Lines added and removed."></figure>
-  <pre class="json"><code><span class="s">"claude_lines"</span></code></pre>
 </div><!-- /example -->
         </div>
       </section>

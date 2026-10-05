@@ -605,7 +605,7 @@ const GIT_EXE_NAMES: &[&str] = &["git", "git.exe"];
 const GIT_EXE_NAMES: &[&str] = &["git"];
 
 /// Whether a `git` executable is reachable through `PATH`.
-fn git_on_path() -> bool {
+pub(super) fn git_on_path() -> bool {
     git_dir_on_path().is_some()
 }
 

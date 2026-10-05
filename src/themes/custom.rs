@@ -10,11 +10,11 @@ use thiserror::Error;
 
 use crate::colors::{Color, TextAttrs};
 use crate::modules::{
-    BatteryScheme, CargoScheme, ClaudeCodeScheme, CmdScheme, CwdScheme, ErrorMessageScheme,
-    ExitCodeScheme, GitScheme, HostScheme, JavaScheme, JobsScheme, KubernetesScheme,
-    LastCmdDurationScheme, LocalIpScheme, MemoryUsageScheme, NodeScheme, OsKind, OsScheme,
-    PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme, TimeScheme,
-    UnknownScheme, UsageScheme, UserScheme,
+    BatteryScheme, CargoScheme, ClaudeCodeScheme, CmdScheme, CwdScheme, DiffScheme,
+    ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme, JavaScheme, JobsScheme,
+    KubernetesScheme, LastCmdDurationScheme, LocalIpScheme, MemoryUsageScheme, NodeScheme, OsKind,
+    OsScheme, PrScheme, PythonScheme, ReadOnlyScheme, ShellScheme, SpacerScheme, SudoScheme,
+    TimeScheme, UnknownScheme, UsageScheme, UserScheme,
 };
 use crate::themes::{bundled_theme, theme_path, CompleteTheme, DefaultColors, RAINBOW};
 use crate::update::UpdateScheme;
@@ -405,15 +405,6 @@ impl ClaudeCodeScheme for CustomTheme {
         CLAUDE_DURATION_ICON
     );
 
-    color_from_json!(claude_lines_added_fg, claude_lines, added_fg, default_fg);
-    color_from_json!(
-        claude_lines_removed_fg,
-        claude_lines,
-        removed_fg,
-        default_fg
-    );
-    color_from_json!(claude_lines_bg, claude_lines, bg, default_bg);
-
     color_from_json!(claude_cache_fg, claude_cache, fg, default_fg);
     color_from_json!(claude_cache_warm_bg, claude_cache, warm_bg, default_bg);
     color_from_json!(
@@ -564,6 +555,7 @@ impl PrScheme for CustomTheme {
             .with_attrs(Self::get_text_attrs(&["pr_diff"], "removed_fg"))
     }
     color_from_json!(pr_diff_bg, pr_diff, bg, default_bg);
+    icon_from_json!(pr_diff_icon, pr_diff, icon, PR_DIFF_ICON);
 
     icon_from_json!(pr_icon, pr, icon, PR_ICON);
     icon_from_json!(pr_status_icon, pr, status_icon, PR_STATUS_ICON);
@@ -631,6 +623,36 @@ impl SpacerScheme for CustomTheme {
 impl HostScheme for CustomTheme {
     color_from_json!(hostname_bg, hostname, bg, default_bg);
     color_from_json!(hostname_fg, hostname, fg, default_fg);
+}
+
+// `claude_lines` is the name this module had before it also showed the
+// working tree's diff; it is still honoured so existing theme files keep
+// working.
+impl DiffScheme for CustomTheme {
+    fn diff_added_fg() -> Color {
+        Self::get_color("diff", "added_fg")
+            .or_else(|| Self::get_color("claude_lines", "added_fg"))
+            .unwrap_or(Self::DIFF_ADDED_FG)
+            .with_attrs(Self::get_text_attrs(&["diff", "claude_lines"], "added_fg"))
+    }
+
+    fn diff_removed_fg() -> Color {
+        Self::get_color("diff", "removed_fg")
+            .or_else(|| Self::get_color("claude_lines", "removed_fg"))
+            .unwrap_or(Self::DIFF_REMOVED_FG)
+            .with_attrs(Self::get_text_attrs(
+                &["diff", "claude_lines"],
+                "removed_fg",
+            ))
+    }
+
+    fn diff_bg() -> Color {
+        Self::get_color("diff", "bg")
+            .or_else(|| Self::get_color("claude_lines", "bg"))
+            .unwrap_or_else(Self::default_bg)
+    }
+
+    icon_from_json!(diff_icon, diff, icon, DIFF_ICON);
 }
 
 impl JobsScheme for CustomTheme {

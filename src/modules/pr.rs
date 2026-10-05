@@ -30,6 +30,7 @@ pub struct Pr<S> {
 pub trait PrScheme: DefaultColors {
     const PR_ICON: &'static str = "\u{ea64}"; // nf-cod-git_pull_request
     const PR_STATUS_ICON: &'static str = "\u{25cf}"; // ● black circle
+    const PR_DIFF_ICON: &'static str = "\u{eafd}"; // nf-cod-git_compare
     const PR_DIFF_ADDED_FG: Color = colors::green();
     const PR_DIFF_REMOVED_FG: Color = colors::red();
 
@@ -82,6 +83,9 @@ pub trait PrScheme: DefaultColors {
     }
     fn pr_diff_bg() -> Color {
         Self::default_bg()
+    }
+    fn pr_diff_icon() -> &'static str {
+        Self::PR_DIFF_ICON
     }
 }
 
@@ -281,7 +285,7 @@ impl<S: PrScheme> Module for PrDiff<S> {
             return;
         };
         powerline.add_two_tone_segment(
-            &format!("+{}", diff.additions),
+            &join_non_empty([S::pr_diff_icon(), &format!("+{}", diff.additions)]),
             &format!("-{}", diff.deletions),
             S::pr_diff_removed_fg(),
             Style::simple(S::pr_diff_added_fg(), S::pr_diff_bg()),

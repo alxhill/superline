@@ -467,10 +467,24 @@ once the result is ready. The module is skipped entirely on `main`, `master` and
 
 The lines added and deleted in the current branch's pull request, such as `+426 -35`, in a segment of its own. It
 reads the same cached `gh` lookup as `pr`, so it costs no extra requests and appears once that lookup is ready. The
-theme's `pr_diff.added_fg` and `pr_diff.removed_fg` default to green and red.
+theme's `pr_diff.added_fg` and `pr_diff.removed_fg` default to green and red, and `pr_diff.icon` (a
+git-compare glyph) comes first; `""` hides it.
 
 ```json
 "pr_diff"
+```
+
+#### diff
+
+Lines added and removed, such as `+412 -87`, in the theme's `diff.added_fg` (green by default) and
+`diff.removed_fg` (red). In a shell prompt it counts the working tree's uncommitted changes against `HEAD`, staged or
+not (untracked files aren't counted), looked up in the background like `git`'s status. In `superline claude-code` it
+shows the lines the Claude Code session has changed instead. Nothing shows when both are zero. `claude_lines` is an
+older name for it, and themes' `claude_lines` colors still apply. `diff.icon` (a diff glyph, distinct from
+`pr_diff`'s) comes first; `""` hides it.
+
+```json
+"diff"
 ```
 
 #### ai_usage
@@ -709,7 +723,6 @@ These draw only in `superline claude-code`, and each one is left out while Claud
 | `claude_context` | How full the context window is. | `display` takes the `ai_usage` styles (default `"percentage"`) and `width` sets the cells of a bar or block (default `5`); `tokens: true` adds the tokens in use out of the window size, e.g. `92k/200k`; `threshold` switches to the theme's `threshold_bg` at that percentage. |
 | `claude_cost` | The session's estimated cost in USD, e.g. `$3.47`. | |
 | `claude_duration` | How long the session has run, e.g. `1h 5m`. | `api: true` shows the time spent waiting on the API instead. |
-| `claude_lines` | Lines added and removed, `+412 -87`, in the theme's `added_fg` and `removed_fg`. | |
 | `claude_cache` | The prompt cache's hit ratio, on `warm_bg` while the cache is warm and `cold_bg` once it has expired. | |
 | `claude_vim` | The vim mode while vim mode is on, on `normal_bg`, `insert_bg` or `visual_bg`. | |
 | `claude_agent` | The agent name when Claude Code runs with `--agent`. | |
@@ -730,7 +743,7 @@ These draw only in `superline claude-code`, and each one is left out while Claud
         "git",
         "pr"
       ],
-      "right": ["claude_lines", "claude_cost", { "ai_usage": { "provider": "claude" } }, { "padding": 0 }]
+      "right": ["diff", "claude_cost", { "ai_usage": { "provider": "claude" } }, { "padding": 0 }]
     }
   ]
 }

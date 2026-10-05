@@ -52,7 +52,7 @@
     "claude_context": { "fg": 250, "bg": 238, "threshold_bg": 161 },
     "claude_cost": { "fg": 250, "bg": 236 },
     "claude_duration": { "fg": 250, "bg": 238 },
-    "claude_lines": { "added_fg": 40, "removed_fg": 161, "bg": 236 },
+    "diff": { "added_fg": 40, "removed_fg": 161, "bg": 236 },
     "claude_cache": { "fg": 15, "warm_bg": 31, "cold_bg": 240 },
     "claude_vim": { "fg": 15, "normal_bg": 31, "insert_bg": 28, "visual_bg": 54 },
     "claude_agent": { "fg": 15, "bg": 54 },
