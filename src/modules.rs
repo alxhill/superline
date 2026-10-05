@@ -56,7 +56,7 @@ pub use local_ip::{LocalIp, LocalIpScheme};
 pub use memory_usage::{MemoryUsage, MemoryUsageScheme};
 pub use node::{Node, NodeScheme};
 pub use os::{Os, OsKind, OsScheme};
-pub use pr::{Pr, PrLookup, PrScheme};
+pub use pr::{Pr, PrDiff, PrLookup, PrScheme};
 pub use python::{Python, PythonScheme, PythonVersion};
 pub use readonly::{ReadOnly, ReadOnlyScheme};
 pub use shell_name::{ShellName, ShellScheme};

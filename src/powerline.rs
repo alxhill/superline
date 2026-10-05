@@ -12,8 +12,8 @@ use crate::modules::{
     Battery, Cargo, ClaudeAgent, ClaudeCache, ClaudeContext, ClaudeCost, ClaudeDuration,
     ClaudeLines, ClaudeModel, ClaudeSession, ClaudeVim, Cmd, Cwd, DefaultPadding, ErrorMessage,
     Git, Hostname, Java, Jobs, Kubernetes, LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os,
-    Pr, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows,
-    Username,
+    Pr, PrDiff, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time, Unknown, Usage,
+    UsageWindows, Username,
 };
 use crate::terminal::*;
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -491,10 +491,10 @@ impl Powerline {
                     *worktrees,
                     *repo,
                 )),
-                LineSegment::Pr { status, diff } => self.add_module(
-                    Pr::<T>::new(*status, *diff)
-                        .with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
+                LineSegment::Pr { status } => self.add_module(
+                    Pr::<T>::new(*status).with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
                 ),
+                LineSegment::PrDiff => self.add_module(PrDiff::<T>::new()),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
                 LineSegment::Host | LineSegment::Hostname => self.add_module(Hostname::<T>::new()),

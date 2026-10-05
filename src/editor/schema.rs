@@ -329,18 +329,11 @@ const GIT: &[OptionSpec] = &[
     ),
 ];
 
-const PR: &[OptionSpec] = &[
-    boolean(
-        "status",
-        true,
-        "Append a coloured dot showing the PR's CI check status.",
-    ),
-    boolean(
-        "diff",
-        false,
-        "Append the PR's added and deleted line counts.",
-    ),
-];
+const PR: &[OptionSpec] = &[boolean(
+    "status",
+    true,
+    "Append a coloured dot showing the PR's CI check status.",
+)];
 
 const PYTHON: &[OptionSpec] = &[
     boolean("version", true, "Show the interpreter version."),
@@ -577,6 +570,11 @@ pub const WIDGETS: &[WidgetSpec] = &[
         "pr",
         "Link to the GitHub pull request for the branch.",
         Shape::Object(PR),
+    ),
+    widget(
+        "pr_diff",
+        "Lines added and deleted in the branch's pull request.",
+        Shape::Unit,
     ),
     widget(
         "kubernetes",

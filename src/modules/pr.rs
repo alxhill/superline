@@ -21,8 +21,6 @@ const SKIP_BRANCHES: &[&str] = &["develop", "main", "master", "HEAD"];
 pub struct Pr<S> {
     /// Whether to append the CI check-status dot after the PR number.
     show_status: bool,
-    /// Whether to append the PR's added and deleted line counts.
-    show_diff: bool,
     /// The PR Claude Code passed to its status line, shown when the `gh`
     /// lookup has none.
     reported: Option<PrInfo>,
@@ -89,15 +87,14 @@ pub trait PrScheme: DefaultColors {
 
 impl<S: PrScheme> Default for Pr<S> {
     fn default() -> Self {
-        Self::new(true, false)
+        Self::new(true)
     }
 }
 
 impl<S: PrScheme> Pr<S> {
-    pub fn new(show_status: bool, show_diff: bool) -> Pr<S> {
+    pub fn new(show_status: bool) -> Pr<S> {
         Pr {
             show_status,
-            show_diff,
             reported: None,
             scheme: PhantomData,
         }
@@ -231,18 +228,7 @@ impl<S: PrScheme> Module for Pr<S> {
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        // Render whatever we have right now (possibly slightly stale); a
-        // missing or stale lookup is refreshed for a later prompt. There is no
-        // loading state: the segment simply appears once the result is in.
-        let looked_up = current_branch_and_root()
-            .filter(|(branch, _)| !SKIP_BRANCHES.contains(&branch.as_str()))
-            .and_then(|(branch, repo_root)| {
-                match Cached::new(PrLookup { branch, repo_root }).load() {
-                    Lookup::Ready(pr) => pr,
-                    Lookup::Loading | Lookup::Unavailable => None,
-                }
-            });
-        let Some(pr) = looked_up.or_else(|| self.reported.take()) else {
+        let Some(pr) = cached_pr().or_else(|| self.reported.take()) else {
             return;
         };
 
@@ -262,15 +248,56 @@ impl<S: PrScheme> Module for Pr<S> {
             .filter(|(icon, _)| !icon.is_empty());
 
         powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
+    }
+}
 
-        if let Some(diff) = pr.diff.filter(|_| self.show_diff) {
-            powerline.add_two_tone_segment(
-                &format!("+{}", diff.additions),
-                &format!("-{}", diff.deletions),
-                S::pr_diff_removed_fg(),
-                Style::simple(S::pr_diff_added_fg(), S::pr_diff_bg()),
-            );
+/// The added and deleted line counts of the current branch's PR, from the
+/// same cached lookup as [`Pr`].
+pub struct PrDiff<S> {
+    scheme: PhantomData<S>,
+}
+
+impl<S: PrScheme> Default for PrDiff<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S: PrScheme> PrDiff<S> {
+    pub fn new() -> PrDiff<S> {
+        PrDiff {
+            scheme: PhantomData,
         }
+    }
+}
+
+impl<S: PrScheme> Module for PrDiff<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
+    fn append_segments(&mut self, powerline: &mut Powerline) {
+        let Some(diff) = cached_pr().and_then(|pr| pr.diff) else {
+            return;
+        };
+        powerline.add_two_tone_segment(
+            &format!("+{}", diff.additions),
+            &format!("-{}", diff.deletions),
+            S::pr_diff_removed_fg(),
+            Style::simple(S::pr_diff_added_fg(), S::pr_diff_bg()),
+        );
+    }
+}
+
+/// The current branch's PR as last looked up through `gh`, possibly slightly
+/// stale; a missing or stale lookup is refreshed for a later prompt. There is
+/// no loading state: segments simply appear once the result is in.
+fn cached_pr() -> Option<PrInfo> {
+    let (branch, repo_root) = current_branch_and_root()
+        .filter(|(branch, _)| !SKIP_BRANCHES.contains(&branch.as_str()))?;
+    match Cached::new(PrLookup { branch, repo_root }).load() {
+        Lookup::Ready(pr) => pr,
+        Lookup::Loading | Lookup::Unavailable => None,
     }
 }
 

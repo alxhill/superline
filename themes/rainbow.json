@@ -41,11 +41,9 @@
       "closed_bg": "mid_red",
       "status_success_fg": "light_green",
       "status_failure_fg": "warning_red",
-      "status_pending_fg": "dark_yellow",
-      "diff_added_fg": "light_green",
-      "diff_removed_fg": "light_red",
-      "diff_bg": 236
+      "status_pending_fg": "dark_yellow"
     },
+    "pr_diff": { "added_fg": "light_green", "removed_fg": "light_red", "bg": 236 },
     "python": {
       "env_fg": "dark_grey",
       "env_bg": "light_green",

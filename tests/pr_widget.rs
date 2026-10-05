@@ -1,5 +1,6 @@
-//! End-to-end checks for the PR widget, with `gh` answered by the site
+//! End-to-end checks for the PR widgets, with `gh` answered by the site
 //! screenshots' stub.
+#![cfg(unix)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,12 +39,12 @@ fn git(dir: &Path, args: &[&str]) {
     assert!(status.success(), "`git {}` failed", args.join(" "));
 }
 
-fn render(root: &Path, segment: Value) -> String {
+fn render(root: &Path, segments: Value) -> String {
     let home = root.join("home");
     let config = json!({
         "theme": "rainbow",
         "update": { "disable": true },
-        "rows": [{ "left": [segment] }],
+        "rows": [{ "left": segments }],
     });
     fs::write(
         home.join(".config/superline/config.json"),
@@ -76,10 +77,10 @@ fn render(root: &Path, segment: Value) -> String {
 }
 
 /// Renders until the background `gh` lookup has landed in the cache.
-fn render_with_pr(root: &Path, segment: Value) -> String {
+fn render_with_pr(root: &Path, segments: Value) -> String {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
-        let prompt = render(root, segment.clone());
+        let prompt = render(root, segments.clone());
         if prompt.contains("#142") {
             return prompt;
         }
@@ -88,17 +89,15 @@ fn render_with_pr(root: &Path, segment: Value) -> String {
     }
 }
 
-#[cfg(unix)]
 #[test]
-fn diff_shows_the_prs_line_counts_only_when_enabled() {
+fn pr_diff_shows_the_prs_line_counts() {
     let root = scratch("diff");
 
-    let shown = render_with_pr(&root, json!({ "pr": { "diff": true } }));
-    assert!(shown.contains("+426"), "prompt: {shown:?}");
-    assert!(shown.contains("-35"), "prompt: {shown:?}");
+    let pr_only = render_with_pr(&root, json!(["pr"]));
+    assert!(!pr_only.contains("+426"), "prompt: {pr_only:?}");
 
-    let hidden = render_with_pr(&root, json!("pr"));
-    assert!(!hidden.contains("+426"), "prompt: {hidden:?}");
-    assert!(!hidden.contains("-35"), "prompt: {hidden:?}");
+    let both = render_with_pr(&root, json!(["pr", "pr_diff"]));
+    assert!(both.contains("+426"), "prompt: {both:?}");
+    assert!(both.contains("-35"), "prompt: {both:?}");
     let _ = fs::remove_dir_all(&root);
 }
