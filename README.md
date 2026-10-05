@@ -463,6 +463,16 @@ once the result is ready. The module is skipped entirely on `main`, `master` and
 { "pr": { "status": false } }
 ```
 
+#### pr_diff
+
+The lines added and deleted in the current branch's pull request, such as `+426 -35`, in a segment of its own. It
+reads the same cached `gh` lookup as `pr`, so it costs no extra requests and appears once that lookup is ready. The
+theme's `pr_diff.added_fg` and `pr_diff.removed_fg` default to green and red.
+
+```json
+"pr_diff"
+```
+
 #### ai_usage
 
 Claude or Codex subscription usage, read via the provider's CLI on `PATH`. superline refreshes it in the background

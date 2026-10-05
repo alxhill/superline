@@ -553,6 +553,17 @@ impl PrScheme for CustomTheme {
     color_from_json!(pr_status_success_fg, pr, status_success_fg, default_fg);
     color_from_json!(pr_status_failure_fg, pr, status_failure_fg, default_fg);
     color_from_json!(pr_status_pending_fg, pr, status_pending_fg, default_fg);
+    fn pr_diff_added_fg() -> Color {
+        Self::get_color("pr_diff", "added_fg")
+            .unwrap_or(Self::PR_DIFF_ADDED_FG)
+            .with_attrs(Self::get_text_attrs(&["pr_diff"], "added_fg"))
+    }
+    fn pr_diff_removed_fg() -> Color {
+        Self::get_color("pr_diff", "removed_fg")
+            .unwrap_or(Self::PR_DIFF_REMOVED_FG)
+            .with_attrs(Self::get_text_attrs(&["pr_diff"], "removed_fg"))
+    }
+    color_from_json!(pr_diff_bg, pr_diff, bg, default_bg);
 
     icon_from_json!(pr_icon, pr, icon, PR_ICON);
     icon_from_json!(pr_status_icon, pr, status_icon, PR_STATUS_ICON);

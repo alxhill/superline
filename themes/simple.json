@@ -33,6 +33,7 @@
       "status_failure_fg": 161,
       "status_pending_fg": 178
     },
+    "pr_diff": { "added_fg": 40, "removed_fg": 161, "bg": 236 },
     "java": { "bg": "light_grey" },
     "cargo": { "bg": "dark_grey" },
     "ai_usage": { "threshold_bg": 161 },

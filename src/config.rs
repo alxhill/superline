@@ -234,6 +234,8 @@ pub enum LineSegment {
         #[serde(default = "default_true")]
         status: bool,
     },
+    /// The current branch's PR's added and deleted line counts.
+    PrDiff,
     Python {
         /// Show the interpreter version. On by default: inside a virtual env
         /// it is read from the env's own files, and only envs without them ask
@@ -452,6 +454,7 @@ enum KnownLineSegment {
         #[serde(default = "default_true")]
         status: bool,
     },
+    PrDiff,
     /// Named `python_env` before the language modules were renamed; both
     /// names parse.
     #[serde(alias = "python_env")]
@@ -605,6 +608,7 @@ impl From<KnownLineSegment> for LineSegment {
                 repo,
             },
             KnownLineSegment::Pr { status } => LineSegment::Pr { status },
+            KnownLineSegment::PrDiff => LineSegment::PrDiff,
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
             KnownLineSegment::Node { version } => LineSegment::Node { version },
             KnownLineSegment::Java { version, jdk } => LineSegment::Java { version, jdk },
@@ -755,6 +759,7 @@ pub(crate) const KNOWN_SEGMENT_NAMES: &[&str] = &[
     "read_only",
     "git",
     "pr",
+    "pr_diff",
     "python",
     "python_env",
     "node",
@@ -893,6 +898,7 @@ impl Config {
                         repo: true,
                     },
                     LineSegment::Pr { status: true },
+                    LineSegment::PrDiff,
                 ]),
                 right: Some(widgets(vec![
                     LineSegment::ClaudeLines,
@@ -948,6 +954,7 @@ impl Default for Config {
                             repo: true,
                         },
                         LineSegment::Pr { status: true },
+                        LineSegment::PrDiff,
                         LineSegment::Padding(2),
                         LineSegment::AiUsage {
                             provider: UsageProvider::Claude,
@@ -1085,6 +1092,7 @@ mod tests {
                 LineSegment::ClaudeDuration { api: true },
             ),
             (r#""claude_lines""#, LineSegment::ClaudeLines),
+            (r#""pr_diff""#, LineSegment::PrDiff),
             (r#""claude_cache""#, LineSegment::ClaudeCache),
             (r#""claude_vim""#, LineSegment::ClaudeVim),
             (r#""claude_agent""#, LineSegment::ClaudeAgent),

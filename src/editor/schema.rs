@@ -572,6 +572,11 @@ pub const WIDGETS: &[WidgetSpec] = &[
         Shape::Object(PR),
     ),
     widget(
+        "pr_diff",
+        "Lines added and deleted in the branch's pull request.",
+        Shape::Unit,
+    ),
+    widget(
         "kubernetes",
         "Active Kubernetes context and namespace.",
         Shape::Unit,

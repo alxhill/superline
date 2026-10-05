@@ -421,6 +421,22 @@
       }
     ]
   },
+  "pr_diff": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Next to the PR it counts",
+        "fixture": "pr",
+        "row": {
+          "left": [
+            "git",
+            "pr",
+            "pr_diff"
+          ]
+        }
+      }
+    ]
+  },
   "ai_usage": {
     "cols": 110,
     "variants": [

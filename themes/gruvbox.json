@@ -36,6 +36,7 @@
       "draft_italic": true,
       "open_bold": true
     },
+    "pr_diff": { "added_fg": 142, "removed_fg": 167, "bg": 237 },
     "readonly": { "fg": 229, "bg": 124 },
     "python": { "env_fg": 235, "env_bg": 108, "version_bg": 72, "version_fg": 229 },
     "time": { "bg": 237, "fg": 245 },

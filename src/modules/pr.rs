@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::claude_code::PullRequest;
-use crate::colors::Color;
+use crate::colors::{self, Color};
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
@@ -30,6 +30,8 @@ pub struct Pr<S> {
 pub trait PrScheme: DefaultColors {
     const PR_ICON: &'static str = "\u{ea64}"; // nf-cod-git_pull_request
     const PR_STATUS_ICON: &'static str = "\u{25cf}"; // ● black circle
+    const PR_DIFF_ADDED_FG: Color = colors::green();
+    const PR_DIFF_REMOVED_FG: Color = colors::red();
 
     fn pr_draft_fg() -> Color {
         Self::default_fg()
@@ -70,6 +72,16 @@ pub trait PrScheme: DefaultColors {
     }
     fn pr_status_icon() -> &'static str {
         Self::PR_STATUS_ICON
+    }
+
+    fn pr_diff_added_fg() -> Color {
+        Self::PR_DIFF_ADDED_FG
+    }
+    fn pr_diff_removed_fg() -> Color {
+        Self::PR_DIFF_REMOVED_FG
+    }
+    fn pr_diff_bg() -> Color {
+        Self::default_bg()
     }
 }
 
@@ -153,6 +165,16 @@ pub struct PrInfo {
     /// compatibility with caches written before this field existed.
     #[serde(default)]
     checks: Option<CheckStatus>,
+    /// Lines added and deleted across the PR. `None` for caches written
+    /// before this field existed and for the PR Claude Code reports.
+    #[serde(default)]
+    diff: Option<Diff>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Diff {
+    additions: u64,
+    deletions: u64,
 }
 
 impl PrInfo {
@@ -168,6 +190,7 @@ impl PrInfo {
                 PrState::Open
             },
             checks: None,
+            diff: None,
         })
     }
 }
@@ -192,7 +215,7 @@ impl Source for PrLookup {
         hash_id(&(&self.repo_root, &self.branch))
     }
 
-    /// Always fetches the check status too - rendering it is a display-time
+    /// Always fetches the check status and diff too - rendering it is a display-time
     /// choice, so the cache stays the same regardless of config.
     fn fetch(&self) -> Option<Option<PrInfo>> {
         Some(fetch_pr(&self.branch, &self.repo_root))
@@ -205,18 +228,7 @@ impl<S: PrScheme> Module for Pr<S> {
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        // Render whatever we have right now (possibly slightly stale); a
-        // missing or stale lookup is refreshed for a later prompt. There is no
-        // loading state: the segment simply appears once the result is in.
-        let looked_up = current_branch_and_root()
-            .filter(|(branch, _)| !SKIP_BRANCHES.contains(&branch.as_str()))
-            .and_then(|(branch, repo_root)| {
-                match Cached::new(PrLookup { branch, repo_root }).load() {
-                    Lookup::Ready(pr) => pr,
-                    Lookup::Loading | Lookup::Unavailable => None,
-                }
-            });
-        let Some(pr) = looked_up.or_else(|| self.reported.take()) else {
+        let Some(pr) = cached_pr().or_else(|| self.reported.take()) else {
             return;
         };
 
@@ -239,6 +251,56 @@ impl<S: PrScheme> Module for Pr<S> {
     }
 }
 
+/// The added and deleted line counts of the current branch's PR, from the
+/// same cached lookup as [`Pr`].
+pub struct PrDiff<S> {
+    scheme: PhantomData<S>,
+}
+
+impl<S: PrScheme> Default for PrDiff<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S: PrScheme> PrDiff<S> {
+    pub fn new() -> PrDiff<S> {
+        PrDiff {
+            scheme: PhantomData,
+        }
+    }
+}
+
+impl<S: PrScheme> Module for PrDiff<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
+    fn append_segments(&mut self, powerline: &mut Powerline) {
+        let Some(diff) = cached_pr().and_then(|pr| pr.diff) else {
+            return;
+        };
+        powerline.add_two_tone_segment(
+            &format!("+{}", diff.additions),
+            &format!("-{}", diff.deletions),
+            S::pr_diff_removed_fg(),
+            Style::simple(S::pr_diff_added_fg(), S::pr_diff_bg()),
+        );
+    }
+}
+
+/// The current branch's PR as last looked up through `gh`, possibly slightly
+/// stale; a missing or stale lookup is refreshed for a later prompt. There is
+/// no loading state: segments simply appear once the result is in.
+fn cached_pr() -> Option<PrInfo> {
+    let (branch, repo_root) = current_branch_and_root()
+        .filter(|(branch, _)| !SKIP_BRANCHES.contains(&branch.as_str()))?;
+    match Cached::new(PrLookup { branch, repo_root }).load() {
+        Lookup::Ready(pr) => pr,
+        Lookup::Loading | Lookup::Unavailable => None,
+    }
+}
+
 /// Resolves the current branch name and repository root by walking up to the
 /// `.git` entry and reading `HEAD`. Returns `None` outside a git repository.
 fn current_branch_and_root() -> Option<(String, PathBuf)> {
@@ -255,7 +317,7 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
             "view",
             branch,
             "--json",
-            "number,url,state,isDraft,statusCheckRollup",
+            "number,url,state,isDraft,statusCheckRollup,additions,deletions",
         ])
         .output()
         .ok()?;
@@ -274,6 +336,10 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
         url: gh.url,
         state,
         checks: aggregate(&gh.status_check_rollup),
+        diff: Some(Diff {
+            additions: gh.additions,
+            deletions: gh.deletions,
+        }),
     })
 }
 
@@ -370,6 +436,10 @@ struct GhPr {
     is_draft: bool,
     #[serde(rename = "statusCheckRollup", default)]
     status_check_rollup: Vec<CheckItem>,
+    #[serde(default)]
+    additions: u64,
+    #[serde(default)]
+    deletions: u64,
 }
 
 #[cfg(test)]
