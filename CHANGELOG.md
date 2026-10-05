@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0](https://github.com/alxhill/superline/compare/v0.27.2...v0.28.0) - 2026-10-05
+
+### Added
+
+- add pr_diff widget showing the PR's added and deleted lines ([#204](https://github.com/alxhill/superline/pull/204))
+- add repo toggle to the git module ([#202](https://github.com/alxhill/superline/pull/202))
+
 ## [0.27.2](https://github.com/alxhill/superline/compare/v0.27.1...v0.27.2) - 2026-10-02
 
 ### Fixed
