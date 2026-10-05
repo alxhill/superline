@@ -437,6 +437,21 @@
       }
     ]
   },
+  "diff": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Uncommitted changes in a shell prompt",
+        "fixture": "git-dirty",
+        "row": {
+          "left": [
+            "git",
+            "diff"
+          ]
+        }
+      }
+    ]
+  },
   "ai_usage": {
     "cols": 110,
     "variants": [
@@ -535,7 +550,7 @@
                 "pr"
               ],
               "right": [
-                "claude_lines",
+                "diff",
                 "claude_cost",
                 {
                   "ai_usage": {
@@ -581,7 +596,7 @@
                 "claude_session"
               ],
               "right": [
-                "claude_lines",
+                "diff",
                 "claude_cost",
                 {
                   "padding": 0
@@ -678,20 +693,6 @@
         "row": {
           "left": [
             "claude_duration"
-          ]
-        }
-      }
-    ]
-  },
-  "claude_lines": {
-    "claude_code": true,
-    "variants": [
-      {
-        "name": "default",
-        "label": "Lines added and removed",
-        "row": {
-          "left": [
-            "claude_lines"
           ]
         }
       }

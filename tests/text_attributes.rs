@@ -286,16 +286,8 @@ const TEXT_COLORS: &[TextColor] = &[
         "fg",
         <T as ClaudeCodeScheme>::claude_duration_fg,
     ),
-    (
-        "claude_lines",
-        "added_fg",
-        <T as ClaudeCodeScheme>::claude_lines_added_fg,
-    ),
-    (
-        "claude_lines",
-        "removed_fg",
-        <T as ClaudeCodeScheme>::claude_lines_removed_fg,
-    ),
+    ("diff", "added_fg", <T as DiffScheme>::diff_added_fg),
+    ("diff", "removed_fg", <T as DiffScheme>::diff_removed_fg),
     (
         "claude_cache",
         "fg",

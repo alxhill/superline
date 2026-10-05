@@ -10,10 +10,10 @@ use crate::config::{LineSegment, SegmentPadding, SeparatorStyle, TerminalRuntime
 use crate::debug;
 use crate::modules::{
     Battery, Cargo, ClaudeAgent, ClaudeCache, ClaudeContext, ClaudeCost, ClaudeDuration,
-    ClaudeLines, ClaudeModel, ClaudeSession, ClaudeVim, Cmd, Cwd, DefaultPadding, ErrorMessage,
-    Git, Hostname, Java, Jobs, Kubernetes, LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os,
-    Pr, PrDiff, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time, Unknown, Usage,
-    UsageWindows, Username,
+    ClaudeModel, ClaudeSession, ClaudeVim, Cmd, Cwd, DefaultPadding, Diff, ErrorMessage, Git,
+    Hostname, Java, Jobs, Kubernetes, LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os, Pr,
+    PrDiff, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows,
+    Username,
 };
 use crate::terminal::*;
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -573,7 +573,7 @@ impl Powerline {
                 LineSegment::ClaudeDuration { api } => {
                     self.add_module(ClaudeDuration::<T>::new(claude, *api))
                 }
-                LineSegment::ClaudeLines => self.add_module(ClaudeLines::<T>::new(claude)),
+                LineSegment::Diff => self.add_module(Diff::<T>::new(claude)),
                 LineSegment::ClaudeCache => self.add_module(ClaudeCache::<T>::new(claude)),
                 LineSegment::ClaudeVim => self.add_module(ClaudeVim::<T>::new(claude)),
                 LineSegment::ClaudeAgent => self.add_module(ClaudeAgent::<T>::new(claude)),
@@ -752,6 +752,7 @@ probe_schemes!(
     crate::modules::CmdScheme,
     crate::modules::ErrorMessageScheme,
     crate::modules::ExitCodeScheme,
+    crate::modules::DiffScheme,
     crate::modules::GitScheme,
     crate::modules::HostScheme,
     crate::modules::JavaScheme,

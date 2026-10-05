@@ -98,6 +98,14 @@
       ["status_icon", "string", "The CI dot.", "\"●\""]
     ]
   },
+  "diff": {
+    "aliases": ["claude_lines"],
+    "properties": [
+      ["added_fg", "color", "The count of lines added.", "\"green\""],
+      ["removed_fg", "color", "The count of lines removed.", "\"red\""],
+      ["bg", "color", "Segment background.", "defaults.bg"]
+    ]
+  },
   "pr_diff": {
     "properties": [
       ["added_fg", "color", "The count of lines added.", "\"green\""],
@@ -187,13 +195,6 @@
       ["fg", "color", "The session duration.", "defaults.fg"],
       ["bg", "color", "Segment background.", "defaults.bg"],
       ["icon", "string", "Before the duration; \"\" hides it.", "U+F051B"]
-    ]
-  },
-  "claude_lines": {
-    "properties": [
-      ["added_fg", "color", "The count of lines added.", "defaults.fg"],
-      ["removed_fg", "color", "The count of lines removed.", "defaults.fg"],
-      ["bg", "color", "Segment background.", "defaults.bg"]
     ]
   },
   "claude_cache": {

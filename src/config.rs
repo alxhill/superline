@@ -348,8 +348,9 @@ pub enum LineSegment {
         #[serde(default)]
         api: bool,
     },
-    /// Lines added and removed this session.
-    ClaudeLines,
+    /// Lines added and removed: the session's own in Claude Code, the
+    /// working tree's uncommitted changes in a shell prompt.
+    Diff,
     /// The prompt cache's hit ratio, on a background that shows whether it
     /// is still warm.
     ClaudeCache,
@@ -556,7 +557,10 @@ enum KnownLineSegment {
         #[serde(default)]
         api: bool,
     },
-    ClaudeLines,
+    /// Named `claude_lines` when it only showed Claude Code's session
+    /// counts; both names parse.
+    #[serde(alias = "claude_lines")]
+    Diff,
     ClaudeCache,
     ClaudeVim,
     ClaudeAgent,
@@ -677,7 +681,7 @@ impl From<KnownLineSegment> for LineSegment {
             },
             KnownLineSegment::ClaudeCost => LineSegment::ClaudeCost,
             KnownLineSegment::ClaudeDuration { api } => LineSegment::ClaudeDuration { api },
-            KnownLineSegment::ClaudeLines => LineSegment::ClaudeLines,
+            KnownLineSegment::Diff => LineSegment::Diff,
             KnownLineSegment::ClaudeCache => LineSegment::ClaudeCache,
             KnownLineSegment::ClaudeVim => LineSegment::ClaudeVim,
             KnownLineSegment::ClaudeAgent => LineSegment::ClaudeAgent,
@@ -787,6 +791,7 @@ pub(crate) const KNOWN_SEGMENT_NAMES: &[&str] = &[
     "claude_cost",
     "claude_duration",
     "claude_lines",
+    "diff",
     "claude_cache",
     "claude_vim",
     "claude_agent",
@@ -901,7 +906,7 @@ impl Config {
                     LineSegment::PrDiff,
                 ]),
                 right: Some(widgets(vec![
-                    LineSegment::ClaudeLines,
+                    LineSegment::Diff,
                     LineSegment::ClaudeCost,
                     LineSegment::AiUsage {
                         provider: UsageProvider::Claude,
@@ -953,6 +958,7 @@ impl Default for Config {
                             worktrees: true,
                             repo: true,
                         },
+                        LineSegment::Diff,
                         LineSegment::Pr { status: true },
                         LineSegment::PrDiff,
                         LineSegment::Padding(2),
@@ -1091,7 +1097,8 @@ mod tests {
                 r#"{"claude_duration":{"api":true}}"#,
                 LineSegment::ClaudeDuration { api: true },
             ),
-            (r#""claude_lines""#, LineSegment::ClaudeLines),
+            (r#""claude_lines""#, LineSegment::Diff),
+            (r#""diff""#, LineSegment::Diff),
             (r#""pr_diff""#, LineSegment::PrDiff),
             (r#""claude_cache""#, LineSegment::ClaudeCache),
             (r#""claude_vim""#, LineSegment::ClaudeVim),

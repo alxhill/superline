@@ -68,16 +68,6 @@ pub trait ClaudeCodeScheme: DefaultColors {
         Self::CLAUDE_DURATION_ICON
     }
 
-    fn claude_lines_added_fg() -> Color {
-        Self::default_fg()
-    }
-    fn claude_lines_removed_fg() -> Color {
-        Self::default_fg()
-    }
-    fn claude_lines_bg() -> Color {
-        Self::default_bg()
-    }
-
     fn claude_cache_fg() -> Color {
         Self::default_fg()
     }
@@ -367,43 +357,6 @@ fn format_duration(seconds: u64) -> String {
         format!("{minutes}m {seconds}s")
     } else {
         format!("{seconds}s")
-    }
-}
-
-pub struct ClaudeLines<'a, S> {
-    status: Option<&'a ClaudeCodeStatus>,
-    scheme: PhantomData<S>,
-}
-
-impl<'a, S: ClaudeCodeScheme> ClaudeLines<'a, S> {
-    pub fn new(status: Option<&'a ClaudeCodeStatus>) -> Self {
-        ClaudeLines {
-            status,
-            scheme: PhantomData,
-        }
-    }
-}
-
-impl<S: ClaudeCodeScheme> Module for ClaudeLines<'_, S> {
-    fn default_padding(&self) -> DefaultPadding {
-        SegmentPadding::Large.into()
-    }
-
-    fn append_segments(&mut self, powerline: &mut Powerline) {
-        let Some(cost) = self.status.map(|s| &s.cost) else {
-            return;
-        };
-        let added = cost.total_lines_added.unwrap_or(0);
-        let removed = cost.total_lines_removed.unwrap_or(0);
-        if added == 0 && removed == 0 {
-            return;
-        }
-        powerline.add_two_tone_segment(
-            &format!("+{added}"),
-            &format!("-{removed}"),
-            S::claude_lines_removed_fg(),
-            Style::simple(S::claude_lines_added_fg(), S::claude_lines_bg()),
-        );
     }
 }
 

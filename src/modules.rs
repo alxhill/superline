@@ -9,6 +9,7 @@ use crate::upgrade::AutoUpgrade;
 mod battery;
 mod cmd;
 mod cwd;
+mod diff;
 mod error_message;
 mod exit_code;
 mod git;
@@ -40,11 +41,12 @@ pub use battery::{Battery, BatteryScheme};
 pub use cargo::{Cargo, CargoScheme};
 pub use claude_code::{
     ClaudeAgent, ClaudeCache, ClaudeCodeScheme, ClaudeContext, ClaudeCost, ClaudeDuration,
-    ClaudeLines, ClaudeModel, ClaudeSession, ClaudeVim,
+    ClaudeModel, ClaudeSession, ClaudeVim,
 };
 pub use cmd::{Cmd, CmdScheme};
 pub use cmd_duration::{LastCmdDuration, LastCmdDurationScheme};
 pub use cwd::{Cwd, CwdScheme};
+pub use diff::{Diff, DiffScheme, GitDiff};
 pub use error_message::{ErrorMessage, ErrorMessageScheme};
 pub use exit_code::{ExitCode, ExitCodeScheme};
 pub use git::{preresolve_system_gitconfig, Git, GitScheme, GitStatus};
@@ -114,6 +116,7 @@ pub fn run_refresh(kind: &str, source: &str) -> bool {
     match kind {
         GitStatus::KIND => refresh_from_json::<GitStatus>(source),
         PrLookup::KIND => refresh_from_json::<PrLookup>(source),
+        GitDiff::KIND => refresh_from_json::<GitDiff>(source),
         UsageLookup::KIND => refresh_from_json::<UsageLookup>(source),
         PythonVersion::KIND => refresh_from_json::<PythonVersion>(source),
         SudoLookup::KIND => refresh_from_json::<SudoLookup>(source),
