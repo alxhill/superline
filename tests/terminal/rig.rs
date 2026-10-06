@@ -103,13 +103,16 @@ pub enum Shell {
 }
 
 impl Shell {
-    pub const ALL: [Self; 6] = [
+    /// The shells `all` picks. Nushell is left out: reedline anchors each
+    /// repaint on a cursor-position query that VHS's terminal sometimes
+    /// answers late, so it intermittently wipes the screen or paints the
+    /// prompt off-screen. It still runs when named explicitly.
+    pub const ALL: [Self; 5] = [
         Self::Bash,
         Self::Bash32,
         Self::Zsh,
         Self::Fish,
         Self::Pwsh,
-        Self::Nu,
     ];
 
     /// The name used to pick the shell and in output file names.
