@@ -544,8 +544,9 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
 /// Collapses GitHub's review data into the one state worth showing, by whose
 /// turn it is:
 ///
-/// - Branches that don't require a review have no review decision, so there's
-///   nothing to show.
+/// - Branches that don't require a review have no review decision. There only
+///   an actual review shows, by its state: any request for changes, otherwise
+///   any approval, otherwise comments. Outstanding requests alone show nothing.
 /// - A review decision of approved or changes requested wins outright.
 /// - Otherwise outstanding review requests mean it's waiting on reviewers
 ///   (including a re-request after addressing comments).
@@ -555,7 +556,6 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
 ///   branch requires a review, as nobody has been asked yet.
 fn review_status(decision: &str, requests: usize, reviews: &[GhReview]) -> Option<ReviewStatus> {
     match decision {
-        "" => return None,
         "APPROVED" => return Some(ReviewStatus::Approved),
         "CHANGES_REQUESTED" => return Some(ReviewStatus::ChangesRequested),
         _ => {}
@@ -569,6 +569,18 @@ fn review_status(decision: &str, requests: usize, reviews: &[GhReview]) -> Optio
             .map(|review| review.state.as_str())
             .filter(|state| matches!(*state, "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED"))
     };
+
+    if decision.is_empty() {
+        return if states().any(|state| state == "CHANGES_REQUESTED") {
+            Some(ReviewStatus::ChangesRequested)
+        } else if states().any(|state| state == "APPROVED") {
+            Some(ReviewStatus::Approved)
+        } else if states().next().is_some() {
+            Some(ReviewStatus::Commented)
+        } else {
+            None
+        };
+    }
 
     if requests > 0 {
         Some(ReviewStatus::Pending)
@@ -915,13 +927,22 @@ mod tests {
                 &["CHANGES_REQUESTED"],
                 Some(ChangesRequested),
             ),
-            // Branches that don't require a review show nothing, whatever the
-            // reviews and requests.
+            // Branches that don't require a review show nothing until someone
+            // reviews, outstanding requests included...
             ("", 0, &[], None),
             ("", 2, &[], None),
-            ("", 0, &["COMMENTED"], None),
-            ("", 1, &["APPROVED"], None),
-            ("", 0, &["APPROVED", "CHANGES_REQUESTED"], None),
+            ("", 1, &["DISMISSED"], None),
+            // ...then the review's own state, a request for changes blocking
+            // any approval.
+            ("", 1, &["COMMENTED"], Some(Commented)),
+            ("", 1, &["APPROVED"], Some(Approved)),
+            ("", 0, &["COMMENTED", "APPROVED"], Some(Approved)),
+            (
+                "",
+                0,
+                &["APPROVED", "CHANGES_REQUESTED"],
+                Some(ChangesRequested),
+            ),
             // Dismissed reviews and unsubmitted drafts don't count.
             ("REVIEW_REQUIRED", 0, &["DISMISSED", "PENDING"], None),
             ("REVIEW_REQUIRED", 1, &["DISMISSED"], Some(Pending)),
