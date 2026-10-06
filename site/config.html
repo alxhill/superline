@@ -1371,7 +1371,7 @@
       <section id="identity" class="component">
         <h3><code>username</code>, <code>hostname</code>, <code>local_ip</code></h3>
         <p>
-          The current user (in the root color when running as root), the machine's hostname (shortened to the part before the first dot on macOS, like <code>hostname -s</code>), and its primary
+          The current user (in the root color when running as root), the machine's hostname (on macOS, the Local Hostname from the Sharing settings, <code>scutil --get LocalHostName</code>, which does not change with the network), and its primary
           non-loopback IPv4 address, read from the network interfaces without opening a socket. They take no
           options. <code>"user"</code>, <code>"host"</code> and <code>"localip"</code> still work as older
           spellings. No screenshots are shown for these, since they would expose details of the machine that took them.

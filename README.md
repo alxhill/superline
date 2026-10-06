@@ -279,8 +279,9 @@ The name of the running shell (`fish`, `zsh`, ...).
 #### hostname and username
 
 The hostname and the current username. The username uses the root color when
-the prompt is running as root. On macOS the hostname is shortened to the part
-before the first dot, like `hostname -s`.
+the prompt is running as root. On macOS the hostname is the Local Hostname from
+System Settings > General > Sharing (`scutil --get LocalHostName`), which,
+unlike `hostname`, does not change with the network's DHCP or DNS answers.
 
 ```json
 "hostname"
