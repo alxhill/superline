@@ -22,7 +22,9 @@ density and display crisply on high-DPI screens.
 
 These are test-only dependencies; nothing here is needed to use superline.
 
-- The shells to exercise: `bash`, `zsh`, `fish`, `pwsh`, `nu`. The
+- The shells to exercise: `bash`, `zsh`, `fish`, `pwsh`, and optionally
+  `nu`, which only runs when named in `SUPERLINE_E2E_SHELLS` because
+  reedline's cursor-position queries make its captures flaky under VHS. The
   `bash-3.2` variant runs macOS's `/bin/bash` (bash 3.2) through a shim on
   `PATH`, next to the `bash` found on `PATH` (Homebrew's bash 5 in CI), and is
   skipped where `/bin/bash` is not bash 3.x.
@@ -69,7 +71,7 @@ tune a run:
 
 | Variable | Effect |
 | --- | --- |
-| `SUPERLINE_E2E_SHELLS` | Shells to run, comma-separated (default `all`). Missing shells are skipped. |
+| `SUPERLINE_E2E_SHELLS` | Shells to run, comma-separated (default `all`, which leaves out `nu`). Missing shells are skipped. |
 | `SUPERLINE_E2E_REQUIRE_ALL=1` | Fail instead of skipping a missing shell. |
 | `SUPERLINE_E2E_OUTPUT` | Output directory (default `target/terminal-snapshots`). |
 | `SUPERLINE_E2E_JOBS` | Captures to run at once (default 2). |

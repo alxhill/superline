@@ -19,6 +19,9 @@
 - Run `superline clear-caches` to wipe all cached data (git status, PR lookups,
   AI usage) under `<cache_dir>/superline/` when testing the async refresh paths
   from a cold start.
+- When a CI test fails intermittently, do not re-run the job to get it green.
+  Find the cause and fix the test, or remove it if it cannot be made
+  reliable, in the PR that hit the flake.
 - Default to creating a new branch and PR at the start of each session.
 - Before creating or merging a PR, check whether the docs need updating to match
   it: `README.md`, `docs/`, and the website in `site/` (`index.html` and the

@@ -65,7 +65,31 @@ impl<S: HostScheme> Module for Hostname<S> {
 }
 
 fn current_hostname() -> Option<String> {
-    hostname::get().ok().and_then(hostname_text)
+    local_hostname().or_else(|| hostname::get().ok().and_then(hostname_text))
+}
+
+/// The Bonjour name set in System Settings > Sharing (`scutil --get
+/// LocalHostName`). Unlike the kernel hostname it does not change with the
+/// network's DHCP or reverse DNS answers.
+#[cfg(target_os = "macos")]
+fn local_hostname() -> Option<String> {
+    use system_configuration::core_foundation::base::TCFType;
+    use system_configuration::core_foundation::string::CFString;
+    use system_configuration::sys::dynamic_store_copy_specific::SCDynamicStoreCopyLocalHostName;
+
+    // SAFETY: a null store asks SystemConfiguration for a temporary session.
+    // The returned string follows the create rule, so it is owned here.
+    let name = unsafe { SCDynamicStoreCopyLocalHostName(std::ptr::null()) };
+    if name.is_null() {
+        return None;
+    }
+    let name = unsafe { CFString::wrap_under_create_rule(name) }.to_string();
+    (!name.is_empty()).then_some(name)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn local_hostname() -> Option<String> {
+    None
 }
 
 fn hostname_text(host: std::ffi::OsString) -> Option<String> {
