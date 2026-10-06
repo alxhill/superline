@@ -13,13 +13,15 @@ use ratatui::Frame;
 use serde_json::Value;
 
 use super::model::Target;
+use super::picker::tui_color;
 use super::theme::TextSample;
 use super::theme::{
-    color_names, color_value, edit_text, parse_bool, parse_color, parse_color_list, PropKind,
-    PropSpec, ThemeDoc, ThemeEntry,
+    color_names, color_value, edit_text, nudge, parse_bool, parse_color, parse_color_list,
+    PropKind, PropSpec, ThemeDoc, ThemeEntry,
 };
 use super::{glyphs, list_editor, picker};
 use super::{json, panel, schema, write_atomic, App, Focus, InputPurpose, Mode};
+use crate::colors::ColorCode;
 use crate::themes::{bundled_theme, theme_path};
 
 /// Rows PageUp/PageDown move in the icon browser.
@@ -169,7 +171,7 @@ impl App {
             Mode::ColorPicker { code, .. } if self.list_pending().is_some() => {
                 self.list_preview(*code)
             }
-            Mode::ColorPicker { code, .. } => Some(Value::from(*code)),
+            Mode::ColorPicker { code, .. } => Some(color_value(*code, false)),
             Mode::IconBrowser { query, selected } => glyphs::search(query)
                 .get(*selected)
                 .map(|glyph| Value::from(glyph.ch.to_string())),
@@ -450,7 +452,7 @@ impl App {
                         let code = self
                             .theme_doc()
                             .and_then(|doc| doc.resolve(&entry, &spec, value.as_ref()))
-                            .unwrap_or(0);
+                            .unwrap_or(ColorCode::Palette(0));
                         self.mode = Mode::ColorPicker {
                             code,
                             prefer_name: value.as_ref().is_some_and(Value::is_string),
@@ -495,13 +497,9 @@ impl App {
                     {
                         let code = self
                             .theme_doc()
-                            .and_then(|doc| doc.resolve(&entry, &spec, value.as_ref()))
-                            .unwrap_or(0);
-                        let next = if matches!(key.code, KeyCode::Right | KeyCode::Char('l')) {
-                            code.wrapping_add(1)
-                        } else {
-                            code.wrapping_sub(1)
-                        };
+                            .and_then(|doc| doc.resolve(&entry, &spec, value.as_ref()));
+                        let up = matches!(key.code, KeyCode::Right | KeyCode::Char('l'));
+                        let next = nudge(code, up);
                         self.set_theme_prop(Some(Value::from(next)));
                     }
                     KeyCode::Char('x') | KeyCode::Delete | KeyCode::Backspace
@@ -519,9 +517,13 @@ impl App {
     pub(super) fn on_color_picker_key(
         &mut self,
         key: KeyEvent,
-        code: u8,
+        code: ColorCode,
         prefer_name: bool,
     ) -> Option<Mode> {
+        let typed = || match color_value(code, false) {
+            Value::String(name) => name,
+            number => number.to_string(),
+        };
         let moved = match key.code {
             KeyCode::Esc => {
                 self.preview_stale = true;
@@ -537,15 +539,15 @@ impl App {
             }
             KeyCode::Char('i') if self.list_pending().is_some() => {
                 return Some(Mode::Input {
-                    cursor: code.to_string().len(),
-                    buffer: code.to_string(),
+                    cursor: typed().len(),
+                    buffer: typed(),
                     purpose: InputPurpose::ListItem,
                 });
             }
             KeyCode::Char('i') => {
                 return Some(Mode::Input {
-                    cursor: code.to_string().len(),
-                    buffer: code.to_string(),
+                    cursor: typed().len(),
+                    buffer: typed(),
                     purpose: InputPurpose::ThemeProperty,
                 });
             }
@@ -553,8 +555,8 @@ impl App {
             KeyCode::Right | KeyCode::Char('l') => picker::step(code, picker::Direction::Right),
             KeyCode::Up | KeyCode::Char('k') => picker::step(code, picker::Direction::Up),
             KeyCode::Down | KeyCode::Char('j') => picker::step(code, picker::Direction::Down),
-            KeyCode::Home => 0,
-            KeyCode::End => 255,
+            KeyCode::Home => ColorCode::Palette(0),
+            KeyCode::End => ColorCode::Palette(255),
             _ => code,
         };
         if moved != code {
@@ -785,8 +787,8 @@ impl App {
             .map(|entry| {
                 let (fg, bg) = doc.swatch(entry);
                 let swatch = Style::new()
-                    .fg(fg.map_or(Color::Reset, Color::Indexed))
-                    .bg(bg.map_or(Color::Reset, Color::Indexed));
+                    .fg(fg.map_or(Color::Reset, tui_color))
+                    .bg(bg.map_or(Color::Reset, tui_color));
                 let set = doc
                     .props(entry)
                     .iter()
@@ -900,7 +902,7 @@ impl App {
         }
     }
 
-    pub(super) fn draw_color_picker(&self, frame: &mut Frame, area: Rect, code: u8) {
+    pub(super) fn draw_color_picker(&self, frame: &mut Frame, area: Rect, code: ColorCode) {
         let title = match self.theme_prop() {
             Some((entry, spec, _)) => {
                 format!(" {}.{}{} ", entry.label(), spec.key, self.list_pick_label())
@@ -928,17 +930,26 @@ impl App {
         .areas(inner);
         picker::render(frame.buffer_mut(), grid, code);
 
-        let names = color_names(code);
+        let (label, about) = match code {
+            ColorCode::Palette(number) => {
+                let names = color_names(code);
+                let about = if names.is_empty() {
+                    String::new()
+                } else {
+                    format!("  {}", names.join(", "))
+                };
+                (number.to_string(), about)
+            }
+            ColorCode::Terminal => (
+                color_names(code).join(", "),
+                "  the terminal's own colour".to_string(),
+            ),
+        };
         let mut lines = vec![Line::default()];
         lines.push(Line::from(vec![
-            Span::styled("      ", Style::new().bg(Color::Indexed(code))),
-            Span::raw(format!(" {code}")).bold(),
-            Span::raw(if names.is_empty() {
-                String::new()
-            } else {
-                format!("  {}", names.join(", "))
-            })
-            .dark_gray(),
+            Span::styled("      ", Style::new().bg(tui_color(code))),
+            Span::raw(format!(" {label}")).bold(),
+            Span::raw(about).dark_gray(),
         ]));
         lines.push(Line::from(vec![
             Span::raw("←↑↓→").bold(),
@@ -1003,10 +1014,10 @@ const BOOL_WIDTH: usize = 15;
 fn text_sample_span(sample: &TextSample) -> Span<'static> {
     let mut style = Style::new();
     if let Some(fg) = sample.fg {
-        style = style.fg(Color::Indexed(fg));
+        style = style.fg(tui_color(fg));
     }
     if let Some(bg) = sample.bg {
-        style = style.bg(Color::Indexed(bg));
+        style = style.bg(tui_color(bg));
     }
     for (on, modifier) in [
         (sample.attrs.bold, Modifier::BOLD),
@@ -1022,14 +1033,21 @@ fn text_sample_span(sample: &TextSample) -> Span<'static> {
 
 const TEXT_SAMPLE: &str = " Sample 123 ";
 
+/// The swatch of the terminal's own colour (`none`): there is no colour to
+/// fill it with, so it is marked out instead of left blank like an unset one.
+pub(super) fn none_swatch() -> Span<'static> {
+    Span::raw("--").dark_gray()
+}
+
 fn prop_value_spans(
     doc: &ThemeDoc,
     entry: &ThemeEntry,
     spec: &PropSpec,
     value: Option<&Value>,
 ) -> Vec<Span<'static>> {
-    let swatch = |code: Option<u8>| match code {
-        Some(code) => Span::styled("  ", Style::new().bg(Color::Indexed(code))),
+    let swatch = |code: Option<ColorCode>| match code {
+        Some(ColorCode::Palette(code)) => Span::styled("  ", Style::new().bg(Color::Indexed(code))),
+        Some(ColorCode::Terminal) => none_swatch(),
         None => Span::raw("  "),
     };
     match (spec.kind, value) {
@@ -1067,6 +1085,7 @@ fn prop_value_spans(
             };
             let mut spans = vec![swatch(resolved), Span::raw(format!(" {label}")).dark_gray()];
             if let Some(code) = resolved {
+                let code = edit_text(&color_value(code, false));
                 spans.push(Span::raw(format!(" ({code})")).dark_gray());
             }
             spans

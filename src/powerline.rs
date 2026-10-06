@@ -80,6 +80,29 @@ impl Separator {
         }
     }
 
+    /// The outline version of the glyph, drawn in a text colour between two
+    /// segments that both sit on the terminal's own background, where the
+    /// filled glyph would have no colour to be drawn in.
+    fn thin(&self, direction: Direction) -> &'static str {
+        match (self, direction) {
+            (Separator::Chevron, Direction::Right) => "\u{e0b1}",
+            (Separator::Chevron, Direction::Left) => "\u{e0b3}",
+            (Separator::Round, Direction::Right) => "\u{e0b5}",
+            (Separator::Round, Direction::Left) => "\u{e0b7}",
+            (Separator::None, _) => "",
+        }
+    }
+
+    /// Blank cells as wide as the glyph, drawn where a separator would close
+    /// or open a segment on the terminal's own background, so the columns
+    /// stay the same.
+    fn blank(&self) -> &'static str {
+        match self {
+            Separator::None => "",
+            Separator::Chevron | Separator::Round => " ",
+        }
+    }
+
     /// Column width of the glyph itself, so a zero-character separator
     /// doesn't throw off left/right prompt alignment.
     fn width(&self) -> usize {
@@ -235,32 +258,63 @@ impl Powerline {
         padding: Padding,
         visible_width: Option<usize>,
     ) -> fmt::Result {
-        // write the last style's separator on the new style's background
+        // The foreground the separator leaves on.
+        let mut drawn_fg = None;
+
+        // After padding, the segment opens with the alternate separator in
+        // its own background. A segment on the terminal's background has no
+        // colour to draw it in, so it gets blank cells instead.
         if self.last_padding {
-            write!(
-                self.left_buffer,
-                "{}{}{}",
-                style.sep_fg,
-                self.separator.for_direction(Direction::Left),
-                style.bg
-            )?;
+            if style.bg.is_none() {
+                write!(self.left_buffer, "{}", self.separator.blank())?;
+            } else {
+                write!(
+                    self.left_buffer,
+                    "{}{}{}",
+                    style.sep_fg,
+                    self.separator.for_direction(Direction::Left),
+                    style.bg
+                )?;
+                drawn_fg = Some(style.sep_fg);
+            }
             self.last_padding = false;
         }
 
-        if let Some(Style { sep_fg, .. }) = self.last_style {
+        if let Some(last) = &self.last_style {
             self.left_columns += self.separator.width();
-            write!(
-                self.left_buffer,
-                "{}{}{}",
-                style.bg,
-                sep_fg,
-                self.separator.for_direction(Direction::Right)
-            )?;
+            let (cell_bg, fg, glyph) = match (last.bg.is_none(), style.bg.is_none()) {
+                // The last segment's background points into this one's,
+                // which may be the terminal's own.
+                (false, _) => (
+                    style.bg,
+                    last.sep_fg,
+                    self.separator.for_direction(Direction::Right),
+                ),
+                // Out of the terminal's background, this segment opens with
+                // the alternate separator, as it does after padding.
+                (true, false) => (
+                    last.bg,
+                    style.sep_fg,
+                    self.separator.for_direction(Direction::Left),
+                ),
+                // Neither has a background to draw in, so the outline glyph
+                // goes in the last segment's text colour.
+                (true, true) => (
+                    style.bg,
+                    last.fg.plain(),
+                    self.separator.thin(Direction::Right),
+                ),
+            };
+            write!(self.left_buffer, "{}{}{}", cell_bg, fg, glyph)?;
+            if cell_bg != style.bg {
+                write!(self.left_buffer, "{}", style.bg)?;
+            }
+            drawn_fg = Some(fg);
         } else {
             write!(self.left_buffer, "{}", style.bg)?;
         };
 
-        if self.last_style.as_ref().map(|s| s.sep_fg) != Some(style.fg) {
+        if drawn_fg != Some(style.fg) {
             write!(self.left_buffer, "{}", style.fg)?;
         }
 
@@ -296,14 +350,39 @@ impl Powerline {
         padding: Padding,
         visible_width: Option<usize>,
     ) -> fmt::Result {
-        // write the separator directly onto the current background
-        write!(
-            self.right_buffer,
-            "{}{}{}",
-            style.bg.transpose(),
-            self.separator.for_direction(Direction::Left),
-            style.bg
-        )?;
+        let last = self.last_style_right.as_ref();
+        if !style.bg.is_none() {
+            // write the separator directly onto the current background
+            write!(
+                self.right_buffer,
+                "{}{}{}",
+                style.bg.transpose(),
+                self.separator.for_direction(Direction::Left),
+                style.bg
+            )?;
+        } else if let Some(last) = last.filter(|last| !last.bg.is_none()) {
+            // Into the terminal's background, the last segment closes with
+            // the alternate separator in its own background.
+            write!(
+                self.right_buffer,
+                "{}{}{}",
+                style.bg,
+                last.sep_fg,
+                self.separator.for_direction(Direction::Right)
+            )?;
+        } else if last.is_some() {
+            // Neither has a background to draw in, so the outline glyph goes
+            // in this segment's text colour.
+            write!(
+                self.right_buffer,
+                "{}{}{}",
+                style.bg,
+                style.fg.plain(),
+                self.separator.thin(Direction::Left)
+            )?;
+        } else {
+            write!(self.right_buffer, "{}{}", style.bg, self.separator.blank())?;
+        }
         self.right_columns += self.separator.width();
 
         // The separator above painted this segment's background as the
@@ -620,17 +699,9 @@ impl Powerline {
             }
             Direction::Right => {
                 // close out the current blob and write the padding
-                if let Some(Style { sep_fg, .. }) = self.last_style_right {
-                    write!(
-                        self.right_buffer,
-                        "{}{}{}{}{}",
-                        Reset,
-                        sep_fg,
-                        self.separator.for_direction(Direction::Right),
-                        Reset,
-                        padding
-                    )
-                    .unwrap();
+                if let Some(last) = &self.last_style_right {
+                    let close = self.closing_separator(last);
+                    write!(self.right_buffer, "{}{}", close, padding).unwrap();
                     self.right_columns += self.separator.width();
                 } else {
                     write!(self.right_buffer, "{}", padding).unwrap();
@@ -680,19 +751,29 @@ impl Powerline {
 
     fn close_left_buffer(&mut self) {
         // close out the left buffer with the right separator
-        if let Some(Style { sep_fg, .. }) = self.last_style {
-            write!(
-                self.left_buffer,
-                "{}{}{}{}",
-                Reset,
-                sep_fg,
-                self.separator.for_direction(Direction::Right),
-                Reset
-            )
-            .unwrap();
+        if let Some(last) = &self.last_style {
+            let close = self.closing_separator(last);
+            self.left_buffer.push_str(&close);
             self.left_columns += self.separator.width();
         }
         self.last_style = None;
+    }
+
+    /// The separator that ends a run of segments after `last`, on the
+    /// terminal's background: the glyph in `last`'s background, or blank
+    /// cells when `last` is on the terminal's background itself.
+    fn closing_separator(&self, last: &Style) -> String {
+        if last.bg.is_none() {
+            format!("{}{}", Reset, self.separator.blank())
+        } else {
+            format!(
+                "{}{}{}{}",
+                Reset,
+                last.sep_fg,
+                self.separator.for_direction(Direction::Right),
+                Reset
+            )
+        }
     }
 }
 
@@ -821,6 +902,245 @@ mod tests {
     fn other_separators_are_a_single_column_wide() {
         for sep in [Separator::Chevron, Separator::Round] {
             assert_eq!(sep.width(), 1);
+        }
+    }
+
+    /// A drawn cell: its character, foreground and background, with `None`
+    /// for the terminal's own colour.
+    type DrawnCell = (char, Option<u8>, Option<u8>);
+
+    /// Each printed character with the colours a terminal would draw it in,
+    /// reading bare escapes.
+    fn drawn_colors(buffer: &str) -> Vec<DrawnCell> {
+        let (mut fg, mut bg) = (None, None);
+        let mut drawn = Vec::new();
+        let mut chars = buffer.chars();
+        while let Some(c) = chars.next() {
+            if c != '\x1b' {
+                drawn.push((c, fg, bg));
+                continue;
+            }
+            if chars.next() != Some('[') {
+                continue;
+            }
+            let params: String = chars.by_ref().take_while(|c| *c != 'm').collect();
+            let mut codes = params.split(';');
+            while let Some(code) = codes.next() {
+                match code {
+                    "" | "0" => (fg, bg) = (None, None),
+                    "39" => fg = None,
+                    "49" => bg = None,
+                    "38" | "48" => {
+                        codes.next();
+                        let color = codes.next().and_then(|n| n.parse().ok());
+                        if code == "38" {
+                            fg = color;
+                        } else {
+                            bg = color;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        drawn
+    }
+
+    /// The cells of a separator glyph or blank in `buffer`, in order: every
+    /// cell that is not part of a segment's ` x ` text.
+    fn separators(buffer: &str) -> Vec<DrawnCell> {
+        let drawn = drawn_colors(buffer);
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < drawn.len() {
+            // A padded one-letter segment: " x ".
+            if i + 2 < drawn.len()
+                && drawn[i].0 == ' '
+                && drawn[i + 1].0.is_ascii_alphabetic()
+                && drawn[i + 2].0 == ' '
+            {
+                i += 3;
+            } else {
+                out.push(drawn[i]);
+                i += 1;
+            }
+        }
+        out
+    }
+
+    const BLUE: u8 = 31;
+    const GREEN: u8 = 2;
+    const YELLOW: u8 = 3;
+
+    fn coloured() -> Style {
+        Style::simple(Color(15), Color(BLUE))
+    }
+
+    fn clear(fg: u8) -> Style {
+        Style::simple(Color(fg), Color::NONE)
+    }
+
+    #[test]
+    fn left_separators_next_to_the_terminal_background() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.add_segment("a", coloured());
+        powerline.add_segment("b", clear(GREEN));
+        powerline.add_segment("c", clear(YELLOW));
+        powerline.add_segment("d", coloured());
+        powerline.add_segment("e", clear(GREEN));
+        powerline.close_left_buffer();
+
+        let (right, left) = ('\u{e0b0}', '\u{e0b2}');
+        assert_eq!(
+            separators(&powerline.left_buffer),
+            [
+                // coloured → clear: the arrow in the coloured background.
+                (right, Some(BLUE), None),
+                // clear → clear: the outline arrow in the last text colour.
+                ('\u{e0b1}', Some(GREEN), None),
+                // clear → coloured: the coloured segment opens with a cap.
+                (left, Some(BLUE), None),
+                (right, Some(BLUE), None),
+                // A clear last segment ends in a blank cell.
+                (' ', None, None),
+            ]
+        );
+        // Text keeps its own colours, on the terminal's background when clear.
+        let drawn = drawn_colors(&powerline.left_buffer);
+        let text = |c| drawn.iter().find(|cell| cell.0 == c).copied();
+        assert_eq!(text('a'), Some(('a', Some(15), Some(BLUE))));
+        assert_eq!(text('b'), Some(('b', Some(GREEN), None)));
+        assert_eq!(text('c'), Some(('c', Some(YELLOW), None)));
+        assert_eq!(text('d'), Some(('d', Some(15), Some(BLUE))));
+    }
+
+    #[test]
+    fn right_separators_next_to_the_terminal_background() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.start_right();
+        powerline.add_segment("a", clear(GREEN));
+        powerline.add_segment("b", coloured());
+        powerline.add_segment("c", clear(YELLOW));
+        powerline.add_segment("d", clear(GREEN));
+        powerline.add_padding(1);
+        powerline.add_segment("e", coloured());
+        powerline.add_segment("f", clear(GREEN));
+        powerline.add_padding(1);
+
+        let (right, left) = ('\u{e0b0}', '\u{e0b2}');
+        assert_eq!(
+            separators(&powerline.right_buffer),
+            [
+                // A clear first segment opens with a blank cell.
+                (' ', None, None),
+                // clear → coloured: the usual opening arrow.
+                (left, Some(BLUE), None),
+                // coloured → clear: the coloured segment closes with a cap.
+                (right, Some(BLUE), None),
+                // clear → clear: the outline arrow in the next text colour.
+                ('\u{e0b3}', Some(GREEN), None),
+                // A clear segment before padding closes with a blank cell.
+                (' ', None, None),
+                (' ', None, None),
+                (left, Some(BLUE), None),
+                (right, Some(BLUE), None),
+                (' ', None, None),
+                (' ', None, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn padding_next_to_a_clear_segment_keeps_its_blank() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.add_segment("a", clear(GREEN));
+        powerline.add_padding(2);
+        powerline.add_segment("b", clear(GREEN));
+        powerline.add_padding(2);
+        powerline.add_segment("c", coloured());
+        powerline.close_left_buffer();
+        // Each clear segment closes with a blank cell, then the padding; the
+        // second also opens with one where a coloured segment has its cap.
+        let blank = (' ', None, None);
+        assert_eq!(
+            separators(&powerline.left_buffer),
+            [
+                blank,
+                blank,
+                blank,
+                blank,
+                blank,
+                blank,
+                blank,
+                ('\u{e0b2}', Some(BLUE), None),
+                ('\u{e0b0}', Some(BLUE), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn round_separators_use_their_outline_glyphs() {
+        let _ = SHELL.set(Shell::Bare);
+        let mut powerline = Powerline::new();
+        powerline.set_separator(Separator::Round);
+        powerline.add_segment("a", clear(GREEN));
+        powerline.add_segment("b", clear(GREEN));
+        powerline.start_right();
+        powerline.add_segment("c", clear(GREEN));
+        powerline.add_segment("d", clear(YELLOW));
+        let thin: Vec<char> = separators(&powerline.left_buffer)
+            .into_iter()
+            .chain(separators(&powerline.right_buffer))
+            .map(|cell| cell.0)
+            .filter(|c| *c != ' ')
+            .collect();
+        assert_eq!(thin, ['\u{e0b5}', '\u{e0b7}']);
+    }
+
+    #[test]
+    fn clear_segments_take_as_many_columns_as_coloured_ones() {
+        let _ = SHELL.set(Shell::Bare);
+        for separator in [Separator::Chevron, Separator::Round, Separator::None] {
+            let render = |styles: &[Style]| {
+                let mut powerline = Powerline::new();
+                powerline.set_separator(separator);
+                for (i, style) in styles.iter().enumerate() {
+                    if i == 2 {
+                        powerline.add_padding(1);
+                    }
+                    powerline.add_segment("x", style.clone());
+                }
+                powerline.close_left_buffer();
+                powerline.start_right();
+                for style in styles {
+                    powerline.add_segment("y", style.clone());
+                }
+                powerline.add_padding(1);
+                let printed = |buffer: &str| drawn_colors(buffer).len();
+                (
+                    powerline.left_columns,
+                    powerline.right_columns,
+                    printed(&powerline.left_buffer),
+                    printed(&powerline.right_buffer),
+                )
+            };
+            let all = [coloured(), coloured(), coloured(), coloured()];
+            let (left, right, left_printed, right_printed) = render(&all);
+            // The counts match what is printed, however the colours mix.
+            for styles in [
+                [clear(GREEN), clear(GREEN), clear(GREEN), clear(GREEN)],
+                [coloured(), clear(GREEN), coloured(), clear(GREEN)],
+                [clear(GREEN), coloured(), clear(GREEN), coloured()],
+            ] {
+                assert_eq!(
+                    render(&styles),
+                    (left, right, left_printed, right_printed),
+                    "{separator:?}"
+                );
+            }
         }
     }
 

@@ -1,0 +1,16 @@
+{
+  "defaults": { "fg": 250, "bg": "none" },
+  "modules": {
+    "cwd": { "path_fg": 117 },
+    "git": {
+      "dirty_bg": 61,
+      "dirty_fg": 255,
+      "notstaged_bg": 97,
+      "notstaged_fg": 255,
+      "remote_bg": 238,
+      "remote_fg": 250
+    },
+    "cargo": { "fg": 216 },
+    "cmd": { "passed_fg": 81 }
+  }
+}

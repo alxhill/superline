@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use serde_json::{Map, Value};
 
-use crate::colors::{TextAttrs, NAMED_COLORS};
+use crate::colors::{ColorCode, TextAttrs, NAMED_COLORS, NONE_NAME};
 use crate::themes::{color_code, infer_theme_property_kind, validate_theme, ThemePropertyKind};
 use crate::themes::{text_attribute_color, text_attribute_key, TEXT_ATTRIBUTES};
 
@@ -114,8 +114,9 @@ fn defaults_props() -> Vec<PropSpec> {
             key: key.into(),
             kind: PropKind::Color,
             help: format!(
-                "Default {} for anything a module does not set. Required.",
-                if key == "fg" {
+                "Default {what} for anything a module does not set. Required. \
+                 `none` uses the terminal's own {what}.",
+                what = if key == "fg" {
                     "text colour"
                 } else {
                     "background"
@@ -383,7 +384,7 @@ impl ThemeDoc {
         entry: &ThemeEntry,
         spec: &PropSpec,
         value: Option<&Value>,
-    ) -> Option<u8> {
+    ) -> Option<ColorCode> {
         if let Some(value) = value {
             return color_code(value).or_else(|| value.as_array()?.first().and_then(color_code));
         }
@@ -398,13 +399,13 @@ impl ThemeDoc {
         self.default_color(default)
     }
 
-    pub fn default_color(&self, key: &str) -> Option<u8> {
+    pub fn default_color(&self, key: &str) -> Option<ColorCode> {
         self.root.get("defaults")?.get(key).and_then(color_code)
     }
 
     /// Colours to draw a module's name in: its first foreground and
     /// background properties, as the prompt would.
-    pub fn swatch(&self, entry: &ThemeEntry) -> (Option<u8>, Option<u8>) {
+    pub fn swatch(&self, entry: &ThemeEntry) -> (Option<ColorCode>, Option<ColorCode>) {
         let props = self.props(entry);
         let pick = |suffix: &str| {
             props
@@ -455,8 +456,8 @@ impl ThemeDoc {
 /// See [`ThemeDoc::text_sample`].
 #[derive(Debug, PartialEq)]
 pub struct TextSample {
-    pub fg: Option<u8>,
-    pub bg: Option<u8>,
+    pub fg: Option<ColorCode>,
+    pub bg: Option<ColorCode>,
     pub attrs: TextAttrs,
 }
 
@@ -473,9 +474,11 @@ pub fn palette(theme: &Value, max: usize) -> Vec<u8> {
             if key != "bg" && !key.ends_with("_bg") && !key.ends_with("colors") {
                 continue;
             }
+            // The terminal's own colour has no swatch to show.
+            let palette_code = |value: &Value| color_code(value)?.palette();
             let codes = match value {
-                Value::Array(items) => items.iter().filter_map(color_code).collect(),
-                value => color_code(value).into_iter().collect::<Vec<_>>(),
+                Value::Array(items) => items.iter().filter_map(palette_code).collect(),
+                value => palette_code(value).into_iter().collect::<Vec<_>>(),
             };
             for code in codes {
                 if !colors.contains(&code) {
@@ -489,14 +492,15 @@ pub fn palette(theme: &Value, max: usize) -> Vec<u8> {
             theme
                 .get("defaults")
                 .and_then(|d| d.get("bg"))
-                .and_then(color_code),
+                .and_then(color_code)
+                .and_then(ColorCode::palette),
         );
     }
     colors.truncate(max);
     colors
 }
 
-/// Parses a colour typed as a name or a 0-255 code.
+/// Parses a colour typed as a name, a 0-255 code or `none`.
 pub fn parse_color(text: &str) -> Result<Value, String> {
     let text = text.trim();
     if let Ok(code) = text.parse::<u8>() {
@@ -506,7 +510,7 @@ pub fn parse_color(text: &str) -> Result<Value, String> {
         return Ok(Value::from(text));
     }
     Err(format!(
-        "{text:?} is not a colour name or a code from 0 to 255"
+        "{text:?} is not a colour name, a code from 0 to 255 or {NONE_NAME}"
     ))
 }
 
@@ -533,20 +537,39 @@ pub fn parse_color_list(text: &str) -> Result<Value, String> {
 }
 
 /// How a colour value is written back: as a name when the value it replaces
-/// was a name and this code has one, otherwise as a number.
-pub fn color_value(code: u8, prefer_name: bool) -> Value {
+/// was a name and this code has one, otherwise as a number. The terminal's
+/// own colour is always `"none"`.
+pub fn color_value(code: ColorCode, prefer_name: bool) -> Value {
+    let ColorCode::Palette(number) = code else {
+        return Value::from(NONE_NAME);
+    };
     if prefer_name {
-        if let Some((name, _)) = NAMED_COLORS.iter().find(|(_, color)| color.to_u8() == code) {
+        if let Some((name, _)) = NAMED_COLORS.iter().find(|(_, color)| color.code() == code) {
             return Value::from(*name);
         }
     }
-    Value::from(code)
+    Value::from(number)
 }
 
-pub fn color_names(code: u8) -> Vec<&'static str> {
+/// The palette code next to `code`, up or down and wrapping around. From the
+/// terminal's own colour (or none at all), the end of the palette it moves
+/// towards.
+pub fn nudge(code: Option<ColorCode>, up: bool) -> u8 {
+    match code.and_then(ColorCode::palette) {
+        Some(code) if up => code.wrapping_add(1),
+        Some(code) => code.wrapping_sub(1),
+        None if up => 0,
+        None => 255,
+    }
+}
+
+pub fn color_names(code: ColorCode) -> Vec<&'static str> {
+    if code == ColorCode::Terminal {
+        return vec![NONE_NAME];
+    }
     NAMED_COLORS
         .iter()
-        .filter(|(_, color)| color.to_u8() == code)
+        .filter(|(_, color)| color.code() == code)
         .map(|(name, _)| *name)
         .collect()
 }
@@ -683,8 +706,8 @@ mod tests {
 
         // Every switch of a colour samples all of them together.
         let notstaged = TextSample {
-            fg: Some(229),
-            bg: Some(166),
+            fg: Some(ColorCode::Palette(229)),
+            bg: Some(ColorCode::Palette(166)),
             attrs: attrs(true, true, false),
         };
         assert_eq!(sample("git", "notstaged_bold").as_ref(), Some(&notstaged));
@@ -692,8 +715,8 @@ mod tests {
         assert_eq!(
             sample("readonly", "italic"),
             Some(TextSample {
-                fg: Some(229),
-                bg: Some(124),
+                fg: Some(ColorCode::Palette(229)),
+                bg: Some(ColorCode::Palette(124)),
                 attrs: TextAttrs::NONE,
             })
         );
@@ -701,18 +724,21 @@ mod tests {
         assert_eq!(
             sample("pr", "status_success_bold"),
             Some(TextSample {
-                fg: Some(142),
-                bg: Some(239),
+                fg: Some(ColorCode::Palette(142)),
+                bg: Some(ColorCode::Palette(239)),
                 attrs: attrs(false, false, true),
             })
         );
-        assert_eq!(sample("cwd", "path_bold").unwrap().bg, Some(166));
+        assert_eq!(
+            sample("cwd", "path_bold").unwrap().bg,
+            Some(ColorCode::Palette(166))
+        );
         // Unset colours fall back to the defaults.
         assert_eq!(
             sample("git", "untracked_bold"),
             Some(TextSample {
-                fg: Some(15),
-                bg: Some(0),
+                fg: Some(ColorCode::Palette(15)),
+                bg: Some(ColorCode::Palette(0)),
                 attrs: TextAttrs::NONE,
             })
         );
@@ -819,9 +845,15 @@ mod tests {
         let git = ThemeEntry::Module("git".into());
         let props = doc.props(&git);
         let (spec, value) = props.iter().find(|(s, _)| s.key == "clean_bg").unwrap();
-        assert_eq!(doc.resolve(&git, spec, value.as_ref()), Some(0));
+        assert_eq!(
+            doc.resolve(&git, spec, value.as_ref()),
+            Some(ColorCode::Palette(0))
+        );
         let (spec, value) = props.iter().find(|(s, _)| s.key == "clean_fg").unwrap();
-        assert_eq!(doc.resolve(&git, spec, value.as_ref()), Some(223));
+        assert_eq!(
+            doc.resolve(&git, spec, value.as_ref()),
+            Some(ColorCode::Palette(223))
+        );
     }
 
     #[test]
@@ -835,8 +867,39 @@ mod tests {
             json!(["red", 166, 72])
         );
         assert!(parse_color_list(" , ").is_err());
-        assert_eq!(color_value(4, true), json!("blue"));
-        assert_eq!(color_value(4, false), json!(4));
-        assert_eq!(color_value(99, true), json!(99));
+        assert_eq!(color_value(ColorCode::Palette(4), true), json!("blue"));
+        assert_eq!(color_value(ColorCode::Palette(4), false), json!(4));
+        assert_eq!(color_value(ColorCode::Palette(99), true), json!(99));
+    }
+
+    #[test]
+    fn none_is_typed_picked_and_resolved_as_the_terminals_colour() {
+        assert_eq!(parse_color(" none ").unwrap(), json!("none"));
+        assert_eq!(parse_color_list("none, 31").unwrap(), json!(["none", 31]));
+        assert_eq!(color_value(ColorCode::Terminal, true), json!("none"));
+        assert_eq!(color_value(ColorCode::Terminal, false), json!("none"));
+        assert_eq!(color_names(ColorCode::Terminal), ["none"]);
+        assert!(!color_names(ColorCode::Palette(4)).contains(&"none"));
+
+        let mut doc =
+            ThemeDoc::load(r#"{ "defaults": { "fg": "green", "bg": "none" }, "modules": {} }"#)
+                .unwrap();
+        let git = ThemeEntry::Module("git".into());
+        doc.set(&git, "dirty_bg", Some(json!("none"))).unwrap();
+        let props = doc.props(&git);
+        for key in ["clean_bg", "dirty_bg"] {
+            let (spec, value) = props.iter().find(|(s, _)| s.key == key).unwrap();
+            assert_eq!(
+                doc.resolve(&git, spec, value.as_ref()),
+                Some(ColorCode::Terminal),
+                "{key}"
+            );
+        }
+        assert_eq!(
+            doc.swatch(&ThemeEntry::Defaults),
+            (Some(ColorCode::Palette(2)), Some(ColorCode::Terminal))
+        );
+        // The swatch strip only shows palette colours.
+        assert_eq!(palette(doc.root(), 8), Vec::<u8>::new());
     }
 }

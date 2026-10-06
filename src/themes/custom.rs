@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::colors::{Color, TextAttrs};
+use crate::colors::{Color, ColorCode, TextAttrs};
 use crate::modules::{
     BatteryScheme, CargoScheme, ClaudeCodeScheme, CmdScheme, CwdScheme, DiffScheme,
     ErrorMessageScheme, ExitCodeScheme, GitScheme, HostScheme, JavaScheme, JobsScheme,
@@ -753,9 +753,9 @@ pub(crate) fn validate_theme(value: &Value) -> Result<(), String> {
     theme.validate()
 }
 
-/// The colour code a theme colour value (a name or a number) stands for.
-pub(crate) fn color_code(value: &Value) -> Option<u8> {
-    color_from_value(value).map(Color::to_u8)
+/// The colour a theme colour value (a name, a number or `"none"`) stands for.
+pub(crate) fn color_code(value: &Value) -> Option<ColorCode> {
+    color_from_value(value).map(Color::code)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -822,7 +822,7 @@ pub(crate) fn infer_theme_property_kind(property: &str) -> Option<ThemePropertyK
 
 fn validate_color_value(path: &str, value: &Value) -> Result<(), String> {
     let color = serde_json::from_value::<ColorsJson>(value.to_owned())
-        .map_err(|_| format!("expected color name or 0-255 color code at {path}"))?;
+        .map_err(|_| format!("expected color name, 0-255 color code or \"none\" at {path}"))?;
     validate_color_json(path, &color)
 }
 
@@ -961,6 +961,48 @@ mod tests {
 
     fn theme(modules: Value) -> Value {
         serde_json::json!({ "defaults": { "fg": 15, "bg": 0 }, "modules": modules })
+    }
+
+    #[test]
+    fn none_is_a_colour_anywhere_a_colour_goes() {
+        let file = serde_json::json!({
+            "defaults": { "fg": "green", "bg": "none" },
+            "modules": {
+                "git": { "clean_bg": "none", "dirty_fg": "none" },
+                "cwd": { "bg_colors": ["none", 31, "blue"] },
+            }
+        });
+        assert_eq!(validate_theme(&file), Ok(()));
+        assert_eq!(color_code(&Value::from("none")), Some(ColorCode::Terminal));
+        assert_eq!(color_code(&Value::from(31)), Some(ColorCode::Palette(31)));
+
+        let theme: CustomThemeImpl = serde_json::from_value(file).unwrap();
+        let colors: Vec<_> = theme.modules["cwd"]["bg_colors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| color_from_value(v).map(Color::code))
+            .collect();
+        assert_eq!(
+            colors,
+            [
+                Some(ColorCode::Terminal),
+                Some(ColorCode::Palette(31)),
+                Some(ColorCode::Palette(4))
+            ]
+        );
+
+        let error = validate_theme(&theme_json("clean_bg", "nope")).unwrap_err();
+        assert_eq!(error, "unknown color 'nope' at modules.git.clean_bg");
+        let error = validate_theme(&theme_json("clean_bg", true)).unwrap_err();
+        assert_eq!(
+            error,
+            "expected color name, 0-255 color code or \"none\" at modules.git.clean_bg"
+        );
+    }
+
+    fn theme_json(property: &str, value: impl Into<Value>) -> Value {
+        theme(serde_json::json!({ "git": { property: value.into() } }))
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use crate::colors::{Color, TextAttrs};
+use crate::colors::{Color, ColorCode, TextAttrs};
 
 pub static SHELL: OnceLock<Shell> = OnceLock::new();
 
@@ -11,14 +11,17 @@ pub enum Shell {
     Zsh,
 }
 
+/// A background colour. The terminal's own colour prints as `49`, so the
+/// terminal's background (transparent or not) shows through.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct BgColor(u8);
+pub struct BgColor(ColorCode);
 
 /// A text colour and the attributes drawn with it. Printing it turns both on;
-/// [`FgColor::attrs_off`] turns the attributes back off.
+/// [`FgColor::attrs_off`] turns the attributes back off. The terminal's own
+/// colour prints as `39`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct FgColor {
-    code: u8,
+    code: ColorCode,
     attrs: TextAttrs,
 }
 
@@ -42,12 +45,29 @@ impl FgColor {
     pub fn attrs_off(self) -> AttrsOff {
         AttrsOff(self.attrs)
     }
+
+    /// The same colour without its text attributes, e.g. for a separator
+    /// drawn in a segment's text colour.
+    pub fn plain(self) -> FgColor {
+        FgColor {
+            attrs: TextAttrs::NONE,
+            ..self
+        }
+    }
+
+    /// The SGR parameters that select this colour, without the attributes.
+    fn params(self) -> String {
+        match self.code {
+            ColorCode::Palette(code) => format!("38;5;{code}"),
+            ColorCode::Terminal => "39".to_string(),
+        }
+    }
 }
 
 impl From<Color> for FgColor {
     fn from(c: Color) -> Self {
         FgColor {
-            code: c.to_u8(),
+            code: c.code(),
             attrs: c.attrs(),
         }
     }
@@ -60,31 +80,45 @@ impl BgColor {
             attrs: TextAttrs::NONE,
         }
     }
+
+    /// Whether this is the terminal's own background (a theme's `"none"`),
+    /// which has no colour to draw a separator in.
+    pub fn is_none(self) -> bool {
+        self.0 == ColorCode::Terminal
+    }
+
+    /// The SGR parameters that select this colour.
+    fn params(self) -> String {
+        match self.0 {
+            ColorCode::Palette(code) => format!("48;5;{code}"),
+            ColorCode::Terminal => "49".to_string(),
+        }
+    }
 }
 
 impl From<Color> for BgColor {
     fn from(c: Color) -> Self {
-        BgColor(c.to_u8())
+        BgColor(c.code())
     }
 }
 
 impl std::fmt::Display for BgColor {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match SHELL.get().expect("shell not specified!") {
-            Shell::Bash => write!(f, r#"\[\e[48;5;{}m\]"#, self.0),
-            Shell::Bare => write!(f, "\x1b[48;5;{}m", self.0),
-            Shell::Zsh => write!(f, "%{{\x1b[48;5;{}m%}}", self.0),
-        }
+        write_sgr(
+            f,
+            SHELL.get().expect("shell not specified!"),
+            &self.params(),
+        )
     }
 }
 
 impl std::fmt::Display for FgColor {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match SHELL.get().expect("shell not specified!") {
-            Shell::Bash => write!(f, r#"\[\e[38;5;{}m\]"#, self.code),
-            Shell::Bare => write!(f, "\x1b[38;5;{}m", self.code),
-            Shell::Zsh => write!(f, "%{{\x1b[38;5;{}m%}}", self.code),
-        }?;
+        write_sgr(
+            f,
+            SHELL.get().expect("shell not specified!"),
+            &self.params(),
+        )?;
         write!(f, "{}", AttrsOn(self.attrs))
     }
 }
@@ -323,6 +357,36 @@ mod tests {
             assert_eq!(Sgr(&shell, TextAttrs::NONE.on_codes()).to_string(), "");
             assert_eq!(Sgr(&shell, TextAttrs::NONE.off_codes()).to_string(), "");
         }
+    }
+
+    #[test]
+    fn colours_select_a_palette_code_or_the_terminals_default() {
+        assert_eq!(FgColor::from(Color(31)).params(), "38;5;31");
+        assert_eq!(BgColor::from(Color(31)).params(), "48;5;31");
+        assert_eq!(FgColor::from(Color::NONE).params(), "39");
+        assert_eq!(BgColor::from(Color::NONE).params(), "49");
+        assert!(BgColor::from(Color::NONE).is_none());
+        assert!(!BgColor::from(Color(0)).is_none());
+        assert_eq!(BgColor::from(Color::NONE).transpose().params(), "39");
+    }
+
+    #[test]
+    fn default_colour_escapes_are_wrapped_for_each_shell() {
+        let bg = BgColor::from(Color::NONE).params();
+        let fg = FgColor::from(Color::NONE).params();
+        assert_eq!(Sgr(&Shell::Bash, bg.clone()).to_string(), r"\[\e[49m\]");
+        assert_eq!(Sgr(&Shell::Bash, fg.clone()).to_string(), r"\[\e[39m\]");
+        assert_eq!(Sgr(&Shell::Zsh, bg.clone()).to_string(), "%{\x1b[49m%}");
+        assert_eq!(Sgr(&Shell::Zsh, fg.clone()).to_string(), "%{\x1b[39m%}");
+        assert_eq!(Sgr(&Shell::Bare, bg).to_string(), "\x1b[49m");
+        assert_eq!(Sgr(&Shell::Bare, fg).to_string(), "\x1b[39m");
+    }
+
+    #[test]
+    fn plain_drops_only_the_attributes() {
+        let bold = FgColor::from(Color(31).with_attrs(BOLD_UNDERLINE));
+        assert!(bold.plain() == FgColor::from(Color(31)));
+        assert!(bold.plain().attrs_off().0.is_empty());
     }
 
     #[test]

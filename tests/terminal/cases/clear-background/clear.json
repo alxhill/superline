@@ -1,0 +1,7 @@
+{
+  "defaults": { "fg": "light_green", "bg": "none" },
+  "modules": {
+    "shell": { "fg": 15, "bg": 31 },
+    "cmd": { "passed_fg": 15, "passed_bg": 31 }
+  }
+}

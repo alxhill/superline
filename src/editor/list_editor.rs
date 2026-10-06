@@ -13,9 +13,10 @@ use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
 
 use super::theme::{
-    color_names, color_value, edit_text, parse_color, PropKind, PropSpec, ThemeEntry,
+    color_names, color_value, edit_text, nudge, parse_color, PropKind, PropSpec, ThemeEntry,
 };
 use super::{panel, App, InputPurpose, Mode};
+use crate::colors::ColorCode;
 use crate::themes::color_code;
 
 /// Where a new or changed entry goes.
@@ -184,10 +185,13 @@ struct Current {
 /// Columns of a colour's swatch.
 const SWATCH: usize = 4;
 
-fn swatch(code: Option<u8>) -> Span<'static> {
+fn swatch(code: Option<ColorCode>) -> Span<'static> {
     let blank = " ".repeat(SWATCH);
     match code {
-        Some(code) => Span::styled(blank, Style::new().bg(Color::Indexed(code))),
+        Some(ColorCode::Palette(code)) => {
+            Span::styled(blank, Style::new().bg(Color::Indexed(code)))
+        }
+        Some(ColorCode::Terminal) => Span::raw("-".repeat(SWATCH)).dark_gray(),
         None => Span::raw(blank),
     }
 }
@@ -197,7 +201,8 @@ fn color_spans(item: &Value, fallback: bool) -> Vec<Span<'static>> {
     let code = color_code(item);
     let text = Span::raw(edit_text(item));
     let detail = match (item, code) {
-        (Value::String(_), Some(code)) => code.to_string(),
+        (Value::String(_), Some(ColorCode::Palette(code))) => code.to_string(),
+        (Value::String(_), Some(ColorCode::Terminal)) => "the terminal's own colour".into(),
         (_, Some(code)) => color_names(code).join(", "),
         _ => String::new(),
     };
@@ -281,7 +286,9 @@ impl App {
             pending: Some(slot),
         });
         self.mode = Mode::ColorPicker {
-            code: selected.and_then(color_code).unwrap_or(0),
+            code: selected
+                .and_then(color_code)
+                .unwrap_or(ColorCode::Palette(0)),
             prefer_name: selected.is_some_and(Value::is_string),
         };
         self.preview_stale = true;
@@ -341,12 +348,8 @@ impl App {
             }
             KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') => {
                 if let Some(code) = list.selected().and_then(color_code) {
-                    let next = if matches!(key.code, KeyCode::Right | KeyCode::Char('l')) {
-                        code.wrapping_add(1)
-                    } else {
-                        code.wrapping_sub(1)
-                    };
-                    list.put(list.here(), Value::from(next));
+                    let up = matches!(key.code, KeyCode::Right | KeyCode::Char('l'));
+                    list.put(list.here(), Value::from(nudge(Some(code), up)));
                 }
             }
             KeyCode::Char('d') | KeyCode::Char('x') | KeyCode::Delete | KeyCode::Backspace => {
@@ -381,7 +384,7 @@ impl App {
 
     /// Puts the picker's colour in the list entry it was opened for. Picking
     /// an entry's own colour again keeps it as written.
-    pub(super) fn pick_list_color(&mut self, code: u8, prefer_name: bool) {
+    pub(super) fn pick_list_color(&mut self, code: ColorCode, prefer_name: bool) {
         let Some(Current {
             list,
             pending: Some(slot),
@@ -427,11 +430,11 @@ impl App {
     }
 
     /// The list with the picker's colour in its pending slot, for the preview.
-    pub(super) fn list_preview(&self, code: u8) -> Option<Value> {
+    pub(super) fn list_preview(&self, code: ColorCode) -> Option<Value> {
         let Current {
             mut list, pending, ..
         } = self.color_list()?;
-        list.put(pending?, Value::from(code));
+        list.put(pending?, color_value(code, false));
         Some(Value::Array(list.into_items()))
     }
 
@@ -489,7 +492,7 @@ impl App {
         let mut typing = None;
         match (&self.mode, pending) {
             (Mode::ColorPicker { code, .. }, Some(slot)) => {
-                rows.put(slot, color_spans(&Value::from(*code), false))
+                rows.put(slot, color_spans(&color_value(*code, false), false))
             }
             (
                 Mode::Input {
@@ -679,7 +682,7 @@ mod tests {
         assert!(matches!(
             app.mode,
             Mode::ColorPicker {
-                code: 130,
+                code: ColorCode::Palette(130),
                 prefer_name: true
             }
         ));

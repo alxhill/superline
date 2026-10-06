@@ -28,6 +28,11 @@ EXTRA = {
         "json": json.loads((HERE / "configs/ocean-theme.json").read_text()),
         "image": "img/theme-custom.png",
     },
+    "theme/clear": {
+        "label": "theme.json",
+        "json": json.loads((HERE / "configs/clear-theme.json").read_text()),
+        "image": "img/theme-clear.png",
+    },
 }
 
 
