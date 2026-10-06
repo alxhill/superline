@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0](https://github.com/alxhill/superline/compare/v0.29.0...v0.30.0) - 2026-10-06
+
+### Added
+
+- show the PR's review state as an icon next to the CI dot ([#215](https://github.com/alxhill/superline/pull/215))
+- split the git and pr widgets into git_remote and pr_checks ([#216](https://github.com/alxhill/superline/pull/216))
+- hover text listing CI checks on the pr status dot ([#214](https://github.com/alxhill/superline/pull/214))
+- support "none" as a theme colour for the terminal's own background ([#217](https://github.com/alxhill/superline/pull/217))
+
+### Fixed
+
+- read macOS hostname from LocalHostName instead of the network-derived kernel hostname ([#212](https://github.com/alxhill/superline/pull/212))
+
+### Other
+
+- pin ffmpeg to a tagged GyanD release ([#218](https://github.com/alxhill/superline/pull/218))
+
 ## [0.29.0](https://github.com/alxhill/superline/compare/v0.28.0...v0.29.0) - 2026-10-06
 
 ### Added
