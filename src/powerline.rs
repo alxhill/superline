@@ -628,7 +628,7 @@ impl Powerline {
                     Pr::<T>::new(*status, *hover, *review)
                         .with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
                 ),
-                LineSegment::PrChecks => self.add_module(PrChecks::<T>::new()),
+                LineSegment::PrChecks { review } => self.add_module(PrChecks::<T>::new(*review)),
                 LineSegment::PrDiff => self.add_module(PrDiff::<T>::new()),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
@@ -1590,15 +1590,15 @@ mod tests {
         let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
         let markers = [
             Marker::new("●", Color::from_u8(2)),
-            Marker::new("\u{eab2}", Color::from_u8(10)),
+            Marker::new("\u{f0008}", Color::from_u8(10)),
         ];
         let mut powerline = flush_powerline();
         powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, markers);
 
-        assert_eq!(visible(&powerline.left_buffer), " #12 ● \u{eab2} ");
+        assert_eq!(visible(&powerline.left_buffer), " #12 ● \u{f0008} ");
         assert_eq!(powerline.left_columns, 2 + 3 + 2 + 2);
         assert!(
-            powerline.left_buffer.contains("\x1b[38;5;10m\u{eab2}"),
+            powerline.left_buffer.contains("\x1b[38;5;10m\u{f0008}"),
             "{:?}",
             powerline.left_buffer
         );

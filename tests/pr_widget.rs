@@ -112,25 +112,26 @@ fn pr_diff_shows_the_prs_line_counts() {
     let _ = fs::remove_dir_all(&root);
 }
 
-const APPROVED_ICON: &str = "\u{eab2}";
-const CHANGES_REQUESTED_ICON: &str = "\u{eb43}";
+const APPROVED_ICON: &str = "\u{f0008}";
+const CHANGES_REQUESTED_ICON: &str = "\u{f0015}";
 const REVIEW_ICONS: [&str; 4] = [
     APPROVED_ICON,
     CHANGES_REQUESTED_ICON,
-    "\u{ea70}",
-    "\u{ea6b}",
+    "\u{f0b56}",
+    "\u{f017b}",
 ];
 
 #[test]
 fn pr_shows_the_review_state_after_the_ci_dot() {
     let root = scratch_on("review", "feat/badges");
-    let prompt = render_with(&root, json!(["pr"]), "#150");
+    let prompt = render_with(&root, json!([{ "pr": { "review": true } }]), "#150");
     let after_number = &prompt[prompt.find("#150").unwrap()..];
     let dot = after_number.find('●').expect("CI dot");
     let check = after_number.find(APPROVED_ICON).expect("approved icon");
     assert!(dot < check, "prompt: {prompt:?}");
 
-    let hidden = render_with(&root, json!([{ "pr": { "review": false } }]), "#150");
+    // Off by default.
+    let hidden = render_with(&root, json!(["pr"]), "#150");
     assert!(hidden.contains('●'), "prompt: {hidden:?}");
     assert!(!hidden.contains(APPROVED_ICON), "prompt: {hidden:?}");
     let _ = fs::remove_dir_all(&root);
@@ -139,7 +140,7 @@ fn pr_shows_the_review_state_after_the_ci_dot() {
 #[test]
 fn pr_shows_requested_changes() {
     let root = scratch_on("changes", "fix/flaky-test");
-    let prompt = render_with(&root, json!(["pr"]), "#147");
+    let prompt = render_with(&root, json!([{ "pr": { "review": true } }]), "#147");
     assert!(
         prompt.contains(CHANGES_REQUESTED_ICON),
         "prompt: {prompt:?}"
@@ -148,9 +149,29 @@ fn pr_shows_requested_changes() {
 }
 
 #[test]
+fn pr_checks_can_show_the_review_state_too() {
+    let root = scratch_on("checks-review", "feat/badges");
+    let segment = json!([{ "pr": { "status": false } }, { "pr_checks": { "review": true } }]);
+    let prompt = render_with(&root, segment, "#150");
+    let dot = prompt.find('●').expect("CI dot");
+    let check = prompt.find(APPROVED_ICON).expect("approved icon");
+    assert!(dot < check, "prompt: {prompt:?}");
+
+    // Off by default.
+    let plain = render_with(
+        &root,
+        json!([{ "pr": { "status": false } }, "pr_checks"]),
+        "#150",
+    );
+    assert!(plain.contains('●'), "prompt: {plain:?}");
+    assert!(!plain.contains(APPROVED_ICON), "prompt: {plain:?}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn pr_without_review_activity_shows_no_review_icon() {
     let root = scratch("no-review");
-    let prompt = render_with_pr(&root, json!(["pr"]));
+    let prompt = render_with_pr(&root, json!([{ "pr": { "review": true } }]));
     for icon in REVIEW_ICONS {
         assert!(!prompt.contains(icon), "prompt: {prompt:?}");
     }
