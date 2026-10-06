@@ -544,10 +544,9 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
 /// Collapses GitHub's review data into the one state worth showing, by whose
 /// turn it is:
 ///
-/// - A review decision of approved or changes requested wins outright. Repos
-///   without required reviews have no decision, so there the latest reviews
-///   decide in the same way: any reviewer requesting changes blocks, otherwise
-///   any approval approves.
+/// - Branches that don't require a review have no review decision, so there's
+///   nothing to show.
+/// - A review decision of approved or changes requested wins outright.
 /// - Otherwise outstanding review requests mean it's waiting on reviewers
 ///   (including a re-request after addressing comments).
 /// - Otherwise any review at all (comments, or approvals short of what a
@@ -556,6 +555,7 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
 ///   branch requires a review, as nobody has been asked yet.
 fn review_status(decision: &str, requests: usize, reviews: &[GhReview]) -> Option<ReviewStatus> {
     match decision {
+        "" => return None,
         "APPROVED" => return Some(ReviewStatus::Approved),
         "CHANGES_REQUESTED" => return Some(ReviewStatus::ChangesRequested),
         _ => {}
@@ -569,15 +569,6 @@ fn review_status(decision: &str, requests: usize, reviews: &[GhReview]) -> Optio
             .map(|review| review.state.as_str())
             .filter(|state| matches!(*state, "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED"))
     };
-
-    if decision.is_empty() {
-        if states().any(|state| state == "CHANGES_REQUESTED") {
-            return Some(ReviewStatus::ChangesRequested);
-        }
-        if states().any(|state| state == "APPROVED") {
-            return Some(ReviewStatus::Approved);
-        }
-    }
 
     if requests > 0 {
         Some(ReviewStatus::Pending)
@@ -906,14 +897,11 @@ mod tests {
         let cases: &[(&str, usize, &[&str], Option<ReviewStatus>)] = &[
             // Nobody asked and nobody reviewed: nothing to show, even when the
             // branch requires a review.
-            ("", 0, &[], None),
             ("REVIEW_REQUIRED", 0, &[], None),
             // Asked, not answered yet.
             ("REVIEW_REQUIRED", 1, &[], Some(Pending)),
-            ("", 2, &[], Some(Pending)),
             // Answered with comments only: back to the author...
             ("REVIEW_REQUIRED", 0, &["COMMENTED"], Some(Commented)),
-            ("", 0, &["COMMENTED"], Some(Commented)),
             // ...until they re-request a review.
             ("REVIEW_REQUIRED", 1, &["COMMENTED"], Some(Pending)),
             // An approval short of what the branch requires is just a review.
@@ -927,18 +915,16 @@ mod tests {
                 &["CHANGES_REQUESTED"],
                 Some(ChangesRequested),
             ),
-            // Without required reviews the latest reviews decide, a request
-            // for changes blocking any approval.
-            ("", 1, &["APPROVED"], Some(Approved)),
-            (
-                "",
-                0,
-                &["APPROVED", "CHANGES_REQUESTED"],
-                Some(ChangesRequested),
-            ),
+            // Branches that don't require a review show nothing, whatever the
+            // reviews and requests.
+            ("", 0, &[], None),
+            ("", 2, &[], None),
+            ("", 0, &["COMMENTED"], None),
+            ("", 1, &["APPROVED"], None),
+            ("", 0, &["APPROVED", "CHANGES_REQUESTED"], None),
             // Dismissed reviews and unsubmitted drafts don't count.
-            ("", 0, &["DISMISSED", "PENDING"], None),
-            ("", 1, &["DISMISSED"], Some(Pending)),
+            ("REVIEW_REQUIRED", 0, &["DISMISSED", "PENDING"], None),
+            ("REVIEW_REQUIRED", 1, &["DISMISSED"], Some(Pending)),
         ];
         for (decision, requests, states, expected) in cases {
             assert_eq!(

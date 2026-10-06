@@ -474,9 +474,9 @@ number showing CI check status: green for success, red for failure, yellow for p
 
 With `review` on (off by default) an icon after that shows where the review stands, by whose turn it is: a person with
 a clock while requested reviews are outstanding, a speech bubble once reviewed with comments only, a red person with a
-cross when a reviewer asked for changes, and a green person with a check once approved. Nothing shows until someone has been asked to review. On
-branches without required reviews the latest review of each reviewer decides. Both markers are only shown while the PR
-is open or a draft. Their colors and glyphs are the theme's `pr.review_<state>_fg` and `pr.review_<state>_icon`, where
+cross when a reviewer asked for changes, and a green person with a check once approved. Nothing shows until someone
+has been asked to review, nor on branches that don't require a review. Both markers are only shown while the PR is open
+or a draft. Their colors and glyphs are the theme's `pr.review_<state>_fg` and `pr.review_<state>_icon`, where
 `<state>` is `pending`, `commented`, `changes_requested` or `approved`.
 
 **Hover text.** The dot carries an iTerm2 hidden annotation: hover over it to see each check by name, grouped by
