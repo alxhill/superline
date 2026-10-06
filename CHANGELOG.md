@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0](https://github.com/alxhill/superline/compare/v0.30.0...v0.31.0) - 2026-10-06
+
+### Added
+
+- review icon off by default with clearer glyphs, and in pr_checks too ([#220](https://github.com/alxhill/superline/pull/220))
+
 ## [0.30.0](https://github.com/alxhill/superline/compare/v0.29.0...v0.30.0) - 2026-10-06
 
 ### Added
