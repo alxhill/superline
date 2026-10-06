@@ -444,15 +444,27 @@
         }
       },
       {
+        "name": "review",
+        "label": "Approved, checks passing",
+        "fixture": "pr-approved",
+        "row": {
+          "left": [
+            "git",
+            "pr"
+          ]
+        }
+      },
+      {
         "name": "full",
-        "label": "All options: CI dot hidden",
-        "fixture": "pr",
+        "label": "All options: CI dot and review icon hidden",
+        "fixture": "pr-approved",
         "row": {
           "left": [
             "git",
             {
               "pr": {
-                "status": false
+                "status": false,
+                "review": false
               }
             }
           ]

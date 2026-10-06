@@ -31,7 +31,11 @@
       "closed_bg": 124,
       "status_success_fg": 40,
       "status_failure_fg": 161,
-      "status_pending_fg": 178
+      "status_pending_fg": 178,
+      "review_pending_fg": 250,
+      "review_commented_fg": 178,
+      "review_changes_requested_fg": 161,
+      "review_approved_fg": 40
     },
     "pr_diff": { "added_fg": 40, "removed_fg": 161, "bg": 236 },
     "java": { "bg": "light_grey" },

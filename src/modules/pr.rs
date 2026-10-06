@@ -24,6 +24,9 @@ pub struct Pr<S> {
     show_status: bool,
     /// Whether hovering over the dot in iTerm2 lists the checks by outcome.
     hover: bool,
+    /// Whether to append the review-state icon after the PR number (and the
+    /// CI dot, when that's shown too).
+    show_review: bool,
     /// The PR Claude Code passed to its status line, shown when the `gh`
     /// lookup has none.
     reported: Option<PrInfo>,
@@ -34,6 +37,10 @@ pub trait PrScheme: DefaultColors {
     const PR_ICON: &'static str = "\u{ea64}"; // nf-cod-git_pull_request
     const PR_STATUS_ICON: &'static str = "\u{25cf}"; // ● black circle
     const PR_DIFF_ICON: &'static str = "\u{eafd}"; // nf-cod-git_compare
+    const PR_REVIEW_PENDING_ICON: &'static str = "\u{ea70}"; // nf-cod-eye
+    const PR_REVIEW_COMMENTED_ICON: &'static str = "\u{ea6b}"; // nf-cod-comment
+    const PR_REVIEW_CHANGES_REQUESTED_ICON: &'static str = "\u{eb43}"; // nf-cod-request_changes
+    const PR_REVIEW_APPROVED_ICON: &'static str = "\u{eab2}"; // nf-cod-check
     const PR_DIFF_ADDED_FG: Color = colors::green();
     const PR_DIFF_REMOVED_FG: Color = colors::red();
 
@@ -78,6 +85,31 @@ pub trait PrScheme: DefaultColors {
         Self::PR_STATUS_ICON
     }
 
+    fn pr_review_pending_fg() -> Color {
+        Self::default_fg()
+    }
+    fn pr_review_commented_fg() -> Color {
+        Self::default_fg()
+    }
+    fn pr_review_changes_requested_fg() -> Color {
+        Self::default_fg()
+    }
+    fn pr_review_approved_fg() -> Color {
+        Self::default_fg()
+    }
+    fn pr_review_pending_icon() -> &'static str {
+        Self::PR_REVIEW_PENDING_ICON
+    }
+    fn pr_review_commented_icon() -> &'static str {
+        Self::PR_REVIEW_COMMENTED_ICON
+    }
+    fn pr_review_changes_requested_icon() -> &'static str {
+        Self::PR_REVIEW_CHANGES_REQUESTED_ICON
+    }
+    fn pr_review_approved_icon() -> &'static str {
+        Self::PR_REVIEW_APPROVED_ICON
+    }
+
     fn pr_diff_added_fg() -> Color {
         Self::PR_DIFF_ADDED_FG
     }
@@ -94,15 +126,16 @@ pub trait PrScheme: DefaultColors {
 
 impl<S: PrScheme> Default for Pr<S> {
     fn default() -> Self {
-        Self::new(true, true)
+        Self::new(true, true, true)
     }
 }
 
 impl<S: PrScheme> Pr<S> {
-    pub fn new(show_status: bool, hover: bool) -> Pr<S> {
+    pub fn new(show_status: bool, hover: bool, show_review: bool) -> Pr<S> {
         Pr {
             show_status,
             hover,
+            show_review,
             reported: None,
             scheme: PhantomData,
         }
@@ -125,7 +158,7 @@ pub enum PrState {
 
 impl PrState {
     /// Whether the PR is still in progress (open or draft, but not merged or
-    /// closed). Only these PRs show the CI status indicator.
+    /// closed). Only these PRs show the CI status and review indicators.
     fn is_open(self) -> bool {
         matches!(self, PrState::Open | PrState::Draft)
     }
@@ -163,6 +196,43 @@ impl CheckStatus {
     }
 }
 
+/// Where the PR's review stands, collapsed from GitHub's review decision, the
+/// latest review of each reviewer and the outstanding review requests.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewStatus {
+    /// Reviewers have been asked and haven't all answered yet - waiting on
+    /// them.
+    Pending,
+    /// Reviewed with comments but neither approved nor blocked - back to the
+    /// author.
+    Commented,
+    ChangesRequested,
+    Approved,
+}
+
+impl ReviewStatus {
+    /// The icon and its colour from the active scheme. Like the CI dot, it
+    /// shares the PR segment's background.
+    fn marker<S: PrScheme>(self) -> Marker<'static> {
+        match self {
+            ReviewStatus::Pending => {
+                Marker::new(S::pr_review_pending_icon(), S::pr_review_pending_fg())
+            }
+            ReviewStatus::Commented => {
+                Marker::new(S::pr_review_commented_icon(), S::pr_review_commented_fg())
+            }
+            ReviewStatus::ChangesRequested => Marker::new(
+                S::pr_review_changes_requested_icon(),
+                S::pr_review_changes_requested_fg(),
+            ),
+            ReviewStatus::Approved => {
+                Marker::new(S::pr_review_approved_icon(), S::pr_review_approved_fg())
+            }
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PrInfo {
     number: u64,
@@ -177,6 +247,10 @@ pub struct PrInfo {
     /// before this field existed and for the PR Claude Code reports.
     #[serde(default)]
     diff: Option<Diff>,
+    /// Where the review stands. `None` when nobody has been asked to review
+    /// or has reviewed yet, and for caches written before this field existed.
+    #[serde(default)]
+    review: Option<ReviewStatus>,
     /// Every check behind `checks`, by name, for the dot's hover text. Empty
     /// for caches written before this field existed and for the PR Claude
     /// Code reports.
@@ -199,7 +273,8 @@ pub struct Diff {
 
 impl PrInfo {
     /// Claude Code reports the review state rather than the CI checks, so no
-    /// status dot is shown for it.
+    /// status dot is shown for it. Its `pending` doesn't say whether anyone
+    /// was asked to review, so only a decided review shows an icon.
     fn from_claude_code(pr: &PullRequest) -> Option<PrInfo> {
         Some(PrInfo {
             number: pr.number?,
@@ -212,6 +287,11 @@ impl PrInfo {
             checks: None,
             diff: None,
             check_runs: Vec::new(),
+            review: match pr.review_state.as_deref() {
+                Some("approved") => Some(ReviewStatus::Approved),
+                Some("changes_requested") => Some(ReviewStatus::ChangesRequested),
+                _ => None,
+            },
         })
     }
 }
@@ -236,8 +316,9 @@ impl Source for PrLookup {
         hash_id(&(&self.repo_root, &self.branch))
     }
 
-    /// Always fetches the check status and diff too - rendering it is a display-time
-    /// choice, so the cache stays the same regardless of config.
+    /// Always fetches the check status, review state and diff too - rendering
+    /// them is a display-time choice, so the cache stays the same regardless
+    /// of config.
     fn fetch(&self) -> Option<Option<PrInfo>> {
         Some(fetch_pr(&self.branch, &self.repo_root))
     }
@@ -256,23 +337,36 @@ impl<S: PrScheme> Module for Pr<S> {
         let label = join_non_empty([S::pr_icon(), format!("#{}", pr.number).as_str()]);
         let (fg, bg) = pr.state.style::<S>();
 
-        // The CI status, when enabled and meaningful, renders as a coloured
-        // dot tucked into the same segment right after the PR number. It's
-        // only shown while a PR is still in progress - the checks are stale
-        // or irrelevant once a PR is merged or closed.
-        let marker = (self.show_status && pr.state.is_open())
-            .then(|| {
-                pr.checks
-                    .map(|status| Marker::new(S::pr_status_icon(), status.fg::<S>()))
-            })
-            .flatten()
-            .filter(|marker| !marker.glyph.is_empty());
-        let note = marker
-            .filter(|_| self.hover)
-            .and_then(|_| hover_note(&pr.check_runs));
-        let marker = marker.map(|marker| marker.with_note(note.as_deref()));
+        // In iTerm2, hovering over the CI dot lists the checks by outcome.
+        let note = self.hover.then(|| hover_note(&pr.check_runs)).flatten();
+        let markers = self.markers(&pr, note.as_deref());
+        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), markers);
+    }
+}
 
-        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
+impl<S: PrScheme> Pr<S> {
+    /// The CI status and review state, when enabled and meaningful, render as
+    /// coloured icons tucked into the same segment right after the PR number.
+    /// They're only shown while a PR is still in progress - both are stale or
+    /// irrelevant once a PR is merged or closed. A theme hides either by
+    /// setting its icon to `""`.
+    /// `status_note` is what hovering over the CI dot shows.
+    fn markers<'a>(&self, pr: &PrInfo, status_note: Option<&'a str>) -> Vec<Marker<'a>> {
+        if !pr.state.is_open() {
+            return Vec::new();
+        }
+        let status = pr.checks.filter(|_| self.show_status).map(|status| {
+            Marker::new(S::pr_status_icon(), status.fg::<S>()).with_note(status_note)
+        });
+        let review = pr
+            .review
+            .filter(|_| self.show_review)
+            .map(ReviewStatus::marker::<S>);
+        [status, review]
+            .into_iter()
+            .flatten()
+            .filter(|marker| !marker.glyph.is_empty())
+            .collect()
     }
 }
 
@@ -396,7 +490,8 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
             "view",
             branch,
             "--json",
-            "number,url,state,isDraft,statusCheckRollup,additions,deletions",
+            "number,url,state,isDraft,statusCheckRollup,additions,deletions,\
+             reviewDecision,reviewRequests,latestReviews",
         ])
         .output()
         .ok()?;
@@ -425,7 +520,59 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
             deletions: gh.deletions,
         }),
         check_runs,
+        review: review_status(
+            &gh.review_decision,
+            gh.review_requests.len(),
+            &gh.latest_reviews,
+        ),
     })
+}
+
+/// Collapses GitHub's review data into the one state worth showing, by whose
+/// turn it is:
+///
+/// - A review decision of approved or changes requested wins outright. Repos
+///   without required reviews have no decision, so there the latest reviews
+///   decide in the same way: any reviewer requesting changes blocks, otherwise
+///   any approval approves.
+/// - Otherwise outstanding review requests mean it's waiting on reviewers
+///   (including a re-request after addressing comments).
+/// - Otherwise any review at all (comments, or approvals short of what a
+///   protected branch requires) puts it back with the author.
+/// - With no requests and no reviews there's nothing to show, even when the
+///   branch requires a review, as nobody has been asked yet.
+fn review_status(decision: &str, requests: usize, reviews: &[GhReview]) -> Option<ReviewStatus> {
+    match decision {
+        "APPROVED" => return Some(ReviewStatus::Approved),
+        "CHANGES_REQUESTED" => return Some(ReviewStatus::ChangesRequested),
+        _ => {}
+    }
+
+    // Dismissed reviews and the viewer's own unsubmitted (pending) one don't
+    // count.
+    let states = || {
+        reviews
+            .iter()
+            .map(|review| review.state.as_str())
+            .filter(|state| matches!(*state, "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED"))
+    };
+
+    if decision.is_empty() {
+        if states().any(|state| state == "CHANGES_REQUESTED") {
+            return Some(ReviewStatus::ChangesRequested);
+        }
+        if states().any(|state| state == "APPROVED") {
+            return Some(ReviewStatus::Approved);
+        }
+    }
+
+    if requests > 0 {
+        Some(ReviewStatus::Pending)
+    } else if states().next().is_some() {
+        Some(ReviewStatus::Commented)
+    } else {
+        None
+    }
 }
 
 /// What hovering over the CI dot shows: how many checks failed, are still
@@ -580,6 +727,25 @@ struct GhPr {
     additions: u64,
     #[serde(default)]
     deletions: u64,
+    /// `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or empty when the
+    /// branch doesn't require reviews.
+    #[serde(rename = "reviewDecision", default)]
+    review_decision: String,
+    /// Users and teams asked to review who haven't since. Only the count
+    /// matters.
+    #[serde(rename = "reviewRequests", default)]
+    review_requests: Vec<serde::de::IgnoredAny>,
+    /// Each reviewer's most recent review.
+    #[serde(rename = "latestReviews", default)]
+    latest_reviews: Vec<GhReview>,
+}
+
+#[derive(Deserialize)]
+struct GhReview {
+    /// `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, `DISMISSED` or
+    /// `PENDING`.
+    #[serde(default)]
+    state: String,
 }
 
 #[cfg(test)]
@@ -710,5 +876,217 @@ mod tests {
         assert!(pr_state("OPEN", false).is_open());
         assert!(!pr_state("CLOSED", true).is_open());
         assert!(!pr_state("MERGED", true).is_open());
+    }
+
+    fn reviews(states: &[&str]) -> Vec<GhReview> {
+        states
+            .iter()
+            .map(|state| GhReview {
+                state: state.to_string(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn review_status_follows_whose_turn_it_is() {
+        use ReviewStatus::*;
+        let cases: &[(&str, usize, &[&str], Option<ReviewStatus>)] = &[
+            // Nobody asked and nobody reviewed: nothing to show, even when the
+            // branch requires a review.
+            ("", 0, &[], None),
+            ("REVIEW_REQUIRED", 0, &[], None),
+            // Asked, not answered yet.
+            ("REVIEW_REQUIRED", 1, &[], Some(Pending)),
+            ("", 2, &[], Some(Pending)),
+            // Answered with comments only: back to the author...
+            ("REVIEW_REQUIRED", 0, &["COMMENTED"], Some(Commented)),
+            ("", 0, &["COMMENTED"], Some(Commented)),
+            // ...until they re-request a review.
+            ("REVIEW_REQUIRED", 1, &["COMMENTED"], Some(Pending)),
+            // An approval short of what the branch requires is just a review.
+            ("REVIEW_REQUIRED", 0, &["APPROVED"], Some(Commented)),
+            ("REVIEW_REQUIRED", 1, &["APPROVED"], Some(Pending)),
+            // GitHub's decision wins outright.
+            ("APPROVED", 1, &["COMMENTED", "APPROVED"], Some(Approved)),
+            (
+                "CHANGES_REQUESTED",
+                1,
+                &["CHANGES_REQUESTED"],
+                Some(ChangesRequested),
+            ),
+            // Without required reviews the latest reviews decide, a request
+            // for changes blocking any approval.
+            ("", 1, &["APPROVED"], Some(Approved)),
+            (
+                "",
+                0,
+                &["APPROVED", "CHANGES_REQUESTED"],
+                Some(ChangesRequested),
+            ),
+            // Dismissed reviews and unsubmitted drafts don't count.
+            ("", 0, &["DISMISSED", "PENDING"], None),
+            ("", 1, &["DISMISSED"], Some(Pending)),
+        ];
+        for (decision, requests, states, expected) in cases {
+            assert_eq!(
+                review_status(decision, *requests, &reviews(states)),
+                *expected,
+                "{decision:?} with {requests} requests and reviews {states:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parses_reviews_from_gh() {
+        let gh: GhPr = serde_json::from_str(
+            r#"{
+                "number": 7, "url": "https://example.com/o/r/pull/7", "state": "OPEN",
+                "isDraft": false, "statusCheckRollup": [], "additions": 1, "deletions": 2,
+                "reviewDecision": "REVIEW_REQUIRED",
+                "reviewRequests": [
+                    { "__typename": "User", "login": "octocat" },
+                    { "__typename": "Team", "name": "Reviewers", "slug": "o/reviewers" }
+                ],
+                "latestReviews": [
+                    { "author": { "login": "hubot" }, "state": "COMMENTED", "body": "",
+                      "submittedAt": "2026-01-01T00:00:00Z" }
+                ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(gh.review_requests.len(), 2);
+        assert_eq!(
+            review_status(
+                &gh.review_decision,
+                gh.review_requests.len(),
+                &gh.latest_reviews
+            ),
+            Some(ReviewStatus::Pending)
+        );
+
+        // Output without the review fields still parses.
+        let gh: GhPr = serde_json::from_str(
+            r#"{ "number": 7, "url": "u", "state": "OPEN", "isDraft": false }"#,
+        )
+        .unwrap();
+        assert!(gh.review_decision.is_empty());
+        assert!(gh.review_requests.is_empty() && gh.latest_reviews.is_empty());
+    }
+
+    #[test]
+    fn caches_from_before_reviews_still_load() {
+        let pr: PrInfo = serde_json::from_str(
+            r#"{ "number": 7, "url": "u", "state": "open", "checks": "success" }"#,
+        )
+        .unwrap();
+        assert_eq!(pr.review, None);
+
+        let round_trip: PrInfo = serde_json::from_str(
+            &serde_json::to_string(&PrInfo {
+                review: Some(ReviewStatus::ChangesRequested),
+                ..pr
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(round_trip.review, Some(ReviewStatus::ChangesRequested));
+    }
+
+    #[test]
+    fn claude_code_shows_only_a_decided_review() {
+        let review = |state: &str| {
+            PrInfo::from_claude_code(&PullRequest {
+                number: Some(1),
+                url: Some("u".into()),
+                review_state: Some(state.into()),
+            })
+            .unwrap()
+            .review
+        };
+        assert_eq!(review("approved"), Some(ReviewStatus::Approved));
+        assert_eq!(
+            review("changes_requested"),
+            Some(ReviewStatus::ChangesRequested)
+        );
+        assert_eq!(review("pending"), None);
+        assert_eq!(review("draft"), None);
+    }
+
+    struct TestTheme;
+
+    impl DefaultColors for TestTheme {
+        fn default_bg() -> Color {
+            colors::black()
+        }
+        fn default_fg() -> Color {
+            colors::white()
+        }
+    }
+
+    impl PrScheme for TestTheme {
+        fn pr_status_success_fg() -> Color {
+            colors::green()
+        }
+        fn pr_review_approved_fg() -> Color {
+            colors::light_green()
+        }
+        fn pr_review_commented_icon() -> &'static str {
+            ""
+        }
+    }
+
+    fn pr_with(state: PrState, review: Option<ReviewStatus>) -> PrInfo {
+        PrInfo {
+            number: 7,
+            url: "u".into(),
+            state,
+            checks: Some(CheckStatus::Success),
+            diff: None,
+            check_runs: Vec::new(),
+            review,
+        }
+    }
+
+    #[test]
+    fn the_review_icon_follows_the_ci_dot() {
+        let markers = |status, review, pr: &PrInfo| {
+            Pr::<TestTheme>::new(status, true, review)
+                .markers(pr, None)
+                .into_iter()
+                .map(|marker| (marker.glyph, marker.color.code()))
+                .collect::<Vec<_>>()
+        };
+        let dot = (TestTheme::PR_STATUS_ICON, colors::green().code());
+        let check = (
+            TestTheme::PR_REVIEW_APPROVED_ICON,
+            colors::light_green().code(),
+        );
+
+        let approved = pr_with(PrState::Open, Some(ReviewStatus::Approved));
+        assert_eq!(markers(true, true, &approved), [dot, check]);
+        assert_eq!(markers(false, true, &approved), [check]);
+        assert_eq!(markers(true, false, &approved), [dot]);
+        assert_eq!(markers(false, false, &approved), []);
+        // Drafts can be reviewed too.
+        let draft = pr_with(PrState::Draft, Some(ReviewStatus::Approved));
+        assert_eq!(markers(true, true, &draft), [dot, check]);
+        // Neither shows once the PR is done with.
+        let merged = pr_with(PrState::Merged, Some(ReviewStatus::Approved));
+        assert_eq!(markers(true, true, &merged), []);
+        // No review activity, or a theme blanking the icon, leaves the dot.
+        assert_eq!(markers(true, true, &pr_with(PrState::Open, None)), [dot]);
+        let commented = pr_with(PrState::Open, Some(ReviewStatus::Commented));
+        assert_eq!(markers(true, true, &commented), [dot]);
+    }
+
+    #[test]
+    fn only_the_ci_dot_carries_the_hover_note() {
+        let approved = pr_with(PrState::Open, Some(ReviewStatus::Approved));
+        let notes = Pr::<TestTheme>::new(true, true, true)
+            .markers(&approved, Some("2 passed: lint, test"))
+            .into_iter()
+            .map(|marker| marker.note)
+            .collect::<Vec<_>>();
+        assert_eq!(notes, [Some("2 passed: lint, test"), None]);
     }
 }

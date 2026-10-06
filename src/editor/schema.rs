@@ -346,6 +346,11 @@ const PR: &[OptionSpec] = &[
         true,
         "In iTerm2, hovering over the dot lists the checks by outcome.",
     ),
+    boolean(
+        "review",
+        true,
+        "Append an icon for the review: requested, commented, changes requested or approved.",
+    ),
 ];
 
 const PYTHON: &[OptionSpec] = &[

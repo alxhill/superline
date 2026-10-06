@@ -94,8 +94,16 @@
       ["status_success_fg", "color", "CI dot when checks pass.", "defaults.fg"],
       ["status_failure_fg", "color", "CI dot when checks fail.", "defaults.fg"],
       ["status_pending_fg", "color", "CI dot while checks run.", "defaults.fg"],
+      ["review_pending_fg", "color", "Review icon while requested reviews are outstanding.", "defaults.fg"],
+      ["review_commented_fg", "color", "Review icon once reviewed with comments only.", "defaults.fg"],
+      ["review_changes_requested_fg", "color", "Review icon when a reviewer requested changes.", "defaults.fg"],
+      ["review_approved_fg", "color", "Review icon once approved.", "defaults.fg"],
       ["icon", "string", "Icon before the PR number.", "U+EA64"],
-      ["status_icon", "string", "The CI dot.", "\"●\""]
+      ["status_icon", "string", "The CI dot.", "\"●\""],
+      ["review_pending_icon", "string", "Review icon while requested reviews are outstanding.", "U+EA70"],
+      ["review_commented_icon", "string", "Review icon once reviewed with comments only.", "U+EA6B"],
+      ["review_changes_requested_icon", "string", "Review icon when a reviewer requested changes.", "U+EB43"],
+      ["review_approved_icon", "string", "Review icon once approved.", "U+EAB2"]
     ]
   },
   "diff": {

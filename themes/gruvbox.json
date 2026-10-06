@@ -33,6 +33,10 @@
       "status_success_fg": 142,
       "status_failure_fg": 167,
       "status_pending_fg": 214,
+      "review_pending_fg": 250,
+      "review_commented_fg": 214,
+      "review_changes_requested_fg": 167,
+      "review_approved_fg": 142,
       "draft_italic": true,
       "open_bold": true
     },
