@@ -233,6 +233,10 @@ pub enum LineSegment {
         /// default; set to `false` to show just the PR number.
         #[serde(default = "default_true")]
         status: bool,
+        /// Hovering over the status dot in iTerm2 lists the checks that
+        /// failed, are pending, passed and were skipped. On by default.
+        #[serde(default = "default_true")]
+        hover: bool,
     },
     /// The current branch's PR's added and deleted line counts.
     PrDiff,
@@ -454,6 +458,8 @@ enum KnownLineSegment {
     Pr {
         #[serde(default = "default_true")]
         status: bool,
+        #[serde(default = "default_true")]
+        hover: bool,
     },
     PrDiff,
     /// Named `python_env` before the language modules were renamed; both
@@ -611,7 +617,7 @@ impl From<KnownLineSegment> for LineSegment {
                 worktrees,
                 repo,
             },
-            KnownLineSegment::Pr { status } => LineSegment::Pr { status },
+            KnownLineSegment::Pr { status, hover } => LineSegment::Pr { status, hover },
             KnownLineSegment::PrDiff => LineSegment::PrDiff,
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
             KnownLineSegment::Node { version } => LineSegment::Node { version },
@@ -902,7 +908,10 @@ impl Config {
                         worktrees: true,
                         repo: true,
                     },
-                    LineSegment::Pr { status: true },
+                    LineSegment::Pr {
+                        status: true,
+                        hover: true,
+                    },
                     LineSegment::PrDiff,
                 ]),
                 right: Some(widgets(vec![
@@ -959,7 +968,10 @@ impl Default for Config {
                             repo: true,
                         },
                         LineSegment::Diff,
-                        LineSegment::Pr { status: true },
+                        LineSegment::Pr {
+                            status: true,
+                            hover: true,
+                        },
                         LineSegment::PrDiff,
                         LineSegment::Padding(2),
                         LineSegment::AiUsage {
@@ -1307,6 +1319,17 @@ mod tests {
     }
 
     #[test]
+    fn pr_hover_can_be_turned_off() {
+        let pr = |json: &str| match serde_json::from_str::<LineSegment>(json).unwrap() {
+            LineSegment::Pr { status, hover } => (status, hover),
+            other => panic!("not pr: {other:?}"),
+        };
+        assert_eq!(pr(r#""pr""#), (true, true));
+        assert_eq!(pr(r#"{"pr":{"status":false}}"#), (false, true));
+        assert_eq!(pr(r#"{"pr":{"hover":false}}"#), (true, false));
+    }
+
+    #[test]
     fn usage_session_reset_threshold_is_a_unit_interval() {
         for value in ["0", "1"] {
             let config = format!(
@@ -1499,7 +1522,13 @@ mod tests {
                 },
             ),
             (r#""cargo""#, LineSegment::Cargo { version: true }),
-            (r#""pr""#, LineSegment::Pr { status: true }),
+            (
+                r#""pr""#,
+                LineSegment::Pr {
+                    status: true,
+                    hover: true,
+                },
+            ),
         ];
 
         for (json, expected) in cases {

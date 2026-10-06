@@ -329,11 +329,18 @@ const GIT: &[OptionSpec] = &[
     ),
 ];
 
-const PR: &[OptionSpec] = &[boolean(
-    "status",
-    true,
-    "Append a coloured dot showing the PR's CI check status.",
-)];
+const PR: &[OptionSpec] = &[
+    boolean(
+        "status",
+        true,
+        "Append a coloured dot showing the PR's CI check status.",
+    ),
+    boolean(
+        "hover",
+        true,
+        "In iTerm2, hovering over the dot lists the checks by outcome.",
+    ),
+];
 
 const PYTHON: &[OptionSpec] = &[
     boolean("version", true, "Show the interpreter version."),

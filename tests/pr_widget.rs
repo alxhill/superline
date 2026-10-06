@@ -101,3 +101,23 @@ fn pr_diff_shows_the_prs_line_counts() {
     assert!(both.contains("-35"), "prompt: {both:?}");
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn hovering_over_the_status_dot_lists_the_checks() {
+    let root = scratch("hover");
+
+    let prompt = render_with_pr(&root, json!(["pr"]));
+    assert!(
+        prompt.contains("\x1b]1337;AddHiddenAnnotation=1|2 passed: lint, test\x07"),
+        "prompt: {prompt:?}"
+    );
+
+    for segment in [
+        json!({ "pr": { "hover": false } }),
+        json!({ "pr": { "status": false } }),
+    ] {
+        let prompt = render_with_pr(&root, json!([segment]));
+        assert!(!prompt.contains("1337"), "{segment}: {prompt:?}");
+    }
+    let _ = fs::remove_dir_all(&root);
+}

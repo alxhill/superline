@@ -18,6 +18,30 @@ use crate::modules::{
 use crate::terminal::*;
 use crate::themes::{CompleteTheme, DefaultColors};
 
+/// A coloured glyph drawn after a hyperlink segment's label, on the same
+/// background, such as the PR's CI status dot.
+#[derive(Clone, Copy)]
+pub struct Marker<'a> {
+    pub glyph: &'a str,
+    pub color: Color,
+    /// What iTerm2 shows when hovering over the glyph.
+    pub note: Option<&'a str>,
+}
+
+impl<'a> Marker<'a> {
+    pub fn new(glyph: &'a str, color: Color) -> Self {
+        Marker {
+            glyph,
+            color,
+            note: None,
+        }
+    }
+
+    pub fn with_note(self, note: Option<&'a str>) -> Self {
+        Marker { note, ..self }
+    }
+}
+
 #[derive(Clone)]
 pub struct Style {
     pub fg: FgColor,
@@ -456,24 +480,29 @@ impl Powerline {
 
     /// Adds a segment whose text is an OSC 8 terminal hyperlink, optionally
     /// followed by a coloured marker glyph (e.g. the PR status dot) that shares
-    /// this segment's background instead of getting one of its own. The OSC and
-    /// colour escapes are invisible, so the visible width is computed from
-    /// `label` and the marker glyph alone to keep column accounting (and
-    /// right-prompt padding) correct.
+    /// this segment's background instead of getting one of its own. The OSC,
+    /// annotation and colour escapes are invisible, so the visible width is
+    /// computed from `label` and the marker glyph alone to keep column
+    /// accounting (and right-prompt padding) correct.
     pub fn add_hyperlink_segment(
         &mut self,
         label: &str,
         url: &str,
         style: Style,
-        marker: Option<(&str, Color)>,
+        marker: Option<Marker>,
     ) {
         let mut visible_width = label.width();
         let link = Hyperlink { url, label }.to_string();
         let seg = match marker {
-            Some((glyph, color)) => {
+            Some(Marker { glyph, color, note }) => {
+                let cells = glyph.width();
                 // separating space + the glyph itself
-                visible_width += 1 + glyph.width();
-                format!("{} {}", link, tinted(glyph, color, &style))
+                visible_width += 1 + cells;
+                let note = note
+                    .filter(|_| cells > 0)
+                    .map(|message| Annotation { cells, message }.to_string())
+                    .unwrap_or_default();
+                format!("{} {}{}", link, note, tinted(glyph, color, &style))
             }
             None => link,
         };
@@ -570,8 +599,9 @@ impl Powerline {
                     *worktrees,
                     *repo,
                 )),
-                LineSegment::Pr { status } => self.add_module(
-                    Pr::<T>::new(*status).with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
+                LineSegment::Pr { status, hover } => self.add_module(
+                    Pr::<T>::new(*status, *hover)
+                        .with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
                 ),
                 LineSegment::PrDiff => self.add_module(PrDiff::<T>::new()),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
@@ -1440,7 +1470,7 @@ mod tests {
     #[test]
     fn hyperlink_width_includes_the_widget_padding() {
         let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
-        let marker = Some(("●", Color::from_u8(2)));
+        let marker = Some(Marker::new("●", Color::from_u8(2)));
         let cases = PADDINGS
             .map(|(padding, before, after)| (Some(padding), before, after))
             .into_iter()
@@ -1470,6 +1500,51 @@ mod tests {
             assert_eq!(powerline.left_columns, width, "{padding:?}");
             assert_eq!(powerline.right_columns, width, "{padding:?}");
         }
+    }
+
+    #[test]
+    fn a_marker_note_annotates_only_the_glyph() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let url = "https://example.com/pr/12";
+        let marker = Marker::new("●", Color::from_u8(2));
+        let mut plain = flush_powerline();
+        let mut noted = flush_powerline();
+        plain.add_hyperlink_segment("#12", url, style.clone(), Some(marker));
+        noted.add_hyperlink_segment(
+            "#12",
+            url,
+            style.clone(),
+            Some(marker.with_note(Some("1 failed: lint"))),
+        );
+
+        assert!(
+            noted
+                .left_buffer
+                .contains("\x1b]1337;AddHiddenAnnotation=1|1 failed: lint\x07"),
+            "{:?}",
+            noted.left_buffer
+        );
+        // The note sits after the link closes, so hovering over the PR
+        // number shows nothing new.
+        let link_end = noted.left_buffer.find("\x1b]8;;\x1b\\").unwrap();
+        let note_start = noted.left_buffer.find("\x1b]1337").unwrap();
+        assert!(link_end < note_start, "{:?}", noted.left_buffer);
+        assert_eq!(visible(&noted.left_buffer), visible(&plain.left_buffer));
+        assert_eq!(noted.left_columns, plain.left_columns);
+
+        // A theme that hides the glyph leaves nothing to hover over.
+        let mut hidden = flush_powerline();
+        hidden.add_hyperlink_segment(
+            "#12",
+            url,
+            style,
+            Some(Marker::new("", Color::from_u8(2)).with_note(Some("1 failed: lint"))),
+        );
+        assert!(
+            !hidden.left_buffer.contains("1337"),
+            "{:?}",
+            hidden.left_buffer
+        );
     }
 
     const BOLD_UNDERLINE: TextAttrs = TextAttrs {
@@ -1593,7 +1668,7 @@ mod tests {
             "BB",
             "https://example.com",
             bold_style(),
-            Some(("m", Color(2).with_attrs(ITALIC))),
+            Some(Marker::new("m", Color(2).with_attrs(ITALIC))),
         );
         powerline.add_segment("a", Style::simple(Color(15), Color(31)));
         powerline.close_left_buffer();
@@ -1636,7 +1711,7 @@ mod tests {
             "#1",
             "https://example.com",
             style.clone(),
-            Some(("m", Color(2))),
+            Some(Marker::new("m", Color(2))),
         );
         powerline.add_segment("a", style.clone());
         powerline.close_left_buffer();

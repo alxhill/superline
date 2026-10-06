@@ -9,6 +9,7 @@ use crate::cache::{hash_id, Cached, Lookup, Source};
 use crate::claude_code::PullRequest;
 use crate::colors::{self, Color};
 use crate::config::SegmentPadding;
+use crate::powerline::Marker;
 use crate::themes::DefaultColors;
 use crate::utils::join_non_empty;
 use crate::{Powerline, Style};
@@ -21,6 +22,8 @@ const SKIP_BRANCHES: &[&str] = &["develop", "main", "master", "HEAD"];
 pub struct Pr<S> {
     /// Whether to append the CI check-status dot after the PR number.
     show_status: bool,
+    /// Whether hovering over the dot in iTerm2 lists the checks by outcome.
+    hover: bool,
     /// The PR Claude Code passed to its status line, shown when the `gh`
     /// lookup has none.
     reported: Option<PrInfo>,
@@ -91,14 +94,15 @@ pub trait PrScheme: DefaultColors {
 
 impl<S: PrScheme> Default for Pr<S> {
     fn default() -> Self {
-        Self::new(true)
+        Self::new(true, true)
     }
 }
 
 impl<S: PrScheme> Pr<S> {
-    pub fn new(show_status: bool) -> Pr<S> {
+    pub fn new(show_status: bool, hover: bool) -> Pr<S> {
         Pr {
             show_status,
+            hover,
             reported: None,
             scheme: PhantomData,
         }
@@ -173,6 +177,18 @@ pub struct PrInfo {
     /// before this field existed and for the PR Claude Code reports.
     #[serde(default)]
     diff: Option<Diff>,
+    /// Every check behind `checks`, by name, for the dot's hover text. Empty
+    /// for caches written before this field existed and for the PR Claude
+    /// Code reports.
+    #[serde(default)]
+    check_runs: Vec<Check>,
+}
+
+/// One check run or commit status context and how it ended up.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Check {
+    name: String,
+    outcome: CheckOutcome,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -195,6 +211,7 @@ impl PrInfo {
             },
             checks: None,
             diff: None,
+            check_runs: Vec::new(),
         })
     }
 }
@@ -246,10 +263,14 @@ impl<S: PrScheme> Module for Pr<S> {
         let marker = (self.show_status && pr.state.is_open())
             .then(|| {
                 pr.checks
-                    .map(|status| (S::pr_status_icon(), status.fg::<S>()))
+                    .map(|status| Marker::new(S::pr_status_icon(), status.fg::<S>()))
             })
             .flatten()
-            .filter(|(icon, _)| !icon.is_empty());
+            .filter(|marker| !marker.glyph.is_empty());
+        let note = marker
+            .filter(|_| self.hover)
+            .and_then(|_| hover_note(&pr.check_runs));
+        let marker = marker.map(|marker| marker.with_note(note.as_deref()));
 
         powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), marker);
     }
@@ -334,28 +355,70 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
     let gh: GhPr = serde_json::from_slice(&output.stdout).ok()?;
 
     let state = pr_state(&gh.state, gh.is_draft);
+    let check_runs: Vec<Check> = gh
+        .status_check_rollup
+        .iter()
+        .map(CheckItem::check)
+        .collect();
 
     Some(PrInfo {
         number: gh.number,
         url: gh.url,
         state,
-        checks: aggregate(&gh.status_check_rollup),
+        checks: aggregate(check_runs.iter().map(|check| check.outcome)),
         diff: Some(Diff {
             additions: gh.additions,
             deletions: gh.deletions,
         }),
+        check_runs,
     })
+}
+
+/// What hovering over the CI dot shows: how many checks failed, are still
+/// running, passed and were skipped, each followed by their names, worst
+/// first. `None` when there are no checks to list, e.g. for a cache written
+/// before check names were recorded.
+fn hover_note(checks: &[Check]) -> Option<String> {
+    let groups: Vec<String> = [
+        (CheckOutcome::Failure, "failed"),
+        (CheckOutcome::Pending, "pending"),
+        (CheckOutcome::Success, "passed"),
+        (CheckOutcome::Neutral, "skipped"),
+    ]
+    .into_iter()
+    .filter_map(|(outcome, verb)| {
+        let matching: Vec<&Check> = checks
+            .iter()
+            .filter(|check| check.outcome == outcome)
+            .collect();
+        if matching.is_empty() {
+            return None;
+        }
+        let names: Vec<&str> = matching
+            .iter()
+            .map(|check| check.name.trim())
+            .filter(|name| !name.is_empty())
+            .collect();
+        let count = matching.len();
+        Some(if names.is_empty() {
+            format!("{count} {verb}")
+        } else {
+            format!("{count} {verb}: {}", names.join(", "))
+        })
+    })
+    .collect();
+    (!groups.is_empty()).then(|| groups.join(" · "))
 }
 
 /// Collapses individual checks into a single status. Failure beats pending,
 /// which beats success. Returns `None` when there are no meaningful checks, so
 /// the dot renders nothing rather than misleading the reader.
-fn aggregate(checks: &[CheckItem]) -> Option<CheckStatus> {
+fn aggregate(outcomes: impl IntoIterator<Item = CheckOutcome>) -> Option<CheckStatus> {
     let mut any_pending = false;
     let mut any_success = false;
 
-    for check in checks {
-        match check.outcome() {
+    for outcome in outcomes {
+        match outcome {
             CheckOutcome::Failure => return Some(CheckStatus::Failure),
             CheckOutcome::Pending => any_pending = true,
             CheckOutcome::Success => any_success = true,
@@ -372,6 +435,8 @@ fn aggregate(checks: &[CheckItem]) -> Option<CheckStatus> {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
 enum CheckOutcome {
     Success,
     Failure,
@@ -380,9 +445,14 @@ enum CheckOutcome {
 }
 
 /// A single entry in GitHub's `statusCheckRollup`. Check runs report
-/// `status`/`conclusion`; legacy status contexts report `state`.
+/// `name` and `status`/`conclusion`; legacy status contexts report `context`
+/// and `state`.
 #[derive(Deserialize)]
 struct CheckItem {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    context: Option<String>,
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
@@ -392,6 +462,18 @@ struct CheckItem {
 }
 
 impl CheckItem {
+    fn check(&self) -> Check {
+        Check {
+            name: self
+                .name
+                .as_deref()
+                .or(self.context.as_deref())
+                .unwrap_or_default()
+                .to_string(),
+            outcome: self.outcome(),
+        }
+    }
+
     fn outcome(&self) -> CheckOutcome {
         // Legacy commit-status contexts carry a `state` instead of a status/
         // conclusion pair.
@@ -456,6 +538,104 @@ mod tests {
         assert!(matches!(pr_state("OPEN", false), PrState::Open));
         assert!(matches!(pr_state("CLOSED", true), PrState::Closed));
         assert!(matches!(pr_state("MERGED", true), PrState::Merged));
+    }
+
+    fn rollup(json: &str) -> Vec<Check> {
+        serde_json::from_str::<Vec<CheckItem>>(json)
+            .unwrap()
+            .iter()
+            .map(CheckItem::check)
+            .collect()
+    }
+
+    #[test]
+    fn checks_are_named_by_check_run_or_status_context() {
+        let checks = rollup(
+            r#"[
+                {"__typename":"CheckRun","name":"test (macos)","status":"COMPLETED","conclusion":"FAILURE","workflowName":"CI"},
+                {"__typename":"StatusContext","context":"ci/circleci","state":"PENDING"},
+                {"__typename":"CheckRun","name":"fmt","status":"COMPLETED","conclusion":"SKIPPED"},
+                {"__typename":"CheckRun","status":"IN_PROGRESS"}
+            ]"#,
+        );
+        let names: Vec<(&str, CheckOutcome)> = checks
+            .iter()
+            .map(|check| (check.name.as_str(), check.outcome))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                ("test (macos)", CheckOutcome::Failure),
+                ("ci/circleci", CheckOutcome::Pending),
+                ("fmt", CheckOutcome::Neutral),
+                ("", CheckOutcome::Pending),
+            ]
+        );
+    }
+
+    #[test]
+    fn hover_note_lists_checks_worst_first() {
+        let checks = rollup(
+            r#"[
+                {"name":"build","status":"COMPLETED","conclusion":"SUCCESS"},
+                {"name":"lint","status":"COMPLETED","conclusion":"FAILURE"},
+                {"name":"deploy","status":"COMPLETED","conclusion":"SKIPPED"},
+                {"name":"e2e","status":"IN_PROGRESS"},
+                {"context":"docs","state":"SUCCESS"},
+                {"name":"test","status":"COMPLETED","conclusion":"TIMED_OUT"}
+            ]"#,
+        );
+        assert_eq!(
+            hover_note(&checks).as_deref(),
+            Some(
+                "2 failed: lint, test · 1 pending: e2e · 2 passed: build, docs · 1 skipped: deploy"
+            )
+        );
+        assert!(matches!(
+            aggregate(checks.iter().map(|check| check.outcome)),
+            Some(CheckStatus::Failure)
+        ));
+    }
+
+    #[test]
+    fn hover_note_counts_unnamed_checks_and_skips_empty_groups() {
+        let checks = rollup(
+            r#"[
+                {"name":"build","status":"COMPLETED","conclusion":"SUCCESS"},
+                {"status":"COMPLETED","conclusion":"SUCCESS"},
+                {"status":"QUEUED"}
+            ]"#,
+        );
+        assert_eq!(
+            hover_note(&checks).as_deref(),
+            Some("1 pending · 2 passed: build")
+        );
+        assert_eq!(hover_note(&[]), None);
+    }
+
+    #[test]
+    fn caches_without_check_names_still_load() {
+        let pr: PrInfo = serde_json::from_str(
+            r#"{"number":1,"url":"https://example.com/1","state":"open","checks":"success"}"#,
+        )
+        .unwrap();
+        assert!(pr.check_runs.is_empty());
+        assert!(matches!(pr.checks, Some(CheckStatus::Success)));
+
+        let round_trip: PrInfo = serde_json::from_str(
+            &serde_json::to_string(&PrInfo {
+                check_runs: rollup(
+                    r#"[{"name":"lint","status":"COMPLETED","conclusion":"FAILURE"}]"#,
+                ),
+                ..pr
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            hover_note(&round_trip.check_runs).as_deref(),
+            Some("1 failed: lint")
+        );
     }
 
     #[test]
