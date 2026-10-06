@@ -121,3 +121,44 @@ fn hovering_over_the_status_dot_lists_the_checks() {
     }
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn pr_checks_draws_the_ci_dot_as_its_own_segment() {
+    let root = scratch("checks");
+    let dot = "\u{25cf}";
+    let checks_page = "https://github.com/alxhill/superline/pull/142/checks";
+
+    // Configs that only name `pr` keep the dot inside its segment.
+    let combined = render_with_pr(&root, json!(["pr"]));
+    assert!(combined.contains(dot), "prompt: {combined:?}");
+    assert!(!combined.contains(checks_page), "prompt: {combined:?}");
+
+    let split = render_with_pr(&root, json!([{ "pr": { "status": false } }, "pr_checks"]));
+    assert_eq!(split.matches(dot).count(), 1, "prompt: {split:?}");
+    assert!(split.contains(checks_page), "prompt: {split:?}");
+    // The dot follows the number, as it does inside `pr`.
+    assert!(split.find("#142") < split.find(dot), "prompt: {split:?}");
+
+    // It can sit anywhere, without `pr` at all.
+    let alone = render(&root, json!(["pr_checks"]));
+    assert!(alone.contains(checks_page), "prompt: {alone:?}");
+    assert!(!alone.contains("#142"), "prompt: {alone:?}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn pr_checks_hides_once_the_pr_is_merged() {
+    let root = scratch("checks-merged");
+    git(&root.join("repo"), &["switch", "-q", "-c", "feat/nushell"]);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let prompt = loop {
+        let prompt = render(&root, json!(["pr", "pr_checks"]));
+        if prompt.contains("#139") {
+            break prompt;
+        }
+        assert!(Instant::now() < deadline, "PR never loaded: {prompt:?}");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert!(!prompt.contains("/checks"), "prompt: {prompt:?}");
+    let _ = fs::remove_dir_all(&root);
+}

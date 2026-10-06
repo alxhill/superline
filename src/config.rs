@@ -224,9 +224,18 @@ pub enum LineSegment {
         #[serde(default = "default_true")]
         worktrees: bool,
         /// Show the remote segment: the forge logo linking to the repository
-        /// and the ahead/behind counts. On by default.
+        /// and the ahead/behind counts. On by default; `git_remote` draws the
+        /// same segment as a widget of its own.
         #[serde(default = "default_true")]
         repo: bool,
+    },
+    /// The remote segment of `git` on its own, from the same status lookup:
+    /// the forge logo linking to the repository, and the ahead/behind counts.
+    GitRemote {
+        /// Show the commits ahead of and behind the upstream after the logo.
+        /// On by default.
+        #[serde(default = "default_true")]
+        ahead_behind: bool,
     },
     Pr {
         /// Append a coloured dot reflecting the PR's CI check status. On by
@@ -238,6 +247,8 @@ pub enum LineSegment {
         #[serde(default = "default_true")]
         hover: bool,
     },
+    /// The CI check status dot of `pr` on its own, from the same lookup.
+    PrChecks,
     /// The current branch's PR's added and deleted line counts.
     PrDiff,
     Python {
@@ -455,12 +466,17 @@ enum KnownLineSegment {
         #[serde(default = "default_true")]
         repo: bool,
     },
+    GitRemote {
+        #[serde(default = "default_true")]
+        ahead_behind: bool,
+    },
     Pr {
         #[serde(default = "default_true")]
         status: bool,
         #[serde(default = "default_true")]
         hover: bool,
     },
+    PrChecks,
     PrDiff,
     /// Named `python_env` before the language modules were renamed; both
     /// names parse.
@@ -617,7 +633,9 @@ impl From<KnownLineSegment> for LineSegment {
                 worktrees,
                 repo,
             },
+            KnownLineSegment::GitRemote { ahead_behind } => LineSegment::GitRemote { ahead_behind },
             KnownLineSegment::Pr { status, hover } => LineSegment::Pr { status, hover },
+            KnownLineSegment::PrChecks => LineSegment::PrChecks,
             KnownLineSegment::PrDiff => LineSegment::PrDiff,
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
             KnownLineSegment::Node { version } => LineSegment::Node { version },
@@ -768,7 +786,9 @@ pub(crate) const KNOWN_SEGMENT_NAMES: &[&str] = &[
     "cwd",
     "read_only",
     "git",
+    "git_remote",
     "pr",
+    "pr_checks",
     "pr_diff",
     "python",
     "python_env",
@@ -906,8 +926,9 @@ impl Config {
                         status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                         backend: GitBackend::Auto,
                         worktrees: true,
-                        repo: true,
+                        repo: false,
                     },
+                    LineSegment::GitRemote { ahead_behind: true },
                     LineSegment::Pr {
                         status: true,
                         hover: true,
@@ -965,8 +986,9 @@ impl Default for Config {
                             status_timeout_ms: DEFAULT_GIT_STATUS_TIMEOUT_MS,
                             backend: GitBackend::Auto,
                             worktrees: true,
-                            repo: true,
+                            repo: false,
                         },
+                        LineSegment::GitRemote { ahead_behind: true },
                         LineSegment::Diff,
                         LineSegment::Pr {
                             status: true,
@@ -1243,6 +1265,72 @@ mod tests {
                 repo: false,
             }
         );
+    }
+
+    /// Configs written before `git_remote` existed name only `git`, which
+    /// must keep drawing its remote segment.
+    #[test]
+    fn git_keeps_its_remote_segment_unless_told_otherwise() {
+        for json in [r#""git""#, r#"{"git":{}}"#, r#"{"git":{"repo":true}}"#] {
+            let parsed: LineSegment = serde_json::from_str(json).expect("git should parse");
+            assert!(
+                matches!(parsed, LineSegment::Git { repo: true, .. }),
+                "{json}: {parsed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_split_git_and_pr_widgets_parse() {
+        let cases = [
+            (
+                r#""git_remote""#,
+                LineSegment::GitRemote { ahead_behind: true },
+            ),
+            (
+                r#"{"git_remote":{}}"#,
+                LineSegment::GitRemote { ahead_behind: true },
+            ),
+            (
+                r#"{"git_remote":{"ahead_behind":false}}"#,
+                LineSegment::GitRemote {
+                    ahead_behind: false,
+                },
+            ),
+            (r#""pr_checks""#, LineSegment::PrChecks),
+            (r#"{"pr_checks":{}}"#, LineSegment::PrChecks),
+        ];
+        for (json, expected) in cases {
+            let parsed: LineSegment =
+                serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+            assert_eq!(parsed, expected, "{json}");
+        }
+
+        let padded: Widget = serde_json::from_str(r#"{"git_remote":{"padding":"small"}}"#)
+            .expect("git_remote takes padding");
+        assert_eq!(padded.padding, Some(SegmentPadding::Small));
+    }
+
+    /// Fresh installs get the remote segment as its own widget right after
+    /// `git`, which draws the same prompt the combined widget did.
+    #[test]
+    fn the_defaults_place_the_remote_segment_as_its_own_widget() {
+        for config in [Config::default(), Config::claude_code_default()] {
+            let left: Vec<&LineSegment> = config.rows[0]
+                .left
+                .iter()
+                .map(|widget| &widget.segment)
+                .collect();
+            let git = left
+                .iter()
+                .position(|segment| matches!(segment, LineSegment::Git { .. }))
+                .expect("the default has a git widget");
+            assert!(matches!(left[git], LineSegment::Git { repo: false, .. }));
+            assert_eq!(
+                left[git + 1],
+                &LineSegment::GitRemote { ahead_behind: true }
+            );
+        }
     }
 
     #[test]

@@ -420,7 +420,8 @@ The current branch and working-tree status: modified, staged and untracked count
 the upstream. A GitHub logo appears whenever the repo has a remote, and links to the repository's web page (derived
 from the `origin` fetch URL); the ahead/behind counts beside it need an
 upstream tracking ref that still resolves, so they are absent on a branch that was never pushed or whose remote
-branch has been deleted. `"repo": false` hides the whole remote segment, logo and counts.
+branch has been deleted. `"repo": false` hides the whole remote segment, logo and counts; add
+[`git_remote`](#git_remote) to draw it somewhere else instead.
 
 A detached HEAD shows the short commit hash. When that commit is the tip of a branch (a worktree created with
 `git worktree add --detach`, or `git checkout origin/main`) the branch follows it, as `1a2b3c4 → main`; local
@@ -451,6 +452,20 @@ Status is produced by one of two backends, chosen with `backend`:
 - `auto` (the default) picks between them from the size of `.git/index`: the CLI for large working trees, gitoxide
   for small ones. It falls back to gitoxide whenever `git` isn't on `PATH`.
 
+#### git_remote
+
+The remote segment of [`git`](#git) as a widget of its own, so it can sit anywhere in the prompt: the GitHub logo
+linking to the repository, then the commits ahead of and behind the upstream. Pair it with `"repo": false` on `git`
+so the segment isn't drawn twice; `git` followed by `git_remote` that way draws exactly what `git` alone does. It
+reads the same status lookup as `git`, which the prompt makes once for both, using the row's `git` widget's
+`status_timeout_ms` and `backend` (the defaults when the row has none). Until the status is in it draws nothing.
+`"ahead_behind": false` leaves just the logo. Its colors and icons are the theme's `git.remote_fg`,
+`git.remote_bg`, `git.remote_icon`, `git.ahead_icon` and `git.behind_icon`.
+
+```json
+[{ "git": { "repo": false } }, "pr", "pr_diff", { "git_remote": { "ahead_behind": true } }]
+```
+
 #### pr
 
 A clickable link to the GitHub pull request for the current branch, looked up via the `gh` CLI. The segment color
@@ -467,6 +482,17 @@ once the result is ready. The module is skipped entirely on `main`, `master` and
 
 ```json
 { "pr": { "status": false } }
+```
+
+#### pr_checks
+
+The CI dot of [`pr`](#pr) as a segment of its own, linking to the PR's checks page. It sits on the PR state's
+background, so right after `{ "pr": { "status": false } }` it reads as part of the PR, and it can also go anywhere
+else in the prompt. Like the dot it only shows while the PR is open or a draft and has checks, and it reads the same
+cached `gh` lookup as `pr`. It uses the theme's `pr.status_icon` and `pr.status_*_fg` colors.
+
+```json
+[{ "pr": { "status": false } }, "pr_checks"]
 ```
 
 #### pr_diff

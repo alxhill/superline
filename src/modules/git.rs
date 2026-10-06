@@ -153,7 +153,8 @@ impl<S: GitScheme> Git<S> {
     }
 
     /// `worktrees` shows the linked-worktree count next to the branch; `repo`
-    /// shows the remote segment with its link and ahead/behind counts.
+    /// shows the remote segment with its link and ahead/behind counts, the
+    /// segment [`GitRemote`] draws on its own.
     pub fn with_config(
         status_timeout: Duration,
         backend: GitBackend,
@@ -170,7 +171,51 @@ impl<S: GitScheme> Git<S> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+/// The remote segment of [`Git`] as a widget of its own, so it can sit
+/// anywhere in the prompt: the forge logo linking to the repository, and the
+/// commits ahead of and behind the upstream. It draws from the same status
+/// lookup as [`Git`], which a prompt makes once however many of the two draw
+/// from it.
+pub struct GitRemote<S> {
+    status_timeout: Duration,
+    backend: GitBackend,
+    ahead_behind: bool,
+    scheme: PhantomData<S>,
+}
+
+impl<S: GitScheme> Default for GitRemote<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S: GitScheme> GitRemote<S> {
+    pub fn new() -> GitRemote<S> {
+        Self::with_config(
+            Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS),
+            GitBackend::default(),
+            true,
+        )
+    }
+
+    /// `status_timeout` and `backend` only matter when no [`Git`] widget has
+    /// looked the status up first; `ahead_behind` adds the counts after the
+    /// logo.
+    pub fn with_config(
+        status_timeout: Duration,
+        backend: GitBackend,
+        ahead_behind: bool,
+    ) -> GitRemote<S> {
+        GitRemote {
+            status_timeout,
+            backend,
+            ahead_behind,
+            scheme: PhantomData,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GitStats {
     pub untracked: u32,
     pub conflicted: u32,
@@ -777,7 +822,7 @@ impl<S: GitScheme> Module for Git<S> {
             );
         }
 
-        let stats = match Cached::new(source).load_with_timeout(self.status_timeout) {
+        let stats = match Cached::new(source).load_with_timeout_shared(self.status_timeout) {
             Lookup::Ready(stats) => stats,
             Lookup::Loading => {
                 powerline.add_segment(
@@ -844,20 +889,53 @@ impl<S: GitScheme> Module for Git<S> {
             S::git_conflicted_bg(),
         );
 
-        if self.repo && stats.remote {
-            let remote = remote_label(
-                S::git_remote_icon(),
-                (stats.ahead, S::git_ahead_icon()),
-                (stats.behind, S::git_behind_icon()),
-            );
-
-            let style = Style::simple(S::git_remote_fg(), S::git_remote_bg());
-            match &stats.remote_url {
-                _ if remote.is_empty() => {}
-                Some(url) => powerline.add_hyperlink_segment(&remote, url, style, None),
-                None => powerline.add_segment(remote, style),
-            }
+        if self.repo {
+            append_remote::<S>(powerline, &stats, true);
         }
+    }
+}
+
+impl<S: GitScheme> Module for GitRemote<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
+    fn append_segments(&mut self, powerline: &mut Powerline) {
+        let Some((git_dir, _)) = find_git_dir() else {
+            return;
+        };
+        let source = GitStatus {
+            git_dir,
+            backend: self.backend,
+        };
+        // Nothing to show until the status is in: `git` says `loading…`.
+        if let Lookup::Ready(stats) =
+            Cached::new(source).load_with_timeout_shared(self.status_timeout)
+        {
+            append_remote::<S>(powerline, &stats, self.ahead_behind);
+        }
+    }
+}
+
+/// The remote segment, when the repository has a remote: the forge logo,
+/// linking to the repository's page when it has one, then the ahead and
+/// behind counts unless `ahead_behind` is off.
+fn append_remote<S: GitScheme>(powerline: &mut Powerline, stats: &GitStats, ahead_behind: bool) {
+    if !stats.remote {
+        return;
+    }
+    let counts = |count: u32| if ahead_behind { count } else { 0 };
+    let remote = remote_label(
+        S::git_remote_icon(),
+        (counts(stats.ahead), S::git_ahead_icon()),
+        (counts(stats.behind), S::git_behind_icon()),
+    );
+
+    let style = Style::simple(S::git_remote_fg(), S::git_remote_bg());
+    match &stats.remote_url {
+        _ if remote.is_empty() => {}
+        Some(url) => powerline.add_hyperlink_segment(&remote, url, style, None),
+        None => powerline.add_segment(remote, style),
     }
 }
 
