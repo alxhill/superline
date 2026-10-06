@@ -494,34 +494,31 @@ impl Powerline {
         self.push_segment(seg, style, default, None);
     }
 
-    /// Adds a segment whose text is an OSC 8 terminal hyperlink, optionally
-    /// followed by a coloured marker glyph (e.g. the PR status dot) that shares
-    /// this segment's background instead of getting one of its own. The OSC,
-    /// annotation and colour escapes are invisible, so the visible width is
-    /// computed from `label` and the marker glyph alone to keep column
-    /// accounting (and right-prompt padding) correct.
-    pub fn add_hyperlink_segment(
+    /// Adds a segment whose text is an OSC 8 terminal hyperlink, followed by
+    /// any coloured marker glyphs (e.g. the PR status dot and review icon)
+    /// that share this segment's background instead of getting one of their
+    /// own. The OSC, annotation and colour escapes are invisible, so the
+    /// visible width is computed from `label` and the marker glyphs alone to
+    /// keep column accounting (and right-prompt padding) correct.
+    pub fn add_hyperlink_segment<'a>(
         &mut self,
         label: &str,
         url: &str,
         style: Style,
-        marker: Option<Marker>,
+        markers: impl IntoIterator<Item = Marker<'a>>,
     ) {
         let mut visible_width = label.width();
-        let link = Hyperlink { url, label }.to_string();
-        let seg = match marker {
-            Some(Marker { glyph, color, note }) => {
-                let cells = glyph.width();
-                // separating space + the glyph itself
-                visible_width += 1 + cells;
-                let note = note
-                    .filter(|_| cells > 0)
-                    .map(|message| Annotation { cells, message }.to_string())
-                    .unwrap_or_default();
-                format!("{} {}{}", link, note, tinted(glyph, color, &style))
-            }
-            None => link,
-        };
+        let mut seg = Hyperlink { url, label }.to_string();
+        for Marker { glyph, color, note } in markers {
+            let cells = glyph.width();
+            // separating space + the glyph itself
+            visible_width += 1 + cells;
+            let note = note
+                .filter(|_| cells > 0)
+                .map(|message| Annotation { cells, message }.to_string())
+                .unwrap_or_default();
+            let _ = write!(seg, " {}{}", note, tinted(glyph, color, &style));
+        }
         self.push_segment(seg, style, self.module_padding, Some(visible_width));
     }
 
@@ -623,8 +620,12 @@ impl Powerline {
                         *ahead_behind,
                     ))
                 }
-                LineSegment::Pr { status, hover } => self.add_module(
-                    Pr::<T>::new(*status, *hover)
+                LineSegment::Pr {
+                    status,
+                    hover,
+                    review,
+                } => self.add_module(
+                    Pr::<T>::new(*status, *hover, *review)
                         .with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
                 ),
                 LineSegment::PrChecks => self.add_module(PrChecks::<T>::new()),
@@ -1581,6 +1582,25 @@ mod tests {
             !hidden.left_buffer.contains("1337"),
             "{:?}",
             hidden.left_buffer
+        );
+    }
+
+    #[test]
+    fn hyperlink_markers_each_take_a_space_and_their_glyph() {
+        let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
+        let markers = [
+            Marker::new("●", Color::from_u8(2)),
+            Marker::new("\u{eab2}", Color::from_u8(10)),
+        ];
+        let mut powerline = flush_powerline();
+        powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, markers);
+
+        assert_eq!(visible(&powerline.left_buffer), " #12 ● \u{eab2} ");
+        assert_eq!(powerline.left_columns, 2 + 3 + 2 + 2);
+        assert!(
+            powerline.left_buffer.contains("\x1b[38;5;10m\u{eab2}"),
+            "{:?}",
+            powerline.left_buffer
         );
     }
 

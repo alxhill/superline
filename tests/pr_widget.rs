@@ -14,6 +14,11 @@ const BIN: &str = env!("CARGO_BIN_EXE_superline");
 /// A repository at `<root>/repo` on a branch the stub has an open PR for
 /// (#142, 426 lines added and 35 deleted), and an empty scratch home.
 fn scratch(label: &str) -> PathBuf {
+    scratch_on(label, "feat/usage-sparklines")
+}
+
+/// Like [`scratch`], on `branch`.
+fn scratch_on(label: &str, branch: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!(
         "superline-pr-widget-{}-{label}",
         std::process::id()
@@ -23,7 +28,7 @@ fn scratch(label: &str) -> PathBuf {
 
     let repo = root.join("repo");
     fs::create_dir_all(&repo).expect("create repo dir");
-    git(&repo, &["init", "-q", "-b", "feat/usage-sparklines"]);
+    git(&repo, &["init", "-q", "-b", branch]);
     git(&repo, &["config", "user.email", "test@example.com"]);
     git(&repo, &["config", "user.name", "test"]);
     git(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
@@ -78,10 +83,15 @@ fn render(root: &Path, segments: Value) -> String {
 
 /// Renders until the background `gh` lookup has landed in the cache.
 fn render_with_pr(root: &Path, segments: Value) -> String {
+    render_with(root, segments, "#142")
+}
+
+/// Renders until the prompt shows `pr`, i.e. the `gh` lookup has landed.
+fn render_with(root: &Path, segments: Value, pr: &str) -> String {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let prompt = render(root, segments.clone());
-        if prompt.contains("#142") {
+        if prompt.contains(pr) {
             return prompt;
         }
         assert!(Instant::now() < deadline, "PR never loaded: {prompt:?}");
@@ -99,6 +109,51 @@ fn pr_diff_shows_the_prs_line_counts() {
     let both = render_with_pr(&root, json!(["pr", "pr_diff"]));
     assert!(both.contains("+426"), "prompt: {both:?}");
     assert!(both.contains("-35"), "prompt: {both:?}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+const APPROVED_ICON: &str = "\u{eab2}";
+const CHANGES_REQUESTED_ICON: &str = "\u{eb43}";
+const REVIEW_ICONS: [&str; 4] = [
+    APPROVED_ICON,
+    CHANGES_REQUESTED_ICON,
+    "\u{ea70}",
+    "\u{ea6b}",
+];
+
+#[test]
+fn pr_shows_the_review_state_after_the_ci_dot() {
+    let root = scratch_on("review", "feat/badges");
+    let prompt = render_with(&root, json!(["pr"]), "#150");
+    let after_number = &prompt[prompt.find("#150").unwrap()..];
+    let dot = after_number.find('●').expect("CI dot");
+    let check = after_number.find(APPROVED_ICON).expect("approved icon");
+    assert!(dot < check, "prompt: {prompt:?}");
+
+    let hidden = render_with(&root, json!([{ "pr": { "review": false } }]), "#150");
+    assert!(hidden.contains('●'), "prompt: {hidden:?}");
+    assert!(!hidden.contains(APPROVED_ICON), "prompt: {hidden:?}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn pr_shows_requested_changes() {
+    let root = scratch_on("changes", "fix/flaky-test");
+    let prompt = render_with(&root, json!(["pr"]), "#147");
+    assert!(
+        prompt.contains(CHANGES_REQUESTED_ICON),
+        "prompt: {prompt:?}"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn pr_without_review_activity_shows_no_review_icon() {
+    let root = scratch("no-review");
+    let prompt = render_with_pr(&root, json!(["pr"]));
+    for icon in REVIEW_ICONS {
+        assert!(!prompt.contains(icon), "prompt: {prompt:?}");
+    }
     let _ = fs::remove_dir_all(&root);
 }
 

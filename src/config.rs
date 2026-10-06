@@ -239,13 +239,18 @@ pub enum LineSegment {
     },
     Pr {
         /// Append a coloured dot reflecting the PR's CI check status. On by
-        /// default; set to `false` to show just the PR number.
+        /// default; set to `false` to hide it.
         #[serde(default = "default_true")]
         status: bool,
         /// Hovering over the status dot in iTerm2 lists the checks that
         /// failed, are pending, passed and were skipped. On by default.
         #[serde(default = "default_true")]
         hover: bool,
+        /// Append an icon for the PR's review state: review requested,
+        /// commented, changes requested or approved. On by default; nothing
+        /// shows until someone is asked to review.
+        #[serde(default = "default_true")]
+        review: bool,
     },
     /// The CI check status dot of `pr` on its own, from the same lookup.
     PrChecks,
@@ -475,6 +480,8 @@ enum KnownLineSegment {
         status: bool,
         #[serde(default = "default_true")]
         hover: bool,
+        #[serde(default = "default_true")]
+        review: bool,
     },
     PrChecks,
     PrDiff,
@@ -634,7 +641,15 @@ impl From<KnownLineSegment> for LineSegment {
                 repo,
             },
             KnownLineSegment::GitRemote { ahead_behind } => LineSegment::GitRemote { ahead_behind },
-            KnownLineSegment::Pr { status, hover } => LineSegment::Pr { status, hover },
+            KnownLineSegment::Pr {
+                status,
+                hover,
+                review,
+            } => LineSegment::Pr {
+                status,
+                hover,
+                review,
+            },
             KnownLineSegment::PrChecks => LineSegment::PrChecks,
             KnownLineSegment::PrDiff => LineSegment::PrDiff,
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
@@ -932,6 +947,7 @@ impl Config {
                     LineSegment::Pr {
                         status: true,
                         hover: true,
+                        review: true,
                     },
                     LineSegment::PrDiff,
                 ]),
@@ -993,6 +1009,7 @@ impl Default for Config {
                         LineSegment::Pr {
                             status: true,
                             hover: true,
+                            review: true,
                         },
                         LineSegment::PrDiff,
                         LineSegment::Padding(2),
@@ -1409,7 +1426,7 @@ mod tests {
     #[test]
     fn pr_hover_can_be_turned_off() {
         let pr = |json: &str| match serde_json::from_str::<LineSegment>(json).unwrap() {
-            LineSegment::Pr { status, hover } => (status, hover),
+            LineSegment::Pr { status, hover, .. } => (status, hover),
             other => panic!("not pr: {other:?}"),
         };
         assert_eq!(pr(r#""pr""#), (true, true));
@@ -1615,6 +1632,7 @@ mod tests {
                 LineSegment::Pr {
                     status: true,
                     hover: true,
+                    review: true,
                 },
             ),
         ];

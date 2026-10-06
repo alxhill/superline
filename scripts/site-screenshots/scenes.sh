@@ -66,7 +66,7 @@ EOF
 
 scene_pr() {
   local dir="$work/pr/home/code/superline" branch
-  local branches=(feat/draft-themes feat/login fix/flaky-test feat/nushell)
+  local branches=(feat/draft-themes feat/login fix/flaky-test feat/search feat/badges feat/nushell)
   git_repo "$dir"
   for branch in "${branches[@]}"; do
     git -C "$dir" branch "$branch"
@@ -75,11 +75,17 @@ scene_pr() {
   # PR lookups land in the cache in the background, so render each branch once
   # up front and let the refreshes finish before recording.
   local warm="for b in ${branches[*]}; git switch -q \$b; superline show fish -s 0 -c 90 >/dev/null; end; sleep 2; git switch -q feat/draft-themes"
-  PRE="$warm" capture pr 90 12 "$configs/pr.json" code/superline <<'TAPE'
+  PRE="$warm" capture pr 90 17 "$configs/pr.json" code/superline <<'TAPE'
 Type "git switch -q feat/login"
 Enter
 Sleep 1s
 Type "git switch -q fix/flaky-test"
+Enter
+Sleep 1s
+Type "git switch -q feat/search"
+Enter
+Sleep 1s
+Type "git switch -q feat/badges"
 Enter
 Sleep 1s
 Type "git switch -q feat/nushell"
@@ -343,6 +349,12 @@ component_fixture() {
       FIXTURE_DIR=code/superline
       git_repo "$home/$FIXTURE_DIR"
       git -C "$home/$FIXTURE_DIR" switch --quiet -c feat/usage-sparklines
+      FIXTURE_PRE="superline show fish -s 0 -c 90 >/dev/null; sleep 2"
+      ;;
+    pr-approved)
+      FIXTURE_DIR=code/superline
+      git_repo "$home/$FIXTURE_DIR"
+      git -C "$home/$FIXTURE_DIR" switch --quiet -c feat/badges
       FIXTURE_PRE="superline show fish -s 0 -c 90 >/dev/null; sleep 2"
       ;;
     python)

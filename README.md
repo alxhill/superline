@@ -472,6 +472,13 @@ A clickable link to the GitHub pull request for the current branch, looked up vi
 reflects the PR state (draft, open, merged, closed). With `status` on (the default) a colored dot follows the PR
 number showing CI check status: green for success, red for failure, yellow for pending.
 
+With `review` on (the default) an icon after that shows where the review stands, by whose turn it is: an eye while
+requested reviews are outstanding, a speech bubble once reviewed with comments only, a red changes-requested icon when a
+reviewer asked for changes, and a green check once approved. Nothing shows until someone has been asked to review. On
+branches without required reviews the latest review of each reviewer decides. Both markers are only shown while the PR
+is open or a draft. Their colors and glyphs are the theme's `pr.review_<state>_fg` and `pr.review_<state>_icon`, where
+`<state>` is `pending`, `commented`, `changes_requested` or `approved`.
+
 **Hover text.** The dot carries an iTerm2 hidden annotation: hover over it to see each check by name, grouped by
 outcome with the worst first, such as `1 failed: test (macos) · 1 pending: e2e · 3 passed: lint, build, docs`. Set
 `hover` to `false` to leave it out. Other terminals ignore the escape. Inside tmux it only reaches iTerm2 with
@@ -481,7 +488,7 @@ The lookup runs in the background and is cached, so it never blocks the prompt -
 once the result is ready. The module is skipped entirely on `main`, `master` and `develop`.
 
 ```json
-{ "pr": { "status": false } }
+{ "pr": { "status": false, "review": false } }
 ```
 
 #### pr_checks
@@ -745,7 +752,8 @@ working in. Two widgets also read the session data:
   reports rate limits for Pro and Max subscriptions, after the first response; until then the widget falls back to the
   cached reading as in the prompt.
 - `pr` falls back to the pull request (or GitLab merge request) Claude Code reports when the `gh` lookup has none yet.
-  That one carries no CI status, so it shows without the status dot.
+  That one carries no CI status, so it shows without the status dot, and its review state only distinguishes approved
+  and changes requested, so only those show a review icon.
 
 The shell-only widgets (`cmd`, `last_cmd_duration`, `shell`, `jobs`) have no shell to read in the status line.
 

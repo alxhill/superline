@@ -256,6 +256,26 @@ const TEXT_COLORS: &[TextColor] = &[
         "status_pending_fg",
         <T as PrScheme>::pr_status_pending_fg,
     ),
+    (
+        "pr",
+        "review_pending_fg",
+        <T as PrScheme>::pr_review_pending_fg,
+    ),
+    (
+        "pr",
+        "review_commented_fg",
+        <T as PrScheme>::pr_review_commented_fg,
+    ),
+    (
+        "pr",
+        "review_changes_requested_fg",
+        <T as PrScheme>::pr_review_changes_requested_fg,
+    ),
+    (
+        "pr",
+        "review_approved_fg",
+        <T as PrScheme>::pr_review_approved_fg,
+    ),
     ("pr_diff", "added_fg", <T as PrScheme>::pr_diff_added_fg),
     ("pr_diff", "removed_fg", <T as PrScheme>::pr_diff_removed_fg),
     ("python", "env_fg", <T as PythonScheme>::pyenv_fg),
