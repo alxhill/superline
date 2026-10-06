@@ -247,13 +247,18 @@ pub enum LineSegment {
         #[serde(default = "default_true")]
         hover: bool,
         /// Append an icon for the PR's review state: review requested,
-        /// commented, changes requested or approved. On by default; nothing
-        /// shows until someone is asked to review.
-        #[serde(default = "default_true")]
+        /// commented, changes requested or approved. Off by default; once on,
+        /// nothing shows until someone is asked to review.
+        #[serde(default)]
         review: bool,
     },
     /// The CI check status dot of `pr` on its own, from the same lookup.
-    PrChecks,
+    PrChecks {
+        /// Append the review-state icon after the dot, as `pr`'s `review`
+        /// option does. Off by default.
+        #[serde(default)]
+        review: bool,
+    },
     /// The current branch's PR's added and deleted line counts.
     PrDiff,
     Python {
@@ -480,10 +485,13 @@ enum KnownLineSegment {
         status: bool,
         #[serde(default = "default_true")]
         hover: bool,
-        #[serde(default = "default_true")]
+        #[serde(default)]
         review: bool,
     },
-    PrChecks,
+    PrChecks {
+        #[serde(default)]
+        review: bool,
+    },
     PrDiff,
     /// Named `python_env` before the language modules were renamed; both
     /// names parse.
@@ -650,7 +658,7 @@ impl From<KnownLineSegment> for LineSegment {
                 hover,
                 review,
             },
-            KnownLineSegment::PrChecks => LineSegment::PrChecks,
+            KnownLineSegment::PrChecks { review } => LineSegment::PrChecks { review },
             KnownLineSegment::PrDiff => LineSegment::PrDiff,
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
             KnownLineSegment::Node { version } => LineSegment::Node { version },
@@ -947,7 +955,7 @@ impl Config {
                     LineSegment::Pr {
                         status: true,
                         hover: true,
-                        review: true,
+                        review: false,
                     },
                     LineSegment::PrDiff,
                 ]),
@@ -1009,7 +1017,7 @@ impl Default for Config {
                         LineSegment::Pr {
                             status: true,
                             hover: true,
-                            review: true,
+                            review: false,
                         },
                         LineSegment::PrDiff,
                         LineSegment::Padding(2),
@@ -1314,8 +1322,15 @@ mod tests {
                     ahead_behind: false,
                 },
             ),
-            (r#""pr_checks""#, LineSegment::PrChecks),
-            (r#"{"pr_checks":{}}"#, LineSegment::PrChecks),
+            (r#""pr_checks""#, LineSegment::PrChecks { review: false }),
+            (
+                r#"{"pr_checks":{}}"#,
+                LineSegment::PrChecks { review: false },
+            ),
+            (
+                r#"{"pr_checks":{"review":true}}"#,
+                LineSegment::PrChecks { review: true },
+            ),
         ];
         for (json, expected) in cases {
             let parsed: LineSegment =
@@ -1632,7 +1647,7 @@ mod tests {
                 LineSegment::Pr {
                     status: true,
                     hover: true,
-                    review: true,
+                    review: false,
                 },
             ),
         ];

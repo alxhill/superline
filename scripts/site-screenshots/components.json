@@ -450,13 +450,17 @@
         "row": {
           "left": [
             "git",
-            "pr"
+            {
+              "pr": {
+                "review": true
+              }
+            }
           ]
         }
       },
       {
         "name": "full",
-        "label": "All options: CI dot and review icon hidden",
+        "label": "All options: CI dot and hover text off, review icon on",
         "fixture": "pr-approved",
         "row": {
           "left": [
@@ -464,7 +468,8 @@
             {
               "pr": {
                 "status": false,
-                "review": false
+                "hover": false,
+                "review": true
               }
             }
           ]
@@ -488,6 +493,26 @@
             },
             "pr_diff",
             "pr_checks"
+          ]
+        }
+      },
+      {
+        "name": "review",
+        "label": "With the review icon",
+        "fixture": "pr-approved",
+        "row": {
+          "left": [
+            "git",
+            {
+              "pr": {
+                "status": false
+              }
+            },
+            {
+              "pr_checks": {
+                "review": true
+              }
+            }
           ]
         }
       }

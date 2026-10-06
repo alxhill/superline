@@ -472,11 +472,12 @@ A clickable link to the GitHub pull request for the current branch, looked up vi
 reflects the PR state (draft, open, merged, closed). With `status` on (the default) a colored dot follows the PR
 number showing CI check status: green for success, red for failure, yellow for pending.
 
-With `review` on (the default) an icon after that shows where the review stands, by whose turn it is: an eye while
-requested reviews are outstanding, a speech bubble once reviewed with comments only, a red changes-requested icon when a
-reviewer asked for changes, and a green check once approved. Nothing shows until someone has been asked to review. On
-branches without required reviews the latest review of each reviewer decides. Both markers are only shown while the PR
-is open or a draft. Their colors and glyphs are the theme's `pr.review_<state>_fg` and `pr.review_<state>_icon`, where
+With `review` on (off by default) an icon after that shows where the review stands, by whose turn it is: a person with
+a clock while requested reviews are outstanding, a speech bubble once reviewed with comments only, a red person with a
+cross when a reviewer asked for changes, and a green person with a check once approved. Nothing shows until someone
+has been asked to review. On branches that don't require a review it only shows once someone has actually reviewed,
+with that review's state (changes requested over approved over commented). Both markers are only shown while the PR is
+open or a draft. Their colors and glyphs are the theme's `pr.review_<state>_fg` and `pr.review_<state>_icon`, where
 `<state>` is `pending`, `commented`, `changes_requested` or `approved`.
 
 **Hover text.** The dot carries an iTerm2 hidden annotation: hover over it to see each check by name, grouped by
@@ -488,7 +489,7 @@ The lookup runs in the background and is cached, so it never blocks the prompt -
 once the result is ready. The module is skipped entirely on `main`, `master` and `develop`.
 
 ```json
-{ "pr": { "status": false, "review": false } }
+{ "pr": { "status": false, "review": true } }
 ```
 
 #### pr_checks
@@ -496,10 +497,11 @@ once the result is ready. The module is skipped entirely on `main`, `master` and
 The CI dot of [`pr`](#pr) as a segment of its own, linking to the PR's checks page. It sits on the PR state's
 background, so right after `{ "pr": { "status": false } }` it reads as part of the PR, and it can also go anywhere
 else in the prompt. Like the dot it only shows while the PR is open or a draft and has checks, and it reads the same
-cached `gh` lookup as `pr`. It uses the theme's `pr.status_icon` and `pr.status_*_fg` colors.
+cached `gh` lookup as `pr`. It uses the theme's `pr.status_icon` and `pr.status_*_fg` colors. Set `review` to
+`true` to add the review icon described under `pr` after the dot. Its padding defaults to `small`.
 
 ```json
-[{ "pr": { "status": false } }, "pr_checks"]
+[{ "pr": { "status": false } }, { "pr_checks": { "review": true } }]
 ```
 
 #### pr_diff

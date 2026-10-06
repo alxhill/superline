@@ -100,10 +100,10 @@
       ["review_approved_fg", "color", "Review icon once approved.", "defaults.fg"],
       ["icon", "string", "Icon before the PR number.", "U+EA64"],
       ["status_icon", "string", "The CI dot.", "\"●\""],
-      ["review_pending_icon", "string", "Review icon while requested reviews are outstanding.", "U+EA70"],
-      ["review_commented_icon", "string", "Review icon once reviewed with comments only.", "U+EA6B"],
-      ["review_changes_requested_icon", "string", "Review icon when a reviewer requested changes.", "U+EB43"],
-      ["review_approved_icon", "string", "Review icon once approved.", "U+EAB2"]
+      ["review_pending_icon", "string", "Review icon while requested reviews are outstanding.", "U+F0B56"],
+      ["review_commented_icon", "string", "Review icon once reviewed with comments only.", "U+F017B"],
+      ["review_changes_requested_icon", "string", "Review icon when a reviewer requested changes.", "U+F0015"],
+      ["review_approved_icon", "string", "Review icon once approved.", "U+F0008"]
     ]
   },
   "diff": {

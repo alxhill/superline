@@ -37,10 +37,10 @@ pub trait PrScheme: DefaultColors {
     const PR_ICON: &'static str = "\u{ea64}"; // nf-cod-git_pull_request
     const PR_STATUS_ICON: &'static str = "\u{25cf}"; // ● black circle
     const PR_DIFF_ICON: &'static str = "\u{eafd}"; // nf-cod-git_compare
-    const PR_REVIEW_PENDING_ICON: &'static str = "\u{ea70}"; // nf-cod-eye
-    const PR_REVIEW_COMMENTED_ICON: &'static str = "\u{ea6b}"; // nf-cod-comment
-    const PR_REVIEW_CHANGES_REQUESTED_ICON: &'static str = "\u{eb43}"; // nf-cod-request_changes
-    const PR_REVIEW_APPROVED_ICON: &'static str = "\u{eab2}"; // nf-cod-check
+    const PR_REVIEW_PENDING_ICON: &'static str = "\u{f0b56}"; // nf-md-account_clock
+    const PR_REVIEW_COMMENTED_ICON: &'static str = "\u{f017b}"; // nf-md-comment_account
+    const PR_REVIEW_CHANGES_REQUESTED_ICON: &'static str = "\u{f0015}"; // nf-md-account_remove
+    const PR_REVIEW_APPROVED_ICON: &'static str = "\u{f0008}"; // nf-md-account_check
     const PR_DIFF_ADDED_FG: Color = colors::green();
     const PR_DIFF_REMOVED_FG: Color = colors::red();
 
@@ -126,7 +126,7 @@ pub trait PrScheme: DefaultColors {
 
 impl<S: PrScheme> Default for Pr<S> {
     fn default() -> Self {
-        Self::new(true, true, true)
+        Self::new(true, true, false)
     }
 }
 
@@ -376,18 +376,21 @@ impl<S: PrScheme> Pr<S> {
 /// the same segment. Like the dot it only shows while the PR is open or a
 /// draft, and draws from the same cached lookup as [`Pr`].
 pub struct PrChecks<S> {
+    /// Whether to append the review-state icon after the dot.
+    show_review: bool,
     scheme: PhantomData<S>,
 }
 
 impl<S: PrScheme> Default for PrChecks<S> {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
 impl<S: PrScheme> PrChecks<S> {
-    pub fn new() -> PrChecks<S> {
+    pub fn new(show_review: bool) -> PrChecks<S> {
         PrChecks {
+            show_review,
             scheme: PhantomData,
         }
     }
@@ -395,27 +398,37 @@ impl<S: PrScheme> PrChecks<S> {
 
 impl<S: PrScheme> Module for PrChecks<S> {
     fn default_padding(&self) -> DefaultPadding {
-        SegmentPadding::Large.into()
+        SegmentPadding::Small.into()
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
         let Some(pr) = cached_pr() else {
             return;
         };
-        let Some(status) = pr.checks.filter(|_| pr.state.is_open()) else {
-            return;
-        };
-        let icon = S::pr_status_icon();
-        if icon.is_empty() {
+        if !pr.state.is_open() {
             return;
         }
+        let dot = pr
+            .checks
+            .map(|status| Marker::new(S::pr_status_icon(), status.fg::<S>()))
+            .filter(|marker| !marker.glyph.is_empty());
+        let review = pr
+            .review
+            .filter(|_| self.show_review)
+            .map(ReviewStatus::marker::<S>)
+            .filter(|marker| !marker.glyph.is_empty());
+        // The dot links to the checks page; a review icon on its own links
+        // to the PR.
+        let url = match dot {
+            Some(_) => checks_url(&pr.url),
+            None => pr.url.clone(),
+        };
+        let mut markers = dot.into_iter().chain(review);
+        let Some(first) = markers.next() else {
+            return;
+        };
         let (_, bg) = pr.state.style::<S>();
-        powerline.add_hyperlink_segment(
-            icon,
-            &checks_url(&pr.url),
-            Style::simple(status.fg::<S>(), bg),
-            None,
-        );
+        powerline.add_hyperlink_segment(first.glyph, &url, Style::simple(first.color, bg), markers);
     }
 }
 
@@ -531,10 +544,10 @@ fn fetch_pr(branch: &str, repo_dir: &Path) -> Option<PrInfo> {
 /// Collapses GitHub's review data into the one state worth showing, by whose
 /// turn it is:
 ///
-/// - A review decision of approved or changes requested wins outright. Repos
-///   without required reviews have no decision, so there the latest reviews
-///   decide in the same way: any reviewer requesting changes blocks, otherwise
-///   any approval approves.
+/// - Branches that don't require a review have no review decision. There only
+///   an actual review shows, by its state: any request for changes, otherwise
+///   any approval, otherwise comments. Outstanding requests alone show nothing.
+/// - A review decision of approved or changes requested wins outright.
 /// - Otherwise outstanding review requests mean it's waiting on reviewers
 ///   (including a re-request after addressing comments).
 /// - Otherwise any review at all (comments, or approvals short of what a
@@ -558,12 +571,15 @@ fn review_status(decision: &str, requests: usize, reviews: &[GhReview]) -> Optio
     };
 
     if decision.is_empty() {
-        if states().any(|state| state == "CHANGES_REQUESTED") {
-            return Some(ReviewStatus::ChangesRequested);
-        }
-        if states().any(|state| state == "APPROVED") {
-            return Some(ReviewStatus::Approved);
-        }
+        return if states().any(|state| state == "CHANGES_REQUESTED") {
+            Some(ReviewStatus::ChangesRequested)
+        } else if states().any(|state| state == "APPROVED") {
+            Some(ReviewStatus::Approved)
+        } else if states().next().is_some() {
+            Some(ReviewStatus::Commented)
+        } else {
+            None
+        };
     }
 
     if requests > 0 {
@@ -893,14 +909,11 @@ mod tests {
         let cases: &[(&str, usize, &[&str], Option<ReviewStatus>)] = &[
             // Nobody asked and nobody reviewed: nothing to show, even when the
             // branch requires a review.
-            ("", 0, &[], None),
             ("REVIEW_REQUIRED", 0, &[], None),
             // Asked, not answered yet.
             ("REVIEW_REQUIRED", 1, &[], Some(Pending)),
-            ("", 2, &[], Some(Pending)),
             // Answered with comments only: back to the author...
             ("REVIEW_REQUIRED", 0, &["COMMENTED"], Some(Commented)),
-            ("", 0, &["COMMENTED"], Some(Commented)),
             // ...until they re-request a review.
             ("REVIEW_REQUIRED", 1, &["COMMENTED"], Some(Pending)),
             // An approval short of what the branch requires is just a review.
@@ -914,9 +927,16 @@ mod tests {
                 &["CHANGES_REQUESTED"],
                 Some(ChangesRequested),
             ),
-            // Without required reviews the latest reviews decide, a request
-            // for changes blocking any approval.
+            // Branches that don't require a review show nothing until someone
+            // reviews, outstanding requests included...
+            ("", 0, &[], None),
+            ("", 2, &[], None),
+            ("", 1, &["DISMISSED"], None),
+            // ...then the review's own state, a request for changes blocking
+            // any approval.
+            ("", 1, &["COMMENTED"], Some(Commented)),
             ("", 1, &["APPROVED"], Some(Approved)),
+            ("", 0, &["COMMENTED", "APPROVED"], Some(Approved)),
             (
                 "",
                 0,
@@ -924,8 +944,8 @@ mod tests {
                 Some(ChangesRequested),
             ),
             // Dismissed reviews and unsubmitted drafts don't count.
-            ("", 0, &["DISMISSED", "PENDING"], None),
-            ("", 1, &["DISMISSED"], Some(Pending)),
+            ("REVIEW_REQUIRED", 0, &["DISMISSED", "PENDING"], None),
+            ("REVIEW_REQUIRED", 1, &["DISMISSED"], Some(Pending)),
         ];
         for (decision, requests, states, expected) in cases {
             assert_eq!(

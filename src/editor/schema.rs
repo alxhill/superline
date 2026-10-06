@@ -348,10 +348,16 @@ const PR: &[OptionSpec] = &[
     ),
     boolean(
         "review",
-        true,
+        false,
         "Append an icon for the review: requested, commented, changes requested or approved.",
     ),
 ];
+
+const PR_CHECKS: &[OptionSpec] = &[boolean(
+    "review",
+    false,
+    "Append an icon for the review: requested, commented, changes requested or approved.",
+)];
 
 const PYTHON: &[OptionSpec] = &[
     boolean("version", true, "Show the interpreter version."),
@@ -597,7 +603,7 @@ pub const WIDGETS: &[WidgetSpec] = &[
     widget(
         "pr_checks",
         "The pull request's CI status dot, apart from pr.",
-        Shape::Unit,
+        Shape::Object(PR_CHECKS),
     ),
     WidgetSpec {
         aliases: &["claude_lines"],
