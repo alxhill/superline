@@ -3,7 +3,7 @@
 # canned PR per branch, so PR segments render the same on every run.
 [ "$1 $2" = "pr view" ] || exit 1
 url=https://github.com/alxhill/superline/pull
-check() { printf '[{"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"%s","conclusion":%s}]' "$1" "$2"; }
+check() { printf '[{"name":"lint","status":"COMPLETED","conclusion":"SUCCESS"},{"name":"test","status":"%s","conclusion":%s}]' "$1" "$2"; }
 case "$3" in
   feat/usage-sparklines) n=142 state=OPEN draft=false checks=$(check COMPLETED '"SUCCESS"') ;;
   feat/draft-themes) n=151 state=OPEN draft=true checks='[]' ;;

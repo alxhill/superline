@@ -457,6 +457,11 @@ A clickable link to the GitHub pull request for the current branch, looked up vi
 reflects the PR state (draft, open, merged, closed). With `status` on (the default) a colored dot follows the PR
 number showing CI check status: green for success, red for failure, yellow for pending.
 
+**Hover text.** The dot carries an iTerm2 hidden annotation: hover over it to see each check by name, grouped by
+outcome with the worst first, such as `1 failed: test (macos) · 1 pending: e2e · 3 passed: lint, build, docs`. Set
+`hover` to `false` to leave it out. Other terminals ignore the escape. Inside tmux it only reaches iTerm2 with
+`allow-passthrough` on and the sequence wrapped for passthrough, which superline doesn't do.
+
 The lookup runs in the background and is cached, so it never blocks the prompt - the link appears on a later prompt
 once the result is ready. The module is skipped entirely on `main`, `master` and `develop`.
 
