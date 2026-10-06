@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0](https://github.com/alxhill/superline/compare/v0.28.0...v0.29.0) - 2026-10-06
+
+### Added
+
+- replace claude_lines with a shared diff widget ([#209](https://github.com/alxhill/superline/pull/209))
+
+### Fixed
+
+- accept a negative exit status ([#210](https://github.com/alxhill/superline/pull/210))
+
 ## [0.28.0](https://github.com/alxhill/superline/compare/v0.27.2...v0.28.0) - 2026-10-05
 
 ### Added
