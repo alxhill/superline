@@ -157,7 +157,9 @@
       <a href="#jobs"><code>jobs</code></a>
       <p class="toc-title">Git &amp; GitHub</p>
       <a href="#git"><code>git</code></a>
+      <a href="#git_remote"><code>git_remote</code></a>
       <a href="#pr"><code>pr</code></a>
+      <a href="#pr_checks"><code>pr_checks</code></a>
       <a href="#pr_diff"><code>pr_diff</code></a>
       <a href="#diff"><code>diff</code></a>
       <p class="toc-title">Languages</p>
@@ -621,7 +623,7 @@
               <code>"auto"</code> picks by the size of <code>.git/index</code>, and uses gitoxide when <code>git</code> isn't on your <code>PATH</code>.
             </td></tr>
             <tr><td><code>worktrees</code></td><td>boolean</td><td><code>true</code></td><td>Show the linked-worktree count next to the branch, as <code>index/count</code> inside a linked worktree. Nothing shows when there are none.</td></tr>
-            <tr><td><code>repo</code></td><td>boolean</td><td><code>true</code></td><td>Show the remote segment: the GitHub logo linking to the repository and the ahead/behind counts.</td></tr>
+            <tr><td><code>repo</code></td><td>boolean</td><td><code>true</code></td><td>Show the remote segment: the GitHub logo linking to the repository and the ahead/behind counts. Turn it off to draw that segment elsewhere with <a href="#git_remote"><code>git_remote</code></a>.</td></tr>
           </tbody>
         </table>
         <details class="theme-opts" data-theme="git">
@@ -654,6 +656,38 @@
         </div>
       </section>
 
+      <section id="git_remote" class="component">
+        <h3><code>git_remote</code></h3>
+        <p>
+          The remote segment of <a href="#git"><code>git</code></a> as a widget of its own, so it can sit anywhere in
+          the prompt: the GitHub logo linking to the repository, then the commits ahead of and behind the upstream.
+          Pair it with <code>"repo": false</code> on <code>git</code> so it isn't drawn twice; <code>git</code>
+          followed by <code>git_remote</code> that way draws exactly what <code>git</code> alone does. It reads the
+          same status lookup, which the prompt makes once for both, with the row's <code>git</code> widget's
+          <code>status_timeout_ms</code> and <code>backend</code>. It draws nothing until the status is in, and is
+          themed by <code>modules.git</code>'s <code>remote_*</code>, <code>ahead_icon</code> and
+          <code>behind_icon</code>.
+        </p>
+        <table class="opts">
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>ahead_behind</code></td><td>boolean</td><td><code>true</code></td><td>Show the commits ahead of and behind the upstream after the logo. Off leaves just the link.</td></tr>
+          </tbody>
+        </table>
+        <div class="examples">
+          <div class="example" data-example="git_remote/minimal">
+  <div class="ex-label">Moved past the working-tree diff</div>
+  <figure class="term shot"><img src="img/config/git_remote-minimal.png" width="519" height="49" loading="lazy" alt="The git_remote example: Moved past the working-tree diff."></figure>
+  <pre class="json"><code><span class="s">"git_remote"</span></code></pre>
+</div><!-- /example -->
+          <div class="example" data-example="git_remote/full">
+  <div class="ex-label">All options: just the link</div>
+  <figure class="term shot"><img src="img/config/git_remote-full.png" width="355" height="49" loading="lazy" alt="The git_remote example: All options: just the link."></figure>
+  <pre class="json"><code>{ <span class="k">"git_remote"</span>: { <span class="k">"ahead_behind"</span>: <span class="n">false</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
       <section id="pr" class="component">
         <h3><code>pr</code></h3>
         <p>
@@ -665,7 +699,7 @@
         <table class="opts">
           <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td><code>status</code></td><td>boolean</td><td><code>true</code></td><td>Add a dot for CI while the PR is open: green passing, yellow pending, red failing.</td></tr>
+            <tr><td><code>status</code></td><td>boolean</td><td><code>true</code></td><td>Add a dot for CI while the PR is open: green passing, yellow pending, red failing. Turn it off to draw the dot elsewhere with <a href="#pr_checks"><code>pr_checks</code></a>.</td></tr>
             <tr><td><code>hover</code></td><td>boolean</td><td><code>true</code></td><td>In iTerm2, hovering over the CI dot lists the checks that failed, are pending, passed and were skipped.</td></tr>
           </tbody>
         </table>
@@ -690,6 +724,25 @@
   <div class="ex-label">All options: CI dot hidden</div>
   <figure class="term shot"><img src="img/config/pr-full.png" width="437" height="48" loading="lazy" alt="The pr example: All options: CI dot hidden."></figure>
   <pre class="json"><code>{ <span class="k">"pr"</span>: { <span class="k">"status"</span>: <span class="n">false</span> } }</code></pre>
+</div><!-- /example -->
+        </div>
+      </section>
+
+      <section id="pr_checks" class="component">
+        <h3><code>pr_checks</code></h3>
+        <p>
+          The CI dot of <a href="#pr"><code>pr</code></a> as a segment of its own, linking to the PR's checks page.
+          It sits on the PR state's background, so right after <code>{ "pr": { "status": false } }</code> it reads
+          as part of the PR, and it can go anywhere else too. Like the dot it only shows while the PR is open or a
+          draft and has checks, and it reads the same cached <code>gh</code> lookup as <code>pr</code>. No config
+          options; it is themed by <code>modules.pr</code>'s <code>status_icon</code> and
+          <code>status_*_fg</code>.
+        </p>
+        <div class="examples">
+          <div class="example" data-example="pr_checks/minimal">
+  <div class="ex-label">After the PR's line counts</div>
+  <figure class="term shot"><img src="img/config/pr_checks-minimal.png" width="611" height="48" loading="lazy" alt="The pr_checks example: After the PR&#x27;s line counts."></figure>
+  <pre class="json"><code><span class="s">"pr_checks"</span></code></pre>
 </div><!-- /example -->
         </div>
       </section>

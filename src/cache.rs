@@ -34,16 +34,23 @@
 //! thread and only hands it to the detached child if it outlasts the timeout.
 //! Either way the fetch never runs on the thread building the prompt.
 //!
+//! Several widgets can draw parts of the same lookup (`git` and `git_remote`,
+//! or `pr`, `pr_checks` and `pr_diff`). They load it with
+//! [`Cached::load_shared`] or [`Cached::load_with_timeout_shared`], which
+//! answer every call after the first in the same process from the first one's
+//! result, so the lookup is read, waited on and fetched once per prompt.
+//!
 //! Every [`Source`] has to be registered in [`crate::modules::run_refresh`] so
 //! the child process can find it by [`Source::KIND`].
 
+use std::any::Any;
 use std::collections::hash_map::DefaultHasher;
 use std::fs::{self, File, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -62,6 +69,11 @@ const PRUNE_MARKER: &str = ".last-pruned";
 const REFRESH_POLL_INTERVAL: Duration = Duration::from_millis(1);
 /// Distinguishes the temp files of writers within one process.
 static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
+/// What the shared loads made so far in this process found, by
+/// [`Cached::shared_key`]. A prompt is one process, so this lives as long as
+/// one render.
+type SharedLookups = Vec<(String, Box<dyn Any + Send>)>;
+static SHARED: Mutex<SharedLookups> = Mutex::new(Vec::new());
 
 /// A slow lookup whose result is served from an on-disk cache.
 ///
@@ -112,6 +124,7 @@ pub fn hash_id<T: Hash + ?Sized>(key: &T) -> String {
 }
 
 /// What a lookup has to show right now.
+#[derive(Clone)]
 pub enum Lookup<V> {
     /// A value is available. It may be older than the source's TTL, in which
     /// case a background refresh has already been scheduled.
@@ -399,6 +412,58 @@ impl<S: Source> Cached<S> {
             write_entry(path, value);
         }
     }
+}
+
+impl<S: Source> Cached<S>
+where
+    S::Value: Clone,
+{
+    /// Like [`load`](Self::load), for a lookup more than one widget draws
+    /// from: only the first call in this process reads the cache (and starts
+    /// any refresh); later ones get its result.
+    pub fn load_shared(&self) -> Lookup<S::Value> {
+        self.shared(|cached| cached.load())
+    }
+
+    /// Like [`load_with_timeout`](Self::load_with_timeout), for a lookup more
+    /// than one widget draws from: only the first call in this process
+    /// fetches or waits; later ones get its result, so a slow lookup costs
+    /// the prompt one timeout rather than one per widget.
+    pub fn load_with_timeout_shared(&self, timeout: Duration) -> Lookup<S::Value> {
+        self.shared(|cached| cached.load_with_timeout(timeout))
+    }
+
+    fn shared(&self, load: impl FnOnce(&Self) -> Lookup<S::Value>) -> Lookup<S::Value> {
+        let started = Instant::now();
+        let key = self.shared_key();
+        let earlier = lock_shared()
+            .iter()
+            .find(|(shared, _)| *shared == key)
+            .and_then(|(_, lookup)| lookup.downcast_ref::<Lookup<S::Value>>().cloned());
+        if let Some(lookup) = earlier {
+            debug::cache(S::KIND, CacheStatus::Shared, started.elapsed());
+            return lookup;
+        }
+        // Not held across the load: a timed load can wait for a while.
+        let lookup = load(self);
+        lock_shared().push((key, Box::new(lookup.clone())));
+        lookup
+    }
+
+    /// Names the lookup among the shared ones: its cache file, or its id
+    /// when there is no cache directory.
+    fn shared_key(&self) -> String {
+        match &self.path {
+            Some(path) => format!("{}:{}", S::KIND, path.display()),
+            None => format!("{}-{}", S::KIND, self.source.cache_id()),
+        }
+    }
+}
+
+fn lock_shared() -> MutexGuard<'static, SharedLookups> {
+    SHARED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Reads an [`Entry`] written by [`write_entry`].
@@ -1065,6 +1130,60 @@ mod tests {
         assert!(fresh.exists());
         assert!(nested.exists());
         assert!(dir.join(PRUNE_MARKER).exists());
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn shared_loads_answer_later_calls_from_the_first() {
+        let dir = unique_temp_dir("shared-once");
+        let probe = Probe::instant("shared-once", "fetched", &dir);
+        let cached = Cached::in_dir(probe.clone(), Some(dir.clone()));
+
+        let first = cached.load_with_timeout_shared(Duration::from_secs(5));
+        assert_eq!(first.ready().as_deref(), Some("fetched"));
+
+        // A second widget's load, even through its own `Cached`, neither
+        // reads the cache again nor fetches: it gets the first one's value.
+        write_entry(&cached, "rewritten", Probe::TTL + Duration::from_secs(1));
+        let again = Cached::in_dir(probe, Some(dir.clone()));
+        assert_eq!(
+            again
+                .load_with_timeout_shared(Duration::from_secs(5))
+                .ready()
+                .as_deref(),
+            Some("fetched")
+        );
+        assert_eq!(again.load_shared().ready().as_deref(), Some("fetched"));
+        assert_eq!(spawned_probe_kinds("shared-once"), 0);
+        // The unshared load still sees the file.
+        assert_eq!(
+            again.read().map(|entry| entry.value).as_deref(),
+            Some("rewritten")
+        );
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_shared_load_still_loading_is_not_waited_on_twice() {
+        let dir = unique_temp_dir("shared-loading");
+        let cached = Cached::in_dir(
+            Probe::slow("shared-loading", "fresh", &dir),
+            Some(dir.clone()),
+        );
+
+        let timeout = Duration::from_millis(100);
+        assert!(matches!(
+            cached.load_with_timeout_shared(timeout),
+            Lookup::Loading
+        ));
+        let started = Instant::now();
+        assert!(matches!(
+            cached.load_with_timeout_shared(timeout),
+            Lookup::Loading
+        ));
+        assert!(started.elapsed() < timeout, "the second load waited again");
+        assert_eq!(spawned_probe_kinds("shared-loading"), 1);
+        wait_for_child(&cached);
         fs::remove_dir_all(dir).ok();
     }
 

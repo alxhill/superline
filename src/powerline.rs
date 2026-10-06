@@ -6,14 +6,17 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::colors::Color;
 use crate::config;
-use crate::config::{LineSegment, SegmentPadding, SeparatorStyle, TerminalRuntimeMetadata, Widget};
+use crate::config::{
+    GitBackend, LineSegment, SegmentPadding, SeparatorStyle, TerminalRuntimeMetadata, Widget,
+    DEFAULT_GIT_STATUS_TIMEOUT_MS,
+};
 use crate::debug;
 use crate::modules::{
     Battery, Cargo, ClaudeAgent, ClaudeCache, ClaudeContext, ClaudeCost, ClaudeDuration,
     ClaudeModel, ClaudeSession, ClaudeVim, Cmd, Cwd, DefaultPadding, Diff, ErrorMessage, Git,
-    Hostname, Java, Jobs, Kubernetes, LastCmdDuration, LocalIp, MemoryUsage, Module, Node, Os, Pr,
-    PrDiff, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time, Unknown, Usage, UsageWindows,
-    Username,
+    GitRemote, Hostname, Java, Jobs, Kubernetes, LastCmdDuration, LocalIp, MemoryUsage, Module,
+    Node, Os, Pr, PrChecks, PrDiff, Python, ReadOnly, ShellName, Spacer, Sudo, Text, Time, Unknown,
+    Usage, UsageWindows, Username,
 };
 use crate::terminal::*;
 use crate::themes::{CompleteTheme, DefaultColors};
@@ -222,6 +225,9 @@ pub struct Powerline {
     /// Set by [`default_padding`], which asks a widget's module for its
     /// padding without drawing it.
     probe: Option<Option<DefaultPadding>>,
+    /// The status timeout and backend of the row's `git` widget, which
+    /// `git_remote` looks the status up with should it come first.
+    git_status: (Duration, GitBackend),
 }
 
 impl Default for Powerline {
@@ -246,6 +252,10 @@ impl Powerline {
             widget_padding: None,
             module_padding: SegmentPadding::Large,
             probe: None,
+            git_status: (
+                Duration::from_millis(DEFAULT_GIT_STATUS_TIMEOUT_MS),
+                GitBackend::Auto,
+            ),
         }
     }
 
@@ -260,6 +270,12 @@ impl Powerline {
         runtime_data: impl TerminalRuntimeMetadata,
     ) -> Self {
         let mut powerline = Powerline::new();
+        let git_status = (conf.left.iter())
+            .chain(conf.right.iter().flatten())
+            .find_map(|widget| git_status_settings(&widget.segment));
+        if let Some(git_status) = git_status {
+            powerline.git_status = git_status;
+        }
         powerline.add_conf_modules::<T>(&conf.left, &runtime_data);
 
         if let Some(right_modules) = &conf.right {
@@ -599,10 +615,19 @@ impl Powerline {
                     *worktrees,
                     *repo,
                 )),
+                LineSegment::GitRemote { ahead_behind } => {
+                    let (status_timeout, backend) = self.git_status;
+                    self.add_module(GitRemote::<T>::with_config(
+                        status_timeout,
+                        backend,
+                        *ahead_behind,
+                    ))
+                }
                 LineSegment::Pr { status, hover } => self.add_module(
                     Pr::<T>::new(*status, *hover)
                         .with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
                 ),
+                LineSegment::PrChecks => self.add_module(PrChecks::<T>::new()),
                 LineSegment::PrDiff => self.add_module(PrDiff::<T>::new()),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
@@ -820,6 +845,18 @@ fn tinted(text: &str, color: Color, style: &Style) -> String {
         fg.attrs_off(),
         style.fg
     )
+}
+
+/// The status timeout and backend a `git` widget asks for.
+fn git_status_settings(segment: &LineSegment) -> Option<(Duration, GitBackend)> {
+    match segment {
+        LineSegment::Git {
+            status_timeout_ms,
+            backend,
+            ..
+        } => Some((Duration::from_millis(*status_timeout_ms), *backend)),
+        _ => None,
+    }
 }
 
 /// The padding a widget's module declares, as it would draw the widget. `None`

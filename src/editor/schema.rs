@@ -325,9 +325,15 @@ const GIT: &[OptionSpec] = &[
     boolean(
         "repo",
         true,
-        "Show the remote segment: the repo link and ahead/behind counts.",
+        "Show the remote segment: the repo link and ahead/behind counts. Off when git_remote draws it.",
     ),
 ];
+
+const GIT_REMOTE: &[OptionSpec] = &[boolean(
+    "ahead_behind",
+    true,
+    "Show the commits ahead of and behind the upstream after the logo.",
+)];
 
 const PR: &[OptionSpec] = &[
     boolean(
@@ -570,13 +576,23 @@ pub const WIDGETS: &[WidgetSpec] = &[
     ),
     widget(
         "git",
-        "Branch, working-tree status and ahead/behind counts.",
+        "Branch, working-tree status and the remote segment.",
         Shape::Object(GIT),
+    ),
+    widget(
+        "git_remote",
+        "Repo link and ahead/behind counts, apart from git.",
+        Shape::Object(GIT_REMOTE),
     ),
     widget(
         "pr",
         "Link to the GitHub pull request for the branch.",
         Shape::Object(PR),
+    ),
+    widget(
+        "pr_checks",
+        "The pull request's CI status dot, apart from pr.",
+        Shape::Unit,
     ),
     WidgetSpec {
         aliases: &["claude_lines"],

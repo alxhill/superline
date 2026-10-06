@@ -129,6 +129,9 @@ pub enum CacheStatus {
     TimedOut { age: Option<Duration> },
     /// Nothing cached and no refresh possible.
     Unavailable,
+    /// An earlier widget in this prompt made the same lookup, and its result
+    /// was reused.
+    Shared,
 }
 
 impl Display for CacheStatus {
@@ -151,6 +154,7 @@ impl Display for CacheStatus {
             }
             CacheStatus::TimedOut { age: None } => write!(f, "wait timed out, nothing cached"),
             CacheStatus::Unavailable => write!(f, "unavailable"),
+            CacheStatus::Shared => write!(f, "shared with an earlier widget"),
         }
     }
 }

@@ -391,6 +391,45 @@
       }
     ]
   },
+  "git_remote": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "Moved past the working-tree diff",
+        "fixture": "git-dirty",
+        "row": {
+          "left": [
+            {
+              "git": {
+                "repo": false
+              }
+            },
+            "diff",
+            "git_remote"
+          ]
+        }
+      },
+      {
+        "name": "full",
+        "label": "All options: just the link",
+        "fixture": "git-dirty",
+        "row": {
+          "left": [
+            {
+              "git": {
+                "repo": false
+              }
+            },
+            {
+              "git_remote": {
+                "ahead_behind": false
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
   "pr": {
     "variants": [
       {
@@ -416,6 +455,27 @@
                 "status": false
               }
             }
+          ]
+        }
+      }
+    ]
+  },
+  "pr_checks": {
+    "variants": [
+      {
+        "name": "minimal",
+        "label": "After the PR's line counts",
+        "fixture": "pr",
+        "row": {
+          "left": [
+            "git",
+            {
+              "pr": {
+                "status": false
+              }
+            },
+            "pr_diff",
+            "pr_checks"
           ]
         }
       }

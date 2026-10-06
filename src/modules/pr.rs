@@ -163,7 +163,7 @@ impl CheckStatus {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PrInfo {
     number: u64,
     url: String,
@@ -276,6 +276,60 @@ impl<S: PrScheme> Module for Pr<S> {
     }
 }
 
+/// The CI dot [`Pr`] appends to the PR number, as a widget of its own so it
+/// can sit anywhere in the prompt. It links to the PR's checks page and sits
+/// on the PR state's background, so beside the number it reads as part of
+/// the same segment. Like the dot it only shows while the PR is open or a
+/// draft, and draws from the same cached lookup as [`Pr`].
+pub struct PrChecks<S> {
+    scheme: PhantomData<S>,
+}
+
+impl<S: PrScheme> Default for PrChecks<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S: PrScheme> PrChecks<S> {
+    pub fn new() -> PrChecks<S> {
+        PrChecks {
+            scheme: PhantomData,
+        }
+    }
+}
+
+impl<S: PrScheme> Module for PrChecks<S> {
+    fn default_padding(&self) -> DefaultPadding {
+        SegmentPadding::Large.into()
+    }
+
+    fn append_segments(&mut self, powerline: &mut Powerline) {
+        let Some(pr) = cached_pr() else {
+            return;
+        };
+        let Some(status) = pr.checks.filter(|_| pr.state.is_open()) else {
+            return;
+        };
+        let icon = S::pr_status_icon();
+        if icon.is_empty() {
+            return;
+        }
+        let (_, bg) = pr.state.style::<S>();
+        powerline.add_hyperlink_segment(
+            icon,
+            &checks_url(&pr.url),
+            Style::simple(status.fg::<S>(), bg),
+            None,
+        );
+    }
+}
+
+/// The page listing a PR's checks, from the PR's own URL.
+fn checks_url(pr_url: &str) -> String {
+    format!("{}/checks", pr_url.trim_end_matches('/'))
+}
+
 /// The added and deleted line counts of the current branch's PR, from the
 /// same cached lookup as [`Pr`].
 pub struct PrDiff<S> {
@@ -320,7 +374,7 @@ impl<S: PrScheme> Module for PrDiff<S> {
 fn cached_pr() -> Option<PrInfo> {
     let (branch, repo_root) = current_branch_and_root()
         .filter(|(branch, _)| !SKIP_BRANCHES.contains(&branch.as_str()))?;
-    match Cached::new(PrLookup { branch, repo_root }).load() {
+    match Cached::new(PrLookup { branch, repo_root }).load_shared() {
         Lookup::Ready(pr) => pr,
         Lookup::Loading | Lookup::Unavailable => None,
     }
@@ -635,6 +689,18 @@ mod tests {
         assert_eq!(
             hover_note(&round_trip.check_runs).as_deref(),
             Some("1 failed: lint")
+        );
+    }
+
+    #[test]
+    fn the_checks_page_hangs_off_the_pr_url() {
+        assert_eq!(
+            checks_url("https://github.com/alxhill/superline/pull/142"),
+            "https://github.com/alxhill/superline/pull/142/checks"
+        );
+        assert_eq!(
+            checks_url("https://github.com/alxhill/superline/pull/142/"),
+            "https://github.com/alxhill/superline/pull/142/checks"
         );
     }
 
