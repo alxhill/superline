@@ -115,6 +115,30 @@ fn nushell_init_renders_right_prompt_on_last_line() {
     );
 }
 
+/// nushell sets `LAST_EXIT_CODE` to the negative signal number when a command
+/// is killed by a signal, so Ctrl-C passes `-s -2` to both prompt commands.
+#[test]
+fn negative_status_is_accepted() {
+    let home = scratch_home("negative-status");
+    for subcommand in ["show", "show-right"] {
+        let output = Command::new(BIN)
+            .args([subcommand, "nu", "-s", "-2", "-c", "80"])
+            .current_dir(&home)
+            .env("HOME", &home)
+            .env("USERPROFILE", &home)
+            .env("XDG_CACHE_HOME", home.join("cache"))
+            .env("LOCALAPPDATA", home.join("cache"))
+            .output()
+            .expect("failed to run the superline binary");
+        assert!(
+            output.status.success(),
+            "`{subcommand} -s -2` exited with failure\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+    let _ = fs::remove_dir_all(&home);
+}
+
 #[test]
 fn each_shell_uses_its_own_escape_style() {
     let bash = render("bash");

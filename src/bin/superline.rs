@@ -296,7 +296,9 @@ struct ShowArgs {
     duration: Option<u64>,
     #[arg(short, long)]
     columns: usize,
-    #[arg(short, long)]
+    // nushell reports a command killed by a signal as a negative status, so
+    // `-s -2` must parse as a value and not as a flag.
+    #[arg(short, long, allow_negative_numbers = true)]
     status: String,
     /// Number of background jobs reported by the shell.
     #[arg(long, default_value_t = 0)]
