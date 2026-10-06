@@ -139,16 +139,18 @@ TAPE
 
 scene_themes() {
   local theme dir
-  for theme in rainbow simple gruvbox custom; do
+  for theme in rainbow simple gruvbox custom clear; do
     dir="$work/theme-$theme/home/code/superline"
     git_repo_with_upstream "$dir" 1 0 main
     rust_project "$dir"
     echo "changed" >>"$dir/README.md"
     local config="$work/theme-$theme.json"
-    if [[ $theme == custom ]]; then
+    if [[ $theme == custom || $theme == clear ]]; then
+      local file=ocean-theme.json
+      [[ $theme == clear ]] && file=clear-theme.json
       jq '.theme = "theme.json"' "$configs/themes.json" >"$config"
       mkdir -p "$work/theme-$theme/home/.config/superline"
-      cp "$configs/ocean-theme.json" "$work/theme-$theme/home/.config/superline/theme.json"
+      cp "$configs/$file" "$work/theme-$theme/home/.config/superline/theme.json"
     else
       jq --arg theme "$theme" '.theme = $theme' "$configs/themes.json" >"$config"
     fi

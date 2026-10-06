@@ -400,7 +400,11 @@ fn every_documented_text_color_is_drawn_with_its_attributes() {
         assert_eq!(color.attrs(), attrs, "{module}.{fg}");
         // Modules draw every segment through Style::simple.
         let drawn = Style::simple(color, Color(0)).fg.to_string();
-        let expected = format!("\x1b[38;5;{}m\x1b[{}m", color.to_u8(), attrs.on_codes());
+        let expected = format!(
+            "\x1b[38;5;{}m\x1b[{}m",
+            color.code().palette().unwrap(),
+            attrs.on_codes()
+        );
         assert_eq!(drawn, expected, "{module}.{fg}");
     }
 }

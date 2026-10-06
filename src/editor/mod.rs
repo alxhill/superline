@@ -110,7 +110,7 @@ enum Mode {
         purpose: InputPurpose,
     },
     ColorPicker {
-        code: u8,
+        code: crate::colors::ColorCode,
         /// Write the pick as a colour name when it has one.
         prefer_name: bool,
     },

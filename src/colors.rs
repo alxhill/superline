@@ -3,12 +3,38 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// A 256-colour palette code. A colour a theme resolves for text (`fg` or
-/// `*_fg`) also carries the attributes set next to it, which only apply when
-/// it is drawn as a foreground.
+/// What a theme colour draws with: a 256-colour palette code, or the
+/// terminal's own default colour (a theme's `"none"`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ColorCode {
+    /// The terminal's default foreground or background (SGR `39` / `49`), so
+    /// a segment shows the terminal's own background through it.
+    Terminal,
+    /// A code from the 256-colour palette (SGR `38;5;N` / `48;5;N`).
+    Palette(u8),
+}
+
+impl ColorCode {
+    /// The palette code, or `None` for the terminal's own colour.
+    pub fn palette(self) -> Option<u8> {
+        match self {
+            ColorCode::Terminal => None,
+            ColorCode::Palette(code) => Some(code),
+        }
+    }
+}
+
+/// The name a theme gives the terminal's own colour, e.g. `"bg": "none"`. No
+/// palette colour is called this.
+pub const NONE_NAME: &str = "none";
+
+/// A theme colour: a 256-colour palette code or the terminal's own colour. A
+/// colour a theme resolves for text (`fg` or `*_fg`) also carries the
+/// attributes set next to it, which only apply when it is drawn as a
+/// foreground.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Color {
-    code: u8,
+    code: ColorCode,
     attrs: TextAttrs,
 }
 
@@ -17,7 +43,7 @@ pub struct Color {
 #[allow(non_snake_case)]
 pub const fn Color(code: u8) -> Color {
     Color {
-        code,
+        code: ColorCode::Palette(code),
         attrs: TextAttrs::NONE,
     }
 }
@@ -84,7 +110,12 @@ macro_rules! define_colors {
         pub const NAMED_COLORS: &[(&str, Color)] = &[$((stringify!($name), Color($code))),*];
 
         impl Color {
+            /// The colour a theme names, including [`NONE_NAME`] for the
+            /// terminal's own colour.
             pub fn from_name(name: &str) -> Option<Color> {
+                if name == NONE_NAME {
+                    return Some(Color::NONE);
+                }
                 color_map().get(name).copied()
             }
         }
@@ -128,8 +159,21 @@ define_colors! {
 }
 
 impl Color {
-    pub fn to_u8(self) -> u8 {
+    /// The terminal's own default colour: text drawn in it uses the
+    /// terminal's foreground, and a segment drawn on it shows the terminal's
+    /// background.
+    pub const NONE: Color = Color {
+        code: ColorCode::Terminal,
+        attrs: TextAttrs::NONE,
+    };
+
+    pub fn code(self) -> ColorCode {
         self.code
+    }
+
+    /// Whether this is the terminal's own colour rather than a palette one.
+    pub fn is_none(self) -> bool {
+        self.code == ColorCode::Terminal
     }
 
     pub fn from_u8(val: u8) -> Color {
@@ -142,5 +186,25 @@ impl Color {
 
     pub fn with_attrs(self, attrs: TextAttrs) -> Color {
         Color { attrs, ..self }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn none_names_the_terminals_own_colour() {
+        let none = Color::from_name(NONE_NAME).unwrap();
+        assert!(none.is_none());
+        assert_eq!(none.code(), ColorCode::Terminal);
+        assert_eq!(none.code().palette(), None);
+        assert!(!Color::from_name("black").unwrap().is_none());
+        assert_eq!(Color(0).code().palette(), Some(0));
+    }
+
+    #[test]
+    fn no_palette_colour_is_called_none() {
+        assert!(NAMED_COLORS.iter().all(|(name, _)| *name != NONE_NAME));
     }
 }

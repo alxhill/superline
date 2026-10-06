@@ -123,9 +123,9 @@
           <div><dt><kbd>2</kbd> <kbd>1</kbd></dt><dd>Theme page, and back to the layout. <kbd>t</kbd> switches.</dd></div>
           <div><dt><kbd>p</kbd></dt><dd>Pick a theme, previewing each one on your prompt. <kbd>i</kbd> types a file name instead.</dd></div>
           <div><dt><kbd>c</kbd> <kbd>n</kbd></dt><dd>Duplicate the theme into a new theme file. In the picker, <kbd>c</kbd> duplicates the highlighted theme.</dd></div>
-          <div><dt><kbd>&#9166;</kbd></dt><dd>On a color, open the 256-color picker, which previews as you move. On an icon, search every Nerd Font glyph.</dd></div>
+          <div><dt><kbd>&#9166;</kbd></dt><dd>On a color, open the 256-color picker, which previews as you move; its <code>none</code> cell is the terminal's own color. On an icon, search every Nerd Font glyph.</dd></div>
           <div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Step a color by one code.</dd></div>
-          <div><dt><kbd>i</kbd></dt><dd>Type a color name, a 0&ndash;255 code, or text.</dd></div>
+          <div><dt><kbd>i</kbd></dt><dd>Type a color name, a 0&ndash;255 code, <code>none</code>, or text.</dd></div>
           <div><dt><kbd>x</kbd></dt><dd>Reset the property to its fallback.</dd></div>
           <div><dt><kbd>&#9166;</kbd> <kbd>space</kbd></dt><dd>On a <code>bold</code>, <code>italic</code> or <code>underline</code> switch, turn it on or off.</dd></div>
           <div><dt><kbd>&#9166;</kbd></dt><dd>On a color list, edit it one color per line: <kbd>a</kbd>/<kbd>I</kbd> add after or before, <kbd>d</kbd> delete, <kbd>J</kbd>/<kbd>K</kbd> move, <kbd>c</kbd> copy.</dd></div>
@@ -1460,7 +1460,8 @@
           is a string property that defaults to its usual glyph, such as <code>git</code>'s
           <code>branch_icon</code> or <code>battery</code>'s <code>charging_icon</code>; set one to
           <code>""</code> to hide it. Colors are a
-          <a href="#colors">color name</a> or an ANSI 256-color code from <code>0</code> to <code>255</code>.
+          <a href="#colors">color name</a>, an ANSI 256-color code from <code>0</code> to <code>255</code>, or
+          <a href="#color-none"><code>"none"</code></a> for the terminal's own color.
           <a href="https://github.com/alxhill/superline/blob/main/themes/rainbow.json"><code>rainbow.json</code></a>
           is a full example.
         </p>
@@ -1570,6 +1571,54 @@
       <li><span class="swatch" style="background:#ffaf00;color:#000">214</span><code>"burnt_orange"</code></li>
     </ul>
   </div><!-- /colors -->
+        <h4 id="color-none">No color: <code>"none"</code></h4>
+        <p>
+          <code>"none"</code> is the terminal's own color rather than one from the palette. As a background, such
+          as <code>"defaults": { "bg": "none" }</code> or a module's <code>bg</code>, the segment is drawn on the
+          terminal's background, so a transparent or image background shows through and only the text is
+          colored. As a text color it is the terminal's default foreground. It works anywhere a color does,
+          including inside <code>bg_colors</code>.
+        </p>
+        <p>
+          A powerline arrow is drawn in the background of the segment it leaves, so next to a clear segment
+          superline picks the separator like this:
+        </p>
+        <ul>
+          <li>Colored into clear: the usual arrow, in the colored segment's background, so the colored segment
+            ends just as the last one in a row does.</li>
+          <li>Clear into colored: the colored segment opens with the reverse arrow in its own background, the
+            way right-side segments start, so it reads as a tag on the terminal's background.</li>
+          <li>Clear into clear: the outline version of the separator (U+E0B1, or U+E0B5 with round
+            separators) in the text color of the segment it belongs to.</li>
+          <li>A clear segment at the end of a side, or after padding, gets a blank column where the separator
+            would go, so the prompt keeps its width.</li>
+        </ul>
+        <div class="examples">
+          <div class="example" data-example="theme/clear">
+  <div class="ex-label">theme.json</div>
+  <figure class="term shot"><img src="img/theme-clear.png" width="663" height="48" loading="lazy" alt="The theme example: theme.json."></figure>
+  <pre class="json"><code>{
+  <span class="k">"defaults"</span>: { <span class="k">"fg"</span>: <span class="n">250</span>, <span class="k">"bg"</span>: <span class="s">"none"</span> },
+  <span class="k">"modules"</span>: {
+    <span class="k">"cwd"</span>: { <span class="k">"path_fg"</span>: <span class="n">117</span> },
+    <span class="k">"git"</span>: {
+      <span class="k">"dirty_bg"</span>: <span class="n">61</span>,
+      <span class="k">"dirty_fg"</span>: <span class="n">255</span>,
+      <span class="k">"notstaged_bg"</span>: <span class="n">97</span>,
+      <span class="k">"notstaged_fg"</span>: <span class="n">255</span>,
+      <span class="k">"remote_bg"</span>: <span class="n">238</span>,
+      <span class="k">"remote_fg"</span>: <span class="n">250</span>
+    },
+    <span class="k">"cargo"</span>: { <span class="k">"fg"</span>: <span class="n">216</span> },
+    <span class="k">"cmd"</span>: { <span class="k">"passed_fg"</span>: <span class="n">81</span> }
+  }
+}</code></pre>
+</div><!-- /example -->
+        </div>
+        <p class="note">
+          Here <code>cwd</code>, <code>cargo</code> and <code>cmd</code> use the clear default background and
+          <code>git</code> is colored.
+        </p>
       </section>
 
       <section id="theme-other" class="component">

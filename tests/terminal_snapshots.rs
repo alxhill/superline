@@ -86,6 +86,11 @@ const TESTS: &[Test] = &[
         check: no_newline,
         ..DEFAULT
     },
+    Test {
+        name: "clear-background",
+        check: clear_background,
+        ..DEFAULT
+    },
 ];
 
 /// The last row of the shared config, and most case configs: the shell name
@@ -232,6 +237,23 @@ fn no_newline(c: &Capture) {
         )),
         "the prompt should start on the line after the output",
     );
+}
+
+/// Segments on the terminal's own background (`"bg": "none"`) next to
+/// coloured ones: each transition gets its separator, and the right side
+/// still ends flush with the edge.
+fn clear_background(c: &Capture) {
+    let s = c.snapshot("prompt");
+    let shell = regex::escape(c.shell.program());
+    s.check(
+        s.matches(&format!(
+            "\\A one \u{E0B2}{shell}\u{E0B0} two \u{E0B1} three {{2,}}four \
+             \u{E0B2}{shell}\u{E0B0} five \u{E0B3} six \u{E0B2}{shell}\n{shell}{SEP}",
+        )),
+        "clear → coloured should open with a cap, coloured → clear close with \
+         an arrow, and clear → clear get the outline separator",
+    );
+    check_flush(s, c, "six", 1..=1);
 }
 
 thread_local! {

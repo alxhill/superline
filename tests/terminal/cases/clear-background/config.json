@@ -1,0 +1,10 @@
+{
+  "theme": "clear.json",
+  "rows": [
+    {
+      "left": [{ "text": "one" }, "shell", { "text": "two" }, { "text": "three" }],
+      "right": [{ "text": "four" }, "shell", { "text": "five" }, { "text": "six" }, "shell"]
+    },
+    { "left": ["shell", "cmd"], "right": [] }
+  ]
+}

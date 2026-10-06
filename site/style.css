@@ -384,6 +384,9 @@ kbd {
 .component h3 { font-size: 22px; margin-bottom: 10px; }
 .component h3 code { font-size: 0.9em; padding: 0.05em 0.4em; }
 .component > p { max-width: 760px; margin: 0 0 12px; color: var(--muted); }
+.component h4 { font-size: 18px; margin: 28px 0 10px; }
+.component > ul { max-width: 760px; margin: 0 0 12px; padding-left: 20px; color: var(--muted); }
+.component > ul li { margin-bottom: 6px; }
 .component .note { font-size: 14px; color: var(--dim); }
 
 .opts {

@@ -134,7 +134,7 @@ The keys:
   `left` for `cwd`.
 - `2` (or `t`) switches to the Theme page, which edits the theme file the config names. Pick a module to see
   each of its theme properties with a colour swatch and what it falls back to. `Enter` on a colour opens a 256-colour
-  picker that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
+  picker (with a `none` cell for the terminal's own colour) that previews as you move, and on an icon or symbol it opens a searchable browser of every Nerd Font glyph
   (search by name or code point). `←`/`→` step a colour by one code, `i` types a value, and `x` resets a
   property. Each text colour is followed by its `bold`, `italic` and `underline` switches, which `Enter` or `space`
   turns on and off. The switch under the cursor shows a sample of its text, since the preview only draws text the
@@ -662,9 +662,21 @@ A theme file has two keys, `defaults` and `modules`:
 Note that the `read_only` module is themed as `readonly`. The `node` and `python` modules also still accept their
 old theme keys, `nvm` and `py`.
 
-Colors are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`) or an ANSI 256-color code from
-`0` to `255`. [`themes/rainbow.json`](themes/rainbow.json) is a full example, and `src/themes/custom.rs` lists every
-module name and property.
+Colors are a name from `src/colors.rs` (for example `"green"` or `"warning_red"`), an ANSI 256-color code from
+`0` to `255`, or `"none"` for the terminal's own color. [`themes/rainbow.json`](themes/rainbow.json) is a full
+example, and `src/themes/custom.rs` lists every module name and property.
+
+`"none"` as a background draws the segment on the terminal's own background, which suits transparent terminals and
+minimal themes that only color the text; as a text color it is the terminal's default foreground:
+
+```json
+{ "defaults": { "fg": "green", "bg": "none" }, "modules": { "git": { "clean_bg": 29, "clean_fg": 255 } } }
+```
+
+Next to a clear segment there is no background to draw the separator arrow in, so: a colored segment going into a
+clear one ends with its usual arrow; a clear segment going into a colored one opens it with the reverse arrow (like
+right-side segments start); two clear segments are split by the outline separator (U+E0B1, or U+E0B5 when round)
+in the text color; and a clear segment that ends a side gets a blank column, so the prompt keeps its width.
 
 Every text color (`fg`, or a property ending in `_fg`) can also make its text bold, italic or underlined, with
 `true`/`false` properties named the same way: `bold`, `italic` and `underline` go with `fg`, and `clean_bold`,
