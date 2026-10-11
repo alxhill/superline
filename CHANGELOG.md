@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0](https://github.com/alxhill/superline/compare/v0.31.0...v0.32.0) - 2026-10-11
+
+### Added
+
+- claude_context percent option to show the percentage beside a meter display ([#222](https://github.com/alxhill/superline/pull/222))
+
 ## [0.31.0](https://github.com/alxhill/superline/compare/v0.30.0...v0.31.0) - 2026-10-06
 
 ### Added
