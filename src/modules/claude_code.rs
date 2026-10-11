@@ -192,6 +192,7 @@ pub struct ClaudeContext<'a, S> {
     status: Option<&'a ClaudeCodeStatus>,
     display: UsageDisplay,
     width: usize,
+    percent: bool,
     tokens: bool,
     threshold: Option<f64>,
     scheme: PhantomData<S>,
@@ -202,6 +203,7 @@ impl<'a, S: ClaudeCodeScheme> ClaudeContext<'a, S> {
         status: Option<&'a ClaudeCodeStatus>,
         display: UsageDisplay,
         width: usize,
+        percent: bool,
         tokens: bool,
         threshold: Option<f64>,
     ) -> Self {
@@ -209,6 +211,7 @@ impl<'a, S: ClaudeCodeScheme> ClaudeContext<'a, S> {
             status,
             display,
             width,
+            percent,
             tokens,
             threshold,
             scheme: PhantomData,
@@ -230,6 +233,19 @@ impl<S: ClaudeCodeScheme> Module for ClaudeContext<'_, S> {
             S::claude_context_icon(),
             &format_window("", percent, self.display, self.width),
         );
+        let meter = !matches!(
+            self.display,
+            UsageDisplay::Percentage | UsageDisplay::Numeric
+        );
+        if self.percent && meter {
+            label.push(' ');
+            label.push_str(&format_window(
+                "",
+                percent,
+                UsageDisplay::Percentage,
+                self.width,
+            ));
+        }
         if self.tokens {
             if let (Some(used), Some(size)) =
                 (window.total_input_tokens, window.context_window_size)

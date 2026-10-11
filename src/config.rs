@@ -356,6 +356,9 @@ pub enum LineSegment {
     ClaudeContext {
         #[serde(default)]
         display: UsageDisplay,
+        /// Also show the percentage after a meter display.
+        #[serde(default)]
+        percent: bool,
         /// Also show the tokens used out of the window size.
         #[serde(default)]
         tokens: bool,
@@ -581,6 +584,8 @@ enum KnownLineSegment {
         #[serde(default)]
         display: UsageDisplay,
         #[serde(default)]
+        percent: bool,
+        #[serde(default)]
         tokens: bool,
         threshold: Option<f64>,
         #[serde(
@@ -717,11 +722,13 @@ impl From<KnownLineSegment> for LineSegment {
             }
             KnownLineSegment::ClaudeContext {
                 display,
+                percent,
                 tokens,
                 threshold,
                 width,
             } => LineSegment::ClaudeContext {
                 display,
+                percent,
                 tokens,
                 threshold,
                 width,
@@ -934,6 +941,7 @@ impl Config {
                     },
                     LineSegment::ClaudeContext {
                         display: UsageDisplay::Percentage,
+                        percent: false,
                         tokens: false,
                         threshold: Some(80.0),
                         width: DEFAULT_METER_WIDTH,
@@ -1137,6 +1145,7 @@ mod tests {
                 r#"{"claude_context":{"display":"bar","tokens":true,"threshold":75}}"#,
                 LineSegment::ClaudeContext {
                     display: UsageDisplay::Bar,
+                    percent: false,
                     tokens: true,
                     threshold: Some(75.0),
                     width: DEFAULT_METER_WIDTH,
@@ -1146,6 +1155,7 @@ mod tests {
                 r#""claude_context""#,
                 LineSegment::ClaudeContext {
                     display: UsageDisplay::Percentage,
+                    percent: false,
                     tokens: false,
                     threshold: None,
                     width: DEFAULT_METER_WIDTH,

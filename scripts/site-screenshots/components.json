@@ -764,6 +764,20 @@
             }
           ]
         }
+      },
+      {
+        "name": "percent",
+        "label": "A block with the percentage beside it",
+        "row": {
+          "left": [
+            {
+              "claude_context": {
+                "display": "block",
+                "percent": true
+              }
+            }
+          ]
+        }
       }
     ]
   },
