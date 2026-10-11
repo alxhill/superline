@@ -698,11 +698,12 @@ impl Powerline {
                 }
                 LineSegment::ClaudeContext {
                     display,
+                    percent,
                     tokens,
                     threshold,
                     width,
                 } => self.add_module(ClaudeContext::<T>::new(
-                    claude, *display, *width, *tokens, *threshold,
+                    claude, *display, *width, *percent, *tokens, *threshold,
                 )),
                 LineSegment::ClaudeCost => self.add_module(ClaudeCost::<T>::new(claude)),
                 LineSegment::ClaudeDuration { api } => {

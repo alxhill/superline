@@ -774,7 +774,7 @@ These draw only in `superline claude-code`, and each one is left out while Claud
 | Widget | Shows | Options |
 |--------|-------|---------|
 | `claude_model` | The model name, then the reasoning effort (`low` to `max`) in the theme's `effort_fg`, with a lightning bolt while fast mode is on. | `effort` and `fast_mode` (both default `true`) hide either part. |
-| `claude_context` | How full the context window is. | `display` takes the `ai_usage` styles (default `"percentage"`) and `width` sets the cells of a bar or block (default `5`); `tokens: true` adds the tokens in use out of the window size, e.g. `92k/200k`; `threshold` switches to the theme's `threshold_bg` at that percentage. |
+| `claude_context` | How full the context window is. | `display` takes the `ai_usage` styles (default `"percentage"`) and `width` sets the cells of a bar or block (default `5`); `percent: true` adds the percentage after a bar, block or sparkline; `tokens: true` adds the tokens in use out of the window size, e.g. `92k/200k`; `threshold` switches to the theme's `threshold_bg` at that percentage. |
 | `claude_cost` | The session's estimated cost in USD, e.g. `$3.47`. | |
 | `claude_duration` | How long the session has run, e.g. `1h 5m`. | `api: true` shows the time spent waiting on the API instead. |
 | `claude_cache` | The prompt cache's hit ratio, on `warm_bg` while the cache is warm and `cold_bg` once it has expired. | |

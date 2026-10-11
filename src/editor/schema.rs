@@ -543,6 +543,11 @@ const CLAUDE_CONTEXT: &[OptionSpec] = &[
     ),
     METER_WIDTH,
     boolean(
+        "percent",
+        false,
+        "Also show the percentage after a bar, block or sparkline display.",
+    ),
+    boolean(
         "tokens",
         false,
         "Also show the tokens in use out of the window size.",

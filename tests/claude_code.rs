@@ -191,7 +191,8 @@ fn widget_options_turn_parts_off() {
         r#"[{ "left": [
             { "claude_model": { "effort": false, "fast_mode": false } },
             { "claude_context": { "display": "block" } },
-            { "claude_context": { "display": "bar", "width": 10 } }
+            { "claude_context": { "display": "bar", "width": 10 } },
+            { "claude_context": { "display": "sparkline", "percent": true } }
         ] }]"#,
     );
     let line = visible(&scratch.render(&["--config", layout.to_str().unwrap()], SESSION));
@@ -200,6 +201,7 @@ fn widget_options_turn_parts_off() {
     assert!(!line.contains('\u{f140b}'), "{line:?}");
     assert!(line.contains(" ██▒░░ "), "{line:?}");
     assert!(line.contains(" ▄▄▄▄▄▁▁▁▁▁ "), "{line:?}");
+    assert!(line.contains(" ▄ 46% "), "{line:?}");
 }
 
 #[test]
