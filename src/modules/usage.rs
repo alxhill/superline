@@ -428,14 +428,11 @@ impl<S: UsageScheme> Module for Usage<S> {
         let note = reading
             .filter(|_| self.hover)
             .and_then(|reading| hover_note(&reading, self.display));
-        powerline.add_annotated_segment(
-            label_pieces(&label, icon, note.as_deref()),
-            Style::simple(default_fg, bg),
-        );
+        powerline.add_annotated_segment(&label, note.as_deref(), Style::simple(default_fg, bg));
     }
 }
 
-/// What hovering over the provider icon shows: every window that has a
+/// What hovering over the widget shows: every window that has a
 /// reading, drawn or not, under a fixed name since the configured labels may
 /// be empty or glyphs. The percentage and numeric displays already print
 /// these figures, so they get no note.
@@ -455,18 +452,6 @@ fn hover_note(reading: &UsageReading, display: UsageDisplay) -> Option<String> {
     })
     .collect();
     (!windows.is_empty()).then(|| windows.join(" · "))
-}
-
-/// Splits `label` so `note` covers the provider icon it starts with.
-fn label_pieces<'a>(
-    label: &'a str,
-    icon: &'a str,
-    note: Option<&'a str>,
-) -> [(&'a str, Option<&'a str>); 2] {
-    match (note, label.strip_prefix(icon)) {
-        (Some(note), Some(rest)) if !icon.is_empty() => [(icon, Some(note)), (rest, None)],
-        _ => [(label, None), ("", None)],
-    }
 }
 
 fn provider_icon<S: UsageScheme>(provider: UsageProvider) -> &'static str {
@@ -2195,24 +2180,6 @@ mod tests {
             logged_out: false,
         };
         assert_eq!(hover_note(&empty, UsageDisplay::Sparkline), None);
-    }
-
-    #[test]
-    fn hover_note_covers_only_the_provider_icon() {
-        let label = "\u{ec82} 5h ▅ 7d ▃";
-        assert_eq!(
-            label_pieces(label, "\u{ec82}", Some("5h: 61% used")),
-            [("\u{ec82}", Some("5h: 61% used")), (" 5h ▅ 7d ▃", None)]
-        );
-        assert_eq!(
-            label_pieces(label, "\u{ec82}", None),
-            [(label, None), ("", None)]
-        );
-        // A theme that hides the icon leaves nothing to hover over.
-        assert_eq!(
-            label_pieces("5h ▅", "", Some("5h: 61% used")),
-            [("5h ▅", None), ("", None)]
-        );
     }
 
     #[test]
