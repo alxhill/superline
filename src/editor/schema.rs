@@ -498,7 +498,7 @@ const AI_USAGE: &[OptionSpec] = &[
     boolean(
         "hover",
         true,
-        "In iTerm2, hovering over the icon shows every window's percentage.",
+        "In iTerm2, hovering over the widget shows every window's percentage.",
     ),
 ];
 

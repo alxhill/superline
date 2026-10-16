@@ -63,16 +63,18 @@ fn usage_widget_renders_each_configured_provider_instance_from_cache() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // The sparkline and bar widgets get a hover note on their icon, listing
-    // windows they don't draw too. The percentage ones print the figures.
+    // The sparkline and bar widgets get a hover note over the whole widget,
+    // padding included, listing windows they don't draw too. The percentage ones print the figures.
     assert!(
         stdout.contains(
-            "\x1b]1337;AddHiddenAnnotation=1|5h: 12% used · 7d: 68% used · Fable: 33% used\x07\u{ec82} ▁"
+            "\x1b]1337;AddHiddenAnnotation=5|5h: 12% used · 7d: 68% used · Fable: 33% used\x07 \u{ec82} ▁ "
         ),
         "stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("\x1b]1337;AddHiddenAnnotation=1|5h: 100% used · 7d: 80% used\x07\u{ec81}"),
+        stdout.contains(
+            "\x1b]1337;AddHiddenAnnotation=13|5h: 100% used · 7d: 80% used\x07 \u{ec81}  7d"
+        ),
         "stdout:\n{stdout}"
     );
     assert_eq!(
@@ -261,25 +263,25 @@ fn widget(options: &str) -> String {
 }
 
 #[test]
-fn usage_hover_note_covers_the_icon_in_each_shell() {
+fn usage_hover_note_covers_the_widget_in_each_shell() {
     let config = widget(r#""display":"sparkline""#);
     for (shell, note) in [
         (
             "fish",
-            format!("\x1b]1337;AddHiddenAnnotation=1|{NOTE}\x07\u{ec82} 5h ▅"),
+            format!("\x1b]1337;AddHiddenAnnotation=13|{NOTE}\x07 \u{ec82} 5h ▅ 7d ▃ "),
         ),
         (
             "zsh",
             format!(
-                "%{{\x1b]1337;AddHiddenAnnotation=1|{}\x07%}}\u{ec82} 5h ▅",
+                "%{{\x1b]1337;AddHiddenAnnotation=13|{}\x07%}} \u{ec82} 5h ▅ 7d ▃ ",
                 NOTE.replace('%', "%%")
             ),
         ),
         (
             "bash",
             format!(
-                r"\[\e]1337;AddHiddenAnnotation=1|{NOTE}\a\]{}",
-                "\u{ec82} 5h ▅"
+                r"\[\e]1337;AddHiddenAnnotation=13|{NOTE}\a\]{}",
+                " \u{ec82} 5h ▅ 7d ▃ "
             ),
         ),
     ] {
@@ -295,7 +297,7 @@ fn usage_hover_note_covers_the_icon_in_each_shell() {
 
 #[test]
 fn usage_hover_note_is_only_drawn_where_the_figures_are_hidden() {
-    let note = format!("\x1b]1337;AddHiddenAnnotation=1|{NOTE}\x07\u{ec82}");
+    let note = format!("|{NOTE}\x07 \u{ec82} 5h");
     for display in ["bar", "capped_bar", "block", "sparkline"] {
         // Only the session lane is drawn, but every reading is listed.
         let config = widget(&format!(r#""display":"{display}","weekly":false"#));
@@ -303,7 +305,16 @@ fn usage_hover_note_is_only_drawn_where_the_figures_are_hidden() {
         assert!(stdout.contains(&note), "{display} stdout:\n{stdout}");
     }
 
+    // A theme that hides the icon still leaves the rest of the widget to
+    // hover over.
     let no_icon = r#"{"defaults":{"fg":250,"bg":0},"modules":{"ai_usage":{"claude_icon":""}}}"#;
+    let config = widget(r#""display":"sparkline""#);
+    let stdout = render_usage("hover-no-icon", "fish", READING, no_icon, &config);
+    assert!(
+        stdout.contains(&format!("=11|{NOTE}\x07 5h ▅ 7d ▃ ")),
+        "stdout:\n{stdout}"
+    );
+
     let no_readings = r#"{"session":null,"weekly":null}"#;
     for (case, reading, theme, options) in [
         ("percentage", READING, THEME, r#""display":"percentage""#),
@@ -314,7 +325,6 @@ fn usage_hover_note_is_only_drawn_where_the_figures_are_hidden() {
             THEME,
             r#""display":"sparkline","hover":false"#,
         ),
-        ("no icon", READING, no_icon, r#""display":"sparkline""#),
         (
             "no readings",
             no_readings,

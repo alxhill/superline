@@ -297,6 +297,7 @@ impl Powerline {
         style: Style,
         padding: Padding,
         visible_width: Option<usize>,
+        note: Option<Annotation>,
     ) -> fmt::Result {
         // The foreground the separator leaves on.
         let mut drawn_fg = None;
@@ -358,6 +359,11 @@ impl Powerline {
             write!(self.left_buffer, "{}", style.fg)?;
         }
 
+        // The note covers the padding too, so the whole segment shows it.
+        if let Some(note) = note {
+            write!(self.left_buffer, "{note}")?;
+        }
+
         let orig_len = self.left_buffer.len();
         write!(
             self.left_buffer,
@@ -389,6 +395,7 @@ impl Powerline {
         style: Style,
         padding: Padding,
         visible_width: Option<usize>,
+        note: Option<Annotation>,
     ) -> fmt::Result {
         let last = self.last_style_right.as_ref();
         if !style.bg.is_none() {
@@ -431,6 +438,11 @@ impl Powerline {
         // drawn in its own background color.
         write!(self.right_buffer, "{}", style.fg)?;
 
+        // The note covers the padding too, so the whole segment shows it.
+        if let Some(note) = note {
+            write!(self.right_buffer, "{note}")?;
+        }
+
         let orig_len = self.right_buffer.len();
         write!(
             self.right_buffer,
@@ -462,25 +474,33 @@ impl Powerline {
         style: Style,
         default: SegmentPadding,
         visible_width: Option<usize>,
+        note: Option<&str>,
     ) {
-        let padding = self.widget_padding.unwrap_or(default).into();
+        let padding: Padding = self.widget_padding.unwrap_or(default).into();
+        let note = note
+            .zip(visible_width)
+            .map(|(message, width)| Annotation {
+                cells: width + padding.left + padding.right,
+                message,
+            })
+            .filter(|note| note.cells > 0);
         self.drawn = true;
         let _ = match self.direction {
-            Direction::Left => self.write_segment(seg, style, padding, visible_width),
-            Direction::Right => self.write_segment_right(seg, style, padding, visible_width),
+            Direction::Left => self.write_segment(seg, style, padding, visible_width, note),
+            Direction::Right => self.write_segment_right(seg, style, padding, visible_width, note),
         };
     }
 
     /// Adds a segment with the padding its module declares, unless the
     /// widget's padding is configured.
     pub fn add_segment<D: Display>(&mut self, seg: D, style: Style) {
-        self.push_segment(seg, style, self.module_padding, None);
+        self.push_segment(seg, style, self.module_padding, None, None);
     }
 
     /// Adds a segment with no padding, unless the widget's padding is
     /// configured.
     pub fn add_short_segment<D: Display>(&mut self, seg: D, style: Style) {
-        self.push_segment(seg, style, SegmentPadding::Small, None);
+        self.push_segment(seg, style, SegmentPadding::Small, None, None);
     }
 
     /// Adds a segment with `default` padding around its text, unless the
@@ -491,7 +511,7 @@ impl Powerline {
         style: Style,
         default: SegmentPadding,
     ) {
-        self.push_segment(seg, style, default, None);
+        self.push_segment(seg, style, default, None, None);
     }
 
     /// Adds a segment whose text is an OSC 8 terminal hyperlink, followed by
@@ -519,7 +539,7 @@ impl Powerline {
                 .unwrap_or_default();
             let _ = write!(seg, " {}{}", note, tinted(glyph, color, &style));
         }
-        self.push_segment(seg, style, self.module_padding, Some(visible_width));
+        self.push_segment(seg, style, self.module_padding, Some(visible_width), None);
     }
 
     /// Adds a segment of `text` followed by `suffix` in its own colour, both
@@ -533,7 +553,7 @@ impl Powerline {
     ) {
         let visible_width = text.width() + 1 + suffix.width();
         let seg = format!("{} {}", text, tinted(suffix, suffix_fg, &style));
-        self.push_segment(seg, style, self.module_padding, Some(visible_width));
+        self.push_segment(seg, style, self.module_padding, Some(visible_width), None);
     }
 
     /// Whether the row has any segments, as opposed to only layout entries
@@ -542,25 +562,11 @@ impl Powerline {
         self.drawn
     }
 
-    /// Adds a segment made of `pieces`, each with an optional note that
-    /// iTerm2 shows when hovering over it. The annotation escapes and their
-    /// notes are invisible, so the visible width is that of the text alone.
-    pub fn add_annotated_segment<'a>(
-        &mut self,
-        pieces: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
-        style: Style,
-    ) {
-        let mut seg = String::new();
-        let mut visible_width = 0;
-        for (text, note) in pieces {
-            let cells = text.width();
-            if let Some(message) = note.filter(|_| cells > 0) {
-                let _ = write!(seg, "{}", Annotation { cells, message });
-            }
-            seg.push_str(text);
-            visible_width += cells;
-        }
-        self.push_segment(seg, style, self.module_padding, Some(visible_width));
+    /// Adds a segment with an optional note that iTerm2 shows when hovering
+    /// anywhere over it, padding included. The annotation escape and its note
+    /// are invisible, so the visible width is that of `text` alone.
+    pub fn add_annotated_segment(&mut self, text: &str, note: Option<&str>, style: Style) {
+        self.push_segment(text, style, self.module_padding, Some(text.width()), note);
     }
 
     pub fn start_right(&mut self) {
@@ -1443,29 +1449,25 @@ mod tests {
     }
 
     #[test]
-    fn annotation_notes_take_no_columns() {
+    fn annotation_covers_the_whole_segment_and_takes_no_columns() {
         let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
-        let pieces = [
-            ("5h", None),
-            ("▅", Some("5h: 61% used")),
-            (" 7d", None),
-            ("▃", Some("7d: 41% used")),
-        ];
         for (padding, before, after) in PADDINGS {
             let mut powerline = flush_powerline();
             powerline.widget_padding = Some(padding);
-            powerline.add_annotated_segment(pieces, style.clone());
+            powerline.add_annotated_segment("5h ▅ 7d ▃", Some("5h: 61% used"), style.clone());
             powerline.start_right();
-            powerline.add_annotated_segment(pieces, style.clone());
+            powerline.add_annotated_segment("5h ▅ 7d ▃", Some("5h: 61% used"), style.clone());
 
-            let expected = format!("{before}5h▅ 7d▃{after}");
-            let width = 7 + before.len() + after.len();
+            let expected = format!("{before}5h ▅ 7d ▃{after}");
+            let width = 9 + before.len() + after.len();
             for (buffer, columns) in [
                 (&powerline.left_buffer, powerline.left_columns),
                 (&powerline.right_buffer, powerline.right_columns),
             ] {
                 assert!(
-                    buffer.contains("\x1b]1337;AddHiddenAnnotation=1|5h: 61% used\x07▅"),
+                    buffer.contains(&format!(
+                        "\x1b]1337;AddHiddenAnnotation={width}|5h: 61% used\x07{expected}"
+                    )),
                     "{buffer:?}"
                 );
                 assert_eq!(visible(buffer), expected, "{padding:?}");
@@ -1475,11 +1477,11 @@ mod tests {
     }
 
     #[test]
-    fn annotated_segment_without_notes_matches_a_plain_one() {
+    fn annotated_segment_without_a_note_matches_a_plain_one() {
         let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
         let mut annotated = flush_powerline();
         let mut plain = flush_powerline();
-        annotated.add_annotated_segment([("5h ", None), ("12%", None)], style.clone());
+        annotated.add_annotated_segment("5h 12%", None, style.clone());
         plain.add_segment("5h 12%", style);
         assert_eq!(annotated.left_buffer, plain.left_buffer);
         assert_eq!(annotated.left_columns, plain.left_columns);

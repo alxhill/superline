@@ -334,7 +334,7 @@ pub enum LineSegment {
         #[serde(default)]
         session_time_remaining: bool,
         session_time_remaining_only_at_limit: f64,
-        /// Hovering over the provider icon in iTerm2 shows every window's
+        /// Hovering over the widget in iTerm2 shows every window's
         /// percentage. On by default.
         #[serde(default = "default_true")]
         hover: bool,
@@ -564,7 +564,7 @@ enum KnownLineSegment {
         session_time_remaining: bool,
         #[serde(default, deserialize_with = "deserialize_unit_interval")]
         session_time_remaining_only_at_limit: f64,
-        /// Hovering over the provider icon in iTerm2 shows every window's
+        /// Hovering over the widget in iTerm2 shows every window's
         /// percentage. On by default.
         #[serde(default = "default_true")]
         hover: bool,
