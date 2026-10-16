@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0](https://github.com/alxhill/superline/compare/v0.32.0...v0.33.0) - 2026-10-16
+
+### Added
+
+- ai_usage hover text covers the whole widget, not just the provider icon ([#224](https://github.com/alxhill/superline/pull/224))
+
 ## [0.32.0](https://github.com/alxhill/superline/compare/v0.31.0...v0.32.0) - 2026-10-11
 
 ### Added
