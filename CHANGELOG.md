@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.1](https://github.com/alxhill/superline/compare/v0.33.0...v0.33.1) - 2026-10-21
+
+### Added
+
+- ai_usage hides cached readings older than 12 hours ([#226](https://github.com/alxhill/superline/pull/226))
+
 ## [0.33.0](https://github.com/alxhill/superline/compare/v0.32.0...v0.33.0) - 2026-10-16
 
 ### Added
