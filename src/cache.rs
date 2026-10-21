@@ -98,6 +98,12 @@ pub trait Source: Serialize + DeserializeOwned + Clone + Send + 'static {
     /// has elapsed. A refresh that succeeds releases the slot immediately.
     const REFRESH_INTERVAL: Duration = Duration::from_secs(20);
 
+    /// How old a cached value may get before it is no longer worth showing.
+    /// An older entry is treated as if nothing were cached, so the lookup
+    /// reports [`Lookup::Loading`] while it refreshes rather than serving
+    /// outdated data. `None` serves a value of any age.
+    const MAX_AGE: Option<Duration> = None;
+
     /// Distinguishes this lookup's cache file from others of the same
     /// [`KIND`](Self::KIND). Prefer [`hash_id`] for anything long or path-like.
     fn cache_id(&self) -> String;
@@ -200,9 +206,11 @@ impl<S: Source> Cached<S> {
         self.path.as_deref()
     }
 
-    /// Reads the cache without triggering a refresh.
+    /// Reads the cache without triggering a refresh. An entry older than
+    /// [`Source::MAX_AGE`] reads as missing.
     pub fn read(&self) -> Option<Entry<S::Value>> {
         read_entry(self.path.as_ref()?)
+            .filter(|entry| S::MAX_AGE.is_none_or(|max_age| entry.age() < max_age))
     }
 
     /// Serves the cached value and refreshes it in the background when it is
@@ -785,6 +793,7 @@ mod tests {
         type Value = String;
         const KIND: &'static str = "probe";
         const TTL: Duration = Duration::from_secs(60);
+        const MAX_AGE: Option<Duration> = Some(Duration::from_secs(60 * 60));
 
         fn cache_id(&self) -> String {
             hash_id(&self.kind)
@@ -853,6 +862,36 @@ mod tests {
 
         wait_for_child(&cached);
         assert_eq!(cached.load().ready().as_deref(), Some("new"));
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn load_ignores_an_entry_past_its_max_age_and_refreshes_it() {
+        let dir = unique_temp_dir("expired");
+        let cached = Cached::in_dir(Probe::slow("load-expired", "new", &dir), Some(dir.clone()));
+        write_entry(&cached, "ancient", Probe::MAX_AGE.unwrap());
+
+        assert!(cached.read().is_none());
+        assert!(matches!(cached.load(), Lookup::Loading));
+        assert_eq!(spawned_probe_kinds("load-expired"), 1);
+
+        wait_for_child(&cached);
+        assert_eq!(cached.load().ready().as_deref(), Some("new"));
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn timeout_load_does_not_fall_back_to_an_entry_past_its_max_age() {
+        let dir = unique_temp_dir("expired-timeout");
+        let mut probe = Probe::instant("timeout-expired", "unused", &dir);
+        probe.fails = true;
+        let cached = Cached::in_dir(probe, Some(dir.clone()));
+        write_entry(&cached, "ancient", Probe::MAX_AGE.unwrap());
+
+        assert!(matches!(
+            cached.load_with_timeout(Duration::from_secs(5)),
+            Lookup::Loading
+        ));
         fs::remove_dir_all(dir).ok();
     }
 
