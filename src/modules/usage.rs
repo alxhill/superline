@@ -368,6 +368,9 @@ impl Source for UsageLookup {
     /// Provider CLIs are slow to answer and a failed probe should not be
     /// hammered, so failed attempts wait a full TTL before trying again.
     const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+    /// Usage windows reset every few hours, so a reading this old says
+    /// nothing about where usage stands now.
+    const MAX_AGE: Option<Duration> = Some(Duration::from_secs(12 * 60 * 60));
 
     fn cache_id(&self) -> String {
         self.provider.as_str().to_string()
@@ -383,6 +386,12 @@ impl Source for UsageLookup {
     /// A failed refresh leaves the last good reading intact.
     fn fetch(&self) -> Option<UsageReading> {
         fetch_usage(self.provider)
+    }
+
+    /// Without a recent reading, a provider CLI that cannot be read is shown
+    /// like one with no signed-in account.
+    fn failed(&self) -> Option<UsageReading> {
+        Some(UsageReading::logged_out())
     }
 }
 

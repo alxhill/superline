@@ -173,7 +173,7 @@
       ["codex_icon", "string", "OpenAI logo that opens the Codex widget.", "U+EC81"],
       ["reset_icon", "string", "Before the time left until the session window resets.", "\"↻\""],
       ["loading_icon", "string", "In place of a reading until the first refresh lands.", "\"…\""],
-      ["logged_out_icon", "string", "In place of a reading when the provider CLI has no signed-in account.", "U+F235"],
+      ["logged_out_icon", "string", "In place of a reading when the provider CLI has no signed-in account, or fails to report usage with no reading from the last 12 hours to fall back on.", "U+F235"],
       ["not_installed_icon", "string", "In place of a reading when the provider CLI is not installed.", "\"?\""]
     ]
   },

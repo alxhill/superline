@@ -603,7 +603,9 @@ at 80% and above.
 ```
 
 **States.** Until the first reading is cached the widget shows `…`. If the provider CLI isn't on `PATH` it shows `?`.
-If the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
+If the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in. A cached reading
+more than 12 hours old is not shown: the widget shows `…` while it refreshes, and the logged-out icon if the CLI fails
+to report usage.
 
 ### Language modules
 
