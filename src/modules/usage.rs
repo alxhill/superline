@@ -387,6 +387,12 @@ impl Source for UsageLookup {
     fn fetch(&self) -> Option<UsageReading> {
         fetch_usage(self.provider)
     }
+
+    /// Without a recent reading, a provider CLI that cannot be read is shown
+    /// like one with no signed-in account.
+    fn failed(&self) -> Option<UsageReading> {
+        Some(UsageReading::logged_out())
+    }
 }
 
 impl<S: UsageScheme> Module for Usage<S> {

@@ -119,6 +119,14 @@ pub trait Source: Serialize + DeserializeOwned + Clone + Send + 'static {
     /// The slow part. Never runs on the thread rendering the prompt. Returning
     /// `None` leaves the previous cached value in place.
     fn fetch(&self) -> Option<Self::Value>;
+
+    /// What to cache when a fetch fails and nothing within
+    /// [`MAX_AGE`](Self::MAX_AGE) is cached, so the lookup can show that it is
+    /// failing instead of reporting [`Lookup::Loading`] indefinitely. `None`
+    /// caches nothing.
+    fn failed(&self) -> Option<Self::Value> {
+        None
+    }
 }
 
 /// Hashes anything into a fixed-width identifier suitable for
@@ -407,7 +415,11 @@ impl<S: Source> Cached<S> {
     /// The fetch itself, plus storing the result and releasing the refresh
     /// slot. Shared by the detached child and by the in-process worker.
     fn fetch_and_store(&self) -> Option<S::Value> {
-        let value = self.source.fetch()?;
+        let value = match self.source.fetch() {
+            Some(value) => value,
+            None if self.read().is_some() => return None,
+            None => self.source.failed()?,
+        };
         self.write(&value);
         if let Some(path) = &self.path {
             let _ = fs::remove_file(marker_path(path));
@@ -766,6 +778,7 @@ mod tests {
         delay_ms: u64,
         fails: bool,
         fetchable: bool,
+        failed: Option<String>,
         dir: PathBuf,
     }
 
@@ -777,6 +790,7 @@ mod tests {
                 delay_ms: 0,
                 fails: false,
                 fetchable: true,
+                failed: None,
                 dir: dir.to_path_buf(),
             }
         }
@@ -806,6 +820,10 @@ mod tests {
         fn fetch(&self) -> Option<String> {
             thread::sleep(Duration::from_millis(self.delay_ms));
             (!self.fails).then(|| self.result.clone())
+        }
+
+        fn failed(&self) -> Option<String> {
+            self.failed.clone()
         }
     }
 
@@ -892,6 +910,24 @@ mod tests {
             cached.load_with_timeout(Duration::from_secs(5)),
             Lookup::Loading
         ));
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_failed_refresh_caches_the_failure_only_without_a_usable_entry() {
+        let dir = unique_temp_dir("failed-value");
+        let mut probe = Probe::instant("failed-value", "unused", &dir);
+        probe.fails = true;
+        probe.failed = Some("failed".to_string());
+        let cached = Cached::in_dir(probe, Some(dir.clone()));
+
+        write_entry(&cached, "old", Probe::TTL + Duration::from_secs(1));
+        assert!(!cached.refresh_now());
+        assert_eq!(cached.read().unwrap().value, "old");
+
+        write_entry(&cached, "ancient", Probe::MAX_AGE.unwrap());
+        assert!(cached.refresh_now());
+        assert_eq!(cached.read().unwrap().value, "failed");
         fs::remove_dir_all(dir).ok();
     }
 

@@ -531,8 +531,7 @@ older name for it, and themes' `claude_lines` colors still apply. `diff.icon` (a
 #### ai_usage
 
 Claude or Codex subscription usage, read via the provider's CLI on `PATH`. superline refreshes it in the background
-and caches the result, so rendering never waits on a provider request. A cached reading more than 12 hours old is not
-shown; the widget shows its loading icon until a fresh one arrives. Add the module more than once to show both
+and caches the result, so rendering never waits on a provider request. Add the module more than once to show both
 providers, or the same provider with different windows and styles. Provider labels use the Nerd Font
 [`cod-openai`](https://www.nerdfonts.com/cheat-sheet?q=cod-openai) (`U+EC81`) and
 [`cod-claude`](https://www.nerdfonts.com/cheat-sheet?q=cod-claude) (`U+EC82`) glyphs.
@@ -604,7 +603,9 @@ at 80% and above.
 ```
 
 **States.** Until the first reading is cached the widget shows `…`. If the provider CLI isn't on `PATH` it shows `?`.
-If the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in.
+If the CLI is installed but not logged in it shows a logged-out user icon (``) until you log in. A cached reading
+more than 12 hours old is not shown: the widget shows `…` while it refreshes, and the logged-out icon if the CLI fails
+to report usage.
 
 ### Language modules
 
