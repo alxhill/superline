@@ -485,10 +485,10 @@ fn provider_style<S: UsageScheme>(provider: UsageProvider) -> (Color, Color) {
     }
 }
 
-fn format_usage<'a, S: UsageScheme>(
+fn format_usage<S: UsageScheme>(
     provider: UsageProvider,
     cache: &UsageReading,
-    windows: &'a UsageWindows,
+    windows: &UsageWindows,
     display: UsageDisplay,
     width: usize,
     show_session_time_remaining: bool,
@@ -501,33 +501,18 @@ fn format_usage<'a, S: UsageScheme>(
         vec![icon.to_string(), " ".to_string()]
     };
     let lanes_start = parts.len();
-    // Without a session lane, the next lane's label loses the leading space
-    // that would have kept it apart from the session lane.
-    let mut drop_separator = windows.session.enabled && cache.no_session_limit;
-    let mut label = |label: &'a str| {
-        if std::mem::take(&mut drop_separator) {
-            label.trim_start()
-        } else {
-            label
-        }
-    };
     for (window, used_percent, exists) in [
         (&windows.session, cache.session, !cache.no_session_limit),
         (&windows.weekly, cache.weekly, true),
         (&windows.fable, cache.fable, true),
     ] {
         if window.enabled && exists {
-            parts.push(format_window(
-                label(&window.label),
-                used_percent,
-                display,
-                width,
-            ));
+            parts.push(format_window(&window.label, used_percent, display, width));
         }
     }
     if windows.credits_visible(cache) {
         parts.push(format_credits(
-            label(&windows.credits.window.label),
+            &windows.credits.window.label,
             cache.credits.as_ref(),
             windows.credits.display,
             width,
@@ -1907,7 +1892,7 @@ mod tests {
 
         assert_eq!(
             format(&windows(UsageProvider::Codex, true, true, false, None)),
-            "\u{ec81} 7d 12%"
+            "\u{ec81}  7d 12%"
         );
         assert_eq!(
             format(&with_credits(
@@ -1915,7 +1900,7 @@ mod tests {
                 UsageDisplay::Numeric,
                 false,
             )),
-            "\u{ec81} C $50/$100"
+            "\u{ec81}  C $50/$100"
         );
         assert_eq!(
             format(&windows(UsageProvider::Codex, true, false, false, None)),
@@ -1940,7 +1925,7 @@ mod tests {
                 false,
                 0.0,
             ),
-            "\u{ec81}  "
+            "\u{ec81}   "
         );
     }
 
