@@ -541,6 +541,7 @@ providers, or the same provider with different windows and styles. Provider labe
 `provider` is required and is `"claude"` or `"codex"`. Everything else is optional.
 
 **Windows.** `session` and `weekly` (both default `true`) toggle the five-hour and seven-day rate-limit windows.
+Codex plans without a five-hour limit leave the session window out and show only the weekly one.
 `fable` adds the Claude-only weekly Fable window and is ignored for Codex. Labels default to `"5h "`, `" 7d "` and
 `" F "`, with the spaces keeping adjacent windows apart; override them with `session_label`, `weekly_label` and
 `fable_label`, or set one to `""` to drop a label.
