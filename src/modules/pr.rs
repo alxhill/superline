@@ -263,6 +263,11 @@ pub struct PrInfo {
 pub struct Check {
     name: String,
     outcome: CheckOutcome,
+    /// How the check got its outcome, when that says more than the outcome
+    /// itself, e.g. "timed out" or "queued". `None` for caches written
+    /// before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -340,7 +345,7 @@ impl<S: PrScheme> Module for Pr<S> {
         // In iTerm2, hovering over the CI dot lists the checks by outcome.
         let note = self.hover.then(|| hover_note(&pr.check_runs)).flatten();
         let markers = self.markers(&pr, note.as_deref());
-        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), markers);
+        powerline.add_hyperlink_segment(&label, &pr.url, Style::simple(fg, bg), markers, None);
     }
 }
 
@@ -378,19 +383,23 @@ impl<S: PrScheme> Pr<S> {
 pub struct PrChecks<S> {
     /// Whether to append the review-state icon after the dot.
     show_review: bool,
+    /// Whether hovering over the widget in iTerm2 lists the checks by
+    /// outcome.
+    hover: bool,
     scheme: PhantomData<S>,
 }
 
 impl<S: PrScheme> Default for PrChecks<S> {
     fn default() -> Self {
-        Self::new(false)
+        Self::new(false, true)
     }
 }
 
 impl<S: PrScheme> PrChecks<S> {
-    pub fn new(show_review: bool) -> PrChecks<S> {
+    pub fn new(show_review: bool, hover: bool) -> PrChecks<S> {
         PrChecks {
             show_review,
+            hover,
             scheme: PhantomData,
         }
     }
@@ -428,7 +437,16 @@ impl<S: PrScheme> Module for PrChecks<S> {
             return;
         };
         let (_, bg) = pr.state.style::<S>();
-        powerline.add_hyperlink_segment(first.glyph, &url, Style::simple(first.color, bg), markers);
+        let note = dot
+            .filter(|_| self.hover)
+            .and_then(|_| hover_note(&pr.check_runs));
+        powerline.add_hyperlink_segment(
+            first.glyph,
+            &url,
+            Style::simple(first.color, bg),
+            markers,
+            note.as_deref(),
+        );
     }
 }
 
@@ -591,40 +609,57 @@ fn review_status(decision: &str, requests: usize, reviews: &[GhReview]) -> Optio
     }
 }
 
-/// What hovering over the CI dot shows: how many checks failed, are still
-/// running, passed and were skipped, each followed by their names, worst
-/// first. `None` when there are no checks to list, e.g. for a cache written
-/// before check names were recorded.
+/// What hovering over the CI dot shows: how many checks there are, then how
+/// many failed, are still running, passed and were skipped, each followed by
+/// their names, worst first. Checks whose detail says more than the outcome
+/// get a group of their own under it, e.g. "1 timed out" after "2 failed".
+/// `None` when there are no checks to list, e.g. for a cache written before
+/// check names were recorded.
 fn hover_note(checks: &[Check]) -> Option<String> {
-    let groups: Vec<String> = [
+    let mut groups: Vec<(&str, Vec<&Check>)> = Vec::new();
+    for (outcome, verb) in [
         (CheckOutcome::Failure, "failed"),
         (CheckOutcome::Pending, "pending"),
         (CheckOutcome::Success, "passed"),
         (CheckOutcome::Neutral, "skipped"),
-    ]
-    .into_iter()
-    .filter_map(|(outcome, verb)| {
-        let matching: Vec<&Check> = checks
-            .iter()
-            .filter(|check| check.outcome == outcome)
-            .collect();
-        if matching.is_empty() {
-            return None;
+    ] {
+        let start = groups.len();
+        for check in checks.iter().filter(|check| check.outcome == outcome) {
+            let label = check.detail.as_deref().unwrap_or(verb);
+            match groups[start..].iter_mut().find(|(seen, _)| *seen == label) {
+                Some((_, members)) => members.push(check),
+                None => groups.push((label, vec![check])),
+            }
         }
-        let names: Vec<&str> = matching
+        groups[start..].sort_by_key(|(label, _)| *label != verb);
+    }
+    if groups.is_empty() {
+        return None;
+    }
+
+    let total = match checks.len() {
+        1 => "1 check".to_string(),
+        count => format!("{count} checks"),
+    };
+    let groups = groups.into_iter().map(|(label, members)| {
+        let names: Vec<&str> = members
             .iter()
             .map(|check| check.name.trim())
             .filter(|name| !name.is_empty())
             .collect();
-        let count = matching.len();
-        Some(if names.is_empty() {
-            format!("{count} {verb}")
+        let count = members.len();
+        if names.is_empty() {
+            format!("{count} {label}")
         } else {
-            format!("{count} {verb}: {}", names.join(", "))
-        })
-    })
-    .collect();
-    (!groups.is_empty()).then(|| groups.join(" · "))
+            format!("{count} {label}: {}", names.join(", "))
+        }
+    });
+    Some(
+        std::iter::once(total)
+            .chain(groups)
+            .collect::<Vec<_>>()
+            .join(" · "),
+    )
 }
 
 /// Collapses individual checks into a single status. Failure beats pending,
@@ -688,7 +723,22 @@ impl CheckItem {
                 .unwrap_or_default()
                 .to_string(),
             outcome: self.outcome(),
+            detail: self.detail(),
         }
+    }
+
+    /// The state, conclusion or status the outcome came from, in words,
+    /// unless it's the one the outcome already says.
+    fn detail(&self) -> Option<String> {
+        let raw = match (&self.state, self.status.as_deref()) {
+            (Some(state), _) => state.as_str(),
+            (None, Some("COMPLETED")) => self.conclusion.as_deref()?,
+            (None, status) => status?,
+        };
+        if matches!(raw, "SUCCESS" | "FAILURE" | "SKIPPED" | "PENDING") {
+            return None;
+        }
+        Some(raw.to_lowercase().replace('_', " "))
     }
 
     fn outcome(&self) -> CheckOutcome {
@@ -824,7 +874,8 @@ mod tests {
         assert_eq!(
             hover_note(&checks).as_deref(),
             Some(
-                "2 failed: lint, test · 1 pending: e2e · 2 passed: build, docs · 1 skipped: deploy"
+                "6 checks · 1 failed: lint · 1 timed out: test · 1 in progress: e2e \
+                 · 2 passed: build, docs · 1 skipped: deploy"
             )
         );
         assert!(matches!(
@@ -844,9 +895,42 @@ mod tests {
         );
         assert_eq!(
             hover_note(&checks).as_deref(),
-            Some("1 pending · 2 passed: build")
+            Some("3 checks · 1 queued · 2 passed: build")
         );
         assert_eq!(hover_note(&[]), None);
+    }
+
+    #[test]
+    fn hover_note_splits_outcomes_by_how_checks_got_there() {
+        let checks = rollup(
+            r#"[
+                {"name":"Build & test (Windows)","status":"COMPLETED","conclusion":"CANCELLED"},
+                {"name":"lint","status":"COMPLETED","conclusion":"FAILURE"},
+                {"name":"e2e","status":"COMPLETED","conclusion":"CANCELLED"},
+                {"context":"ci/circleci","state":"ERROR"},
+                {"name":"docs","status":"QUEUED"},
+                {"name":"test","status":"IN_PROGRESS"},
+                {"name":"site","status":"QUEUED"},
+                {"context":"deploy","state":"PENDING"}
+            ]"#,
+        );
+        // The plain outcome leads its own split, the rest follow in the
+        // order they first appear.
+        assert_eq!(
+            hover_note(&checks).as_deref(),
+            Some(
+                "8 checks · 1 failed: lint · 2 cancelled: Build & test (Windows), e2e \
+                 · 1 error: ci/circleci · 1 pending: deploy · 2 queued: docs, site \
+                 · 1 in progress: test"
+            )
+        );
+        assert_eq!(
+            hover_note(&rollup(
+                r#"[{"name":"lint","status":"COMPLETED","conclusion":"SUCCESS"}]"#
+            ))
+            .as_deref(),
+            Some("1 check · 1 passed: lint")
+        );
     }
 
     #[test]
@@ -870,7 +954,16 @@ mod tests {
         .unwrap();
         assert_eq!(
             hover_note(&round_trip.check_runs).as_deref(),
-            Some("1 failed: lint")
+            Some("1 check · 1 failed: lint")
+        );
+
+        // Checks cached before their detail was recorded group under their
+        // outcome.
+        let old: Vec<Check> =
+            serde_json::from_str(r#"[{"name":"test","outcome":"failure"}]"#).unwrap();
+        assert_eq!(
+            hover_note(&old).as_deref(),
+            Some("1 check · 1 failed: test")
         );
     }
 

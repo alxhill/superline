@@ -519,13 +519,15 @@ impl Powerline {
     /// that share this segment's background instead of getting one of their
     /// own. The OSC, annotation and colour escapes are invisible, so the
     /// visible width is computed from `label` and the marker glyphs alone to
-    /// keep column accounting (and right-prompt padding) correct.
+    /// keep column accounting (and right-prompt padding) correct. `note` is
+    /// what hovering anywhere over the segment shows.
     pub fn add_hyperlink_segment<'a>(
         &mut self,
         label: &str,
         url: &str,
         style: Style,
         markers: impl IntoIterator<Item = Marker<'a>>,
+        note: Option<&str>,
     ) {
         let mut visible_width = label.width();
         let mut seg = Hyperlink { url, label }.to_string();
@@ -539,7 +541,7 @@ impl Powerline {
                 .unwrap_or_default();
             let _ = write!(seg, " {}{}", note, tinted(glyph, color, &style));
         }
-        self.push_segment(seg, style, self.module_padding, Some(visible_width), None);
+        self.push_segment(seg, style, self.module_padding, Some(visible_width), note);
     }
 
     /// Adds a segment of `text` followed by `suffix` in its own colour, both
@@ -631,10 +633,13 @@ impl Powerline {
                     hover,
                     review,
                 } => self.add_module(
-                    Pr::<T>::new(*status, *hover, *review)
+                    Pr::<T>::new(*status, *hover && runtime_data.hover_text(), *review)
                         .with_claude_code_pr(claude.and_then(|s| s.pr.as_ref())),
                 ),
-                LineSegment::PrChecks { review } => self.add_module(PrChecks::<T>::new(*review)),
+                LineSegment::PrChecks { review, hover } => self.add_module(PrChecks::<T>::new(
+                    *review,
+                    *hover && runtime_data.hover_text(),
+                )),
                 LineSegment::PrDiff => self.add_module(PrDiff::<T>::new()),
                 LineSegment::Separator(style) => self.set_separator(style.into()),
                 LineSegment::ReadOnly => self.add_module(ReadOnly::<T>::new()),
@@ -1377,7 +1382,7 @@ mod tests {
             let style = Style::simple(Color::from_u8(15), Color::from_u8(0));
             powerline.add_segment("one", style.clone());
             powerline.add_padded_segment("two", style.clone(), SegmentPadding::Right);
-            powerline.add_hyperlink_segment("#1", "https://example.com/1", style, None);
+            powerline.add_hyperlink_segment("#1", "https://example.com/1", style, None, None);
         }
     }
 
@@ -1443,7 +1448,7 @@ mod tests {
         let mut powerline = flush_powerline();
         powerline.add_segment("one", style.clone());
         powerline.add_short_segment("two", style.clone());
-        powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, None);
+        powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, None, None);
         assert_eq!(visible(&powerline.left_buffer), " one two #12 ");
         assert_eq!(powerline.left_columns, 5 + 3 + 5);
     }
@@ -1524,6 +1529,7 @@ mod tests {
                 "https://example.com/pr/12",
                 style.clone(),
                 marker,
+                None,
             );
             powerline.start_right();
             powerline.add_hyperlink_segment(
@@ -1531,6 +1537,7 @@ mod tests {
                 "https://example.com/pr/12",
                 style.clone(),
                 marker,
+                None,
             );
 
             // "#12" plus a space and the marker glyph is five cells.
@@ -1550,12 +1557,13 @@ mod tests {
         let marker = Marker::new("●", Color::from_u8(2));
         let mut plain = flush_powerline();
         let mut noted = flush_powerline();
-        plain.add_hyperlink_segment("#12", url, style.clone(), Some(marker));
+        plain.add_hyperlink_segment("#12", url, style.clone(), Some(marker), None);
         noted.add_hyperlink_segment(
             "#12",
             url,
             style.clone(),
             Some(marker.with_note(Some("1 failed: lint"))),
+            None,
         );
 
         assert!(
@@ -1580,6 +1588,7 @@ mod tests {
             url,
             style,
             Some(Marker::new("", Color::from_u8(2)).with_note(Some("1 failed: lint"))),
+            None,
         );
         assert!(
             !hidden.left_buffer.contains("1337"),
@@ -1596,7 +1605,7 @@ mod tests {
             Marker::new("\u{f0008}", Color::from_u8(10)),
         ];
         let mut powerline = flush_powerline();
-        powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, markers);
+        powerline.add_hyperlink_segment("#12", "https://example.com/pr/12", style, markers, None);
 
         assert_eq!(visible(&powerline.left_buffer), " #12 ● \u{f0008} ");
         assert_eq!(powerline.left_columns, 2 + 3 + 2 + 2);
@@ -1729,6 +1738,7 @@ mod tests {
             "https://example.com",
             bold_style(),
             Some(Marker::new("m", Color(2).with_attrs(ITALIC))),
+            None,
         );
         powerline.add_segment("a", Style::simple(Color(15), Color(31)));
         powerline.close_left_buffer();
@@ -1772,6 +1782,7 @@ mod tests {
             "https://example.com",
             style.clone(),
             Some(Marker::new("m", Color(2))),
+            None,
         );
         powerline.add_segment("a", style.clone());
         powerline.close_left_buffer();
