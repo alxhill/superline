@@ -47,6 +47,8 @@ const CURSOR_POSITION_REQUEST: &[u8] = b"\x1b[6n";
 const CURSOR_POSITION_REPORT: &[u8] = b"\x1b[1;1R";
 // spaces added manually to allow for compact display
 const DEFAULT_SESSION_LABEL: &str = "5h ";
+// Codex windows longer than this are weekly ones.
+const SESSION_WINDOW_MAX_MINS: u64 = 24 * 60;
 const DEFAULT_WEEKLY_LABEL: &str = " 7d ";
 const DEFAULT_FABLE_LABEL: &str = " F ";
 const DEFAULT_CREDITS_LABEL: &str = " C ";
@@ -276,6 +278,10 @@ pub struct UsageReading {
     credits: Option<CreditsUsage>,
     #[serde(default)]
     session_resets_at: Option<u64>,
+    // The plan has no session window at all, only a weekly one, so the
+    // session lane is left out rather than drawn without a reading.
+    #[serde(default)]
+    no_session_limit: bool,
     // The provider CLI is installed but has no signed-in account, so there is
     // no reading to show until the user logs in.
     #[serde(default)]
@@ -293,6 +299,7 @@ impl UsageReading {
             fable: None,
             credits: None,
             session_resets_at: limits.five_hour.as_ref().and_then(|w| w.resets_at),
+            no_session_limit: false,
             logged_out: false,
         };
         (reading.session.is_some() || reading.weekly.is_some()).then_some(reading)
@@ -305,6 +312,7 @@ impl UsageReading {
             fable: None,
             credits: None,
             session_resets_at: None,
+            no_session_limit: false,
             logged_out: true,
         }
     }
@@ -477,10 +485,10 @@ fn provider_style<S: UsageScheme>(provider: UsageProvider) -> (Color, Color) {
     }
 }
 
-fn format_usage<S: UsageScheme>(
+fn format_usage<'a, S: UsageScheme>(
     provider: UsageProvider,
     cache: &UsageReading,
-    windows: &UsageWindows,
+    windows: &'a UsageWindows,
     display: UsageDisplay,
     width: usize,
     show_session_time_remaining: bool,
@@ -492,18 +500,34 @@ fn format_usage<S: UsageScheme>(
     } else {
         vec![icon.to_string(), " ".to_string()]
     };
-    for (window, used_percent) in [
-        (&windows.session, cache.session),
-        (&windows.weekly, cache.weekly),
-        (&windows.fable, cache.fable),
+    let lanes_start = parts.len();
+    // Without a session lane, the next lane's label loses the leading space
+    // that would have kept it apart from the session lane.
+    let mut drop_separator = windows.session.enabled && cache.no_session_limit;
+    let mut label = |label: &'a str| {
+        if std::mem::take(&mut drop_separator) {
+            label.trim_start()
+        } else {
+            label
+        }
+    };
+    for (window, used_percent, exists) in [
+        (&windows.session, cache.session, !cache.no_session_limit),
+        (&windows.weekly, cache.weekly, true),
+        (&windows.fable, cache.fable, true),
     ] {
-        if window.enabled {
-            parts.push(format_window(&window.label, used_percent, display, width));
+        if window.enabled && exists {
+            parts.push(format_window(
+                label(&window.label),
+                used_percent,
+                display,
+                width,
+            ));
         }
     }
     if windows.credits_visible(cache) {
         parts.push(format_credits(
-            &windows.credits.window.label,
+            label(&windows.credits.window.label),
             cache.credits.as_ref(),
             windows.credits.display,
             width,
@@ -522,6 +546,10 @@ fn format_usage<S: UsageScheme>(
                 format_time_remaining(cache.session_resets_at).as_str()
             ])
         ));
+    }
+    // An icon with no lane after it drops the space that separated them.
+    if parts.len() == lanes_start {
+        parts.pop();
     }
     parts.join("")
 }
@@ -675,7 +703,11 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageReading> {
         UsageFetch::Reading(parsed) => parsed,
         UsageFetch::LoggedOut => return Some(UsageReading::logged_out()),
     };
-    parsed.session?;
+    if parsed.no_session_limit {
+        parsed.weekly?;
+    } else {
+        parsed.session?;
+    }
 
     Some(UsageReading {
         session: parsed.session,
@@ -683,6 +715,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageReading> {
         fable: parsed.fable,
         credits: parsed.credits,
         session_resets_at: parsed.session_resets_at,
+        no_session_limit: parsed.no_session_limit,
         logged_out: false,
     })
 }
@@ -825,7 +858,8 @@ fn codex_requires_login(message: &Value) -> bool {
 }
 
 /// Codex reports the five-hour window as `primary` and the weekly window as
-/// `secondary`; the durations settle it when both are present. Credits come
+/// `secondary`; the durations settle it when both are present. Plans without a
+/// five-hour limit report the weekly window alone, as `primary`. Credits come
 /// from `individualLimit`, the per-seat credit budget, as a plain count.
 fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
     let limits = message.get("result")?.get("rateLimits")?;
@@ -844,6 +878,13 @@ fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
             std::mem::swap(&mut session, &mut weekly);
         }
     }
+    if weekly.is_none()
+        && session
+            .is_some_and(|(mins, _, _)| mins.is_some_and(|mins| mins > SESSION_WINDOW_MAX_MINS))
+    {
+        weekly = session.take();
+    }
+    let no_session_limit = session.is_none() && weekly.is_some();
     let credits = limits.get("individualLimit").and_then(|limit| {
         Some(CreditsUsage {
             used: number_field(limit, "used")?,
@@ -857,6 +898,7 @@ fn parse_codex_rate_limits(message: &Value) -> Option<ParsedUsage> {
         fable: None,
         credits,
         session_resets_at: session.and_then(|(_, _, resets_at)| resets_at),
+        no_session_limit,
     })
 }
 
@@ -1079,6 +1121,7 @@ struct ParsedUsage {
     fable: Option<f64>,
     credits: Option<CreditsUsage>,
     session_resets_at: Option<u64>,
+    no_session_limit: bool,
 }
 
 fn parse_claude_usage(text: &str) -> ParsedUsage {
@@ -1092,6 +1135,7 @@ fn parse_claude_usage(text: &str) -> ParsedUsage {
         fable: percent_near_label(&clean, r"current\s*week\s*\(\s*f\s*a\s*b\s*l\s*e\s*\)"),
         credits: parse_claude_credits(&clean),
         session_resets_at: parse_claude_session_reset(&clean),
+        no_session_limit: false,
     }
 }
 
@@ -1404,6 +1448,7 @@ mod tests {
                 fable: None,
                 credits: None,
                 session_resets_at: Some(1),
+                no_session_limit: false,
             })
         );
 
@@ -1424,6 +1469,29 @@ mod tests {
                 fable: None,
                 credits: None,
                 session_resets_at: None,
+                no_session_limit: false,
+            })
+        );
+
+        let weekly_only = json!({
+            "id": 2,
+            "result": {
+                "rateLimits": {
+                    "primary": {"usedPercent": 12, "windowDurationMins": 10080, "resetsAt": 3},
+                    "secondary": null,
+                    "planType": "self_serve_business_prolite"
+                }
+            }
+        });
+        assert_eq!(
+            parse_codex_rate_limits(&weekly_only),
+            Some(ParsedUsage {
+                session: None,
+                weekly: Some(12.0),
+                fable: None,
+                credits: None,
+                session_resets_at: None,
+                no_session_limit: true,
             })
         );
 
@@ -1439,6 +1507,7 @@ mod tests {
                 fable: None,
                 credits: None,
                 session_resets_at: None,
+                no_session_limit: false,
             })
         );
 
@@ -1481,6 +1550,7 @@ mod tests {
                 fable: None,
                 credits: None,
                 session_resets_at: None,
+                no_session_limit: false,
             }
         );
     }
@@ -1496,6 +1566,7 @@ mod tests {
                 fable: None,
                 credits: None,
                 session_resets_at: None,
+                no_session_limit: false,
             }
         );
     }
@@ -1513,6 +1584,7 @@ mod tests {
                 fable: Some(16.0),
                 credits: None,
                 session_resets_at: None,
+                no_session_limit: false,
             }
         );
     }
@@ -1536,6 +1608,7 @@ mod tests {
                     unit: CreditsUnit::Dollars,
                 }),
                 session_resets_at: None,
+                no_session_limit: false,
             }
         );
     }
@@ -1706,6 +1779,7 @@ mod tests {
             fable: None,
             credits,
             session_resets_at: None,
+            no_session_limit: false,
             logged_out: false,
         }
     }
@@ -1809,6 +1883,68 @@ mod tests {
     }
 
     #[test]
+    fn plans_without_a_session_window_leave_the_session_lane_out() {
+        let cache = UsageReading {
+            session: None,
+            weekly: Some(12.0),
+            fable: None,
+            credits: Some(DOLLARS),
+            session_resets_at: None,
+            no_session_limit: true,
+            logged_out: false,
+        };
+        let format = |windows: &UsageWindows| {
+            format_usage::<TestTheme>(
+                UsageProvider::Codex,
+                &cache,
+                windows,
+                UsageDisplay::Percentage,
+                DEFAULT_METER_WIDTH,
+                true,
+                0.0,
+            )
+        };
+
+        assert_eq!(
+            format(&windows(UsageProvider::Codex, true, true, false, None)),
+            "\u{ec81} 7d 12%"
+        );
+        assert_eq!(
+            format(&with_credits(
+                windows(UsageProvider::Codex, true, false, false, None),
+                UsageDisplay::Numeric,
+                false,
+            )),
+            "\u{ec81} C $50/$100"
+        );
+        assert_eq!(
+            format(&windows(UsageProvider::Codex, true, false, false, None)),
+            "\u{ec81}"
+        );
+        assert_eq!(
+            hover_note(&cache, UsageDisplay::Bar).as_deref(),
+            Some("7d: 12% used")
+        );
+
+        let empty = UsageReading {
+            weekly: Some(0.0),
+            ..cache
+        };
+        assert_eq!(
+            format_usage::<TestTheme>(
+                UsageProvider::Codex,
+                &empty,
+                &windows(UsageProvider::Codex, true, true, false, Some(" ")),
+                UsageDisplay::Sparkline,
+                DEFAULT_METER_WIDTH,
+                false,
+                0.0,
+            ),
+            "\u{ec81}  "
+        );
+    }
+
+    #[test]
     fn session_reset_countdown_can_be_limited_to_a_fullness_threshold() {
         let cache = UsageReading {
             session: Some(79.0),
@@ -1816,6 +1952,7 @@ mod tests {
             fable: None,
             credits: None,
             session_resets_at: Some(now_secs().saturating_add(3600)),
+            no_session_limit: false,
             logged_out: false,
         };
         let windows = windows(UsageProvider::Codex, true, false, false, None);
@@ -1847,6 +1984,7 @@ mod tests {
             fable: None,
             credits: None,
             session_resets_at: Some(now_secs().saturating_add(2 * 3600 + 90)),
+            no_session_limit: false,
             logged_out: false,
         };
         assert_eq!(
@@ -1922,6 +2060,7 @@ mod tests {
             fable: Some(33.3),
             credits: None,
             session_resets_at: None,
+            no_session_limit: false,
             logged_out: false,
         };
         assert_eq!(
@@ -2146,6 +2285,7 @@ mod tests {
             fable: Some(22.0),
             credits: Some(DOLLARS),
             session_resets_at: None,
+            no_session_limit: false,
             logged_out: false,
         };
         for display in [
@@ -2186,6 +2326,7 @@ mod tests {
             fable: None,
             credits: Some(DOLLARS),
             session_resets_at: None,
+            no_session_limit: false,
             logged_out: false,
         };
         assert_eq!(hover_note(&empty, UsageDisplay::Sparkline), None);
@@ -2199,6 +2340,7 @@ mod tests {
             fable: Some(95.0),
             credits: None,
             session_resets_at: None,
+            no_session_limit: false,
             logged_out: false,
         };
 
