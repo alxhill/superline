@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.2](https://github.com/alxhill/superline/compare/v0.33.1...v0.33.2) - 2026-10-30
+
+### Added
+
+- ai_usage supports Codex plans without a five-hour window ([#228](https://github.com/alxhill/superline/pull/228))
+
 ## [0.33.1](https://github.com/alxhill/superline/compare/v0.33.0...v0.33.1) - 2026-10-21
 
 ### Added
