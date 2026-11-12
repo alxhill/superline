@@ -480,9 +480,11 @@ with that review's state (changes requested over approved over commented). Both 
 open or a draft. Their colors and glyphs are the theme's `pr.review_<state>_fg` and `pr.review_<state>_icon`, where
 `<state>` is `pending`, `commented`, `changes_requested` or `approved`.
 
-**Hover text.** The dot carries an iTerm2 hidden annotation: hover over it to see each check by name, grouped by
-outcome with the worst first, such as `1 failed: test (macos) · 1 pending: e2e · 3 passed: lint, build, docs`. Set
-`hover` to `false` to leave it out. Other terminals ignore the escape. Inside tmux it only reaches iTerm2 with
+**Hover text.** The dot carries an iTerm2 hidden annotation: hover over it to see how many checks there are, then each
+check by name, grouped by outcome with the worst first, such as
+`5 checks · 1 failed: test (macos) · 1 timed out: e2e · 1 queued: docs · 2 passed: lint, build`. Checks that were
+cancelled, timed out, queued, in progress and so on get a group of their own after the plain outcome. Set `hover` to
+`false` to leave it out. Other terminals ignore the escape. Inside tmux it only reaches iTerm2 with
 `allow-passthrough` on and the sequence wrapped for passthrough, which superline doesn't do.
 
 The lookup runs in the background and is cached, so it never blocks the prompt - the link appears on a later prompt
@@ -498,7 +500,8 @@ The CI dot of [`pr`](#pr) as a segment of its own, linking to the PR's checks pa
 background, so right after `{ "pr": { "status": false } }` it reads as part of the PR, and it can also go anywhere
 else in the prompt. Like the dot it only shows while the PR is open or a draft and has checks, and it reads the same
 cached `gh` lookup as `pr`. It uses the theme's `pr.status_icon` and `pr.status_*_fg` colors. Set `review` to
-`true` to add the review icon described under `pr` after the dot. Its padding defaults to `small`.
+`true` to add the review icon described under `pr` after the dot. Its padding defaults to `small`. The whole widget
+carries the same hover text as `pr`'s dot; set `hover` to `false` to leave it out.
 
 ```json
 [{ "pr": { "status": false } }, { "pr_checks": { "review": true } }]

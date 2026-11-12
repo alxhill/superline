@@ -242,8 +242,8 @@ pub enum LineSegment {
         /// default; set to `false` to hide it.
         #[serde(default = "default_true")]
         status: bool,
-        /// Hovering over the status dot in iTerm2 lists the checks that
-        /// failed, are pending, passed and were skipped. On by default.
+        /// Hovering over the status dot in iTerm2 shows how many checks there
+        /// are and lists them by outcome. On by default.
         #[serde(default = "default_true")]
         hover: bool,
         /// Append an icon for the PR's review state: review requested,
@@ -258,6 +258,10 @@ pub enum LineSegment {
         /// option does. Off by default.
         #[serde(default)]
         review: bool,
+        /// Hovering over the widget in iTerm2 shows how many checks there
+        /// are and lists them by outcome. On by default.
+        #[serde(default = "default_true")]
+        hover: bool,
     },
     /// The current branch's PR's added and deleted line counts.
     PrDiff,
@@ -494,6 +498,8 @@ enum KnownLineSegment {
     PrChecks {
         #[serde(default)]
         review: bool,
+        #[serde(default = "default_true")]
+        hover: bool,
     },
     PrDiff,
     /// Named `python_env` before the language modules were renamed; both
@@ -663,7 +669,7 @@ impl From<KnownLineSegment> for LineSegment {
                 hover,
                 review,
             },
-            KnownLineSegment::PrChecks { review } => LineSegment::PrChecks { review },
+            KnownLineSegment::PrChecks { review, hover } => LineSegment::PrChecks { review, hover },
             KnownLineSegment::PrDiff => LineSegment::PrDiff,
             KnownLineSegment::Python { version, venv } => LineSegment::Python { version, venv },
             KnownLineSegment::Node { version } => LineSegment::Node { version },
@@ -1332,14 +1338,33 @@ mod tests {
                     ahead_behind: false,
                 },
             ),
-            (r#""pr_checks""#, LineSegment::PrChecks { review: false }),
+            (
+                r#""pr_checks""#,
+                LineSegment::PrChecks {
+                    review: false,
+                    hover: true,
+                },
+            ),
             (
                 r#"{"pr_checks":{}}"#,
-                LineSegment::PrChecks { review: false },
+                LineSegment::PrChecks {
+                    review: false,
+                    hover: true,
+                },
             ),
             (
                 r#"{"pr_checks":{"review":true}}"#,
-                LineSegment::PrChecks { review: true },
+                LineSegment::PrChecks {
+                    review: true,
+                    hover: true,
+                },
+            ),
+            (
+                r#"{"pr_checks":{"hover":false}}"#,
+                LineSegment::PrChecks {
+                    review: false,
+                    hover: false,
+                },
             ),
         ];
         for (json, expected) in cases {

@@ -344,7 +344,7 @@ const PR: &[OptionSpec] = &[
     boolean(
         "hover",
         true,
-        "In iTerm2, hovering over the dot lists the checks by outcome.",
+        "In iTerm2, hovering over the dot shows how many checks there are and lists them by outcome.",
     ),
     boolean(
         "review",
@@ -353,11 +353,18 @@ const PR: &[OptionSpec] = &[
     ),
 ];
 
-const PR_CHECKS: &[OptionSpec] = &[boolean(
-    "review",
-    false,
-    "Append an icon for the review: requested, commented, changes requested or approved.",
-)];
+const PR_CHECKS: &[OptionSpec] = &[
+    boolean(
+        "review",
+        false,
+        "Append an icon for the review: requested, commented, changes requested or approved.",
+    ),
+    boolean(
+        "hover",
+        true,
+        "In iTerm2, hovering over the widget shows how many checks there are and lists them by outcome.",
+    ),
+];
 
 const PYTHON: &[OptionSpec] = &[
     boolean("version", true, "Show the interpreter version."),

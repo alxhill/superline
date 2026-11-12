@@ -184,7 +184,7 @@ fn hovering_over_the_status_dot_lists_the_checks() {
 
     let prompt = render_with_pr(&root, json!(["pr"]));
     assert!(
-        prompt.contains("\x1b]1337;AddHiddenAnnotation=1|2 passed: lint, test\x07"),
+        prompt.contains("\x1b]1337;AddHiddenAnnotation=1|2 checks · 2 passed: lint, test\x07"),
         "prompt: {prompt:?}"
     );
 
@@ -195,6 +195,35 @@ fn hovering_over_the_status_dot_lists_the_checks() {
         let prompt = render_with_pr(&root, json!([segment]));
         assert!(!prompt.contains("1337"), "{segment}: {prompt:?}");
     }
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn hovering_over_pr_checks_lists_the_checks() {
+    let root = scratch("checks-hover");
+    let note = "|2 checks · 2 passed: lint, test\x07";
+
+    // The note covers the whole widget, padding included.
+    let prompt = render_with_pr(&root, json!([{ "pr": { "status": false } }, "pr_checks"]));
+    assert_eq!(prompt.matches(note).count(), 1, "prompt: {prompt:?}");
+    assert!(
+        prompt.contains(&format!("\x1b]1337;AddHiddenAnnotation=1{note}")),
+        "prompt: {prompt:?}"
+    );
+    let padded = render_with_pr(
+        &root,
+        json!([{ "pr": { "status": false } }, { "pr_checks": { "padding": "large" } }]),
+    );
+    assert!(
+        padded.contains(&format!("\x1b]1337;AddHiddenAnnotation=3{note}")),
+        "prompt: {padded:?}"
+    );
+
+    let off = render_with_pr(
+        &root,
+        json!([{ "pr": { "status": false } }, { "pr_checks": { "hover": false } }]),
+    );
+    assert!(!off.contains("1337"), "prompt: {off:?}");
     let _ = fs::remove_dir_all(&root);
 }
 

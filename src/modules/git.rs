@@ -934,7 +934,7 @@ fn append_remote<S: GitScheme>(powerline: &mut Powerline, stats: &GitStats, ahea
     let style = Style::simple(S::git_remote_fg(), S::git_remote_bg());
     match &stats.remote_url {
         _ if remote.is_empty() => {}
-        Some(url) => powerline.add_hyperlink_segment(&remote, url, style, None),
+        Some(url) => powerline.add_hyperlink_segment(&remote, url, style, None, None),
         None => powerline.add_segment(remote, style),
     }
 }
