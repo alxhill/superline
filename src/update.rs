@@ -72,6 +72,7 @@ impl Source for UpdateLookup {
     const TTL: Duration = Duration::from_secs(24 * 60 * 60);
     /// A failed lookup (offline, rate limited) is not retried for an hour.
     const REFRESH_INTERVAL: Duration = Duration::from_secs(60 * 60);
+    const LIVE_WITH_FIXTURES: bool = false;
 
     fn cache_id(&self) -> String {
         "latest".to_string()
