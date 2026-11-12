@@ -42,6 +42,8 @@
 //!
 //! Every [`Source`] has to be registered in [`crate::modules::run_refresh`] so
 //! the child process can find it by [`Source::KIND`].
+//!
+//! [Fixtures](crate::backend) can answer any source in place of its cache.
 
 use std::any::Any;
 use std::collections::hash_map::DefaultHasher;

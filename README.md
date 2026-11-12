@@ -846,8 +846,22 @@ superline debug
 
 Each module is timed where the prompt draws it, and any cached lookup it made is listed underneath with how it was
 served: `hit fresh`, `hit stale (…), refresh spawned`, `miss, refresh spawned`, `refresh finished during wait`, or
-`wait timed out, serving cache (…)`. A module with no cache line under it did all of its work inline. Rows render one
-after another, so the times down the tree add up to the `total` wall clock.
+`wait timed out, serving cache (…)`, or `fixture`. A module with no cache line under it did all of its work inline.
+Rows render one after another, so the times down the tree add up to the `total` wall clock.
+
+## Fixtures and demos
+
+Set `SUPERLINE_FIXTURES` to a JSON file (or the JSON itself) to have widgets draw canned values instead of asking the
+machine, a CLI or the network: the hostname, battery, clock, git status, PRs, AI usage and so on. A prompt then looks
+the same on every machine, whatever is installed or signed in there, which is how the website screenshots and PR demos
+are made:
+
+```bash
+SUPERLINE_FIXTURES='{"hostname":"devbox","battery":{"percentage":8,"state":"discharging"}}' superline show fish
+```
+
+[docs/fixtures.md](docs/fixtures.md) lists every key and its value, and
+[examples/fixtures.json](examples/fixtures.json) sets them all.
 
 ## Using superline as a library
 
