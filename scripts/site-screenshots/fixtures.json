@@ -1,0 +1,93 @@
+{
+  "clock": "2026-01-01T09:41:00Z",
+  "pr": {
+    "feat/usage-sparklines": {
+      "number": 142,
+      "url": "https://github.com/alxhill/superline/pull/142",
+      "state": "open",
+      "checks": "success",
+      "diff": { "additions": 426, "deletions": 35 },
+      "check_runs": [
+        { "name": "lint", "outcome": "success" },
+        { "name": "test", "outcome": "success" }
+      ]
+    },
+    "feat/draft-themes": {
+      "number": 151,
+      "url": "https://github.com/alxhill/superline/pull/151",
+      "state": "draft",
+      "diff": { "additions": 453, "deletions": 37 }
+    },
+    "feat/login": {
+      "number": 148,
+      "url": "https://github.com/alxhill/superline/pull/148",
+      "state": "open",
+      "checks": "pending",
+      "diff": { "additions": 444, "deletions": 37 },
+      "review": "pending",
+      "check_runs": [
+        { "name": "lint", "outcome": "success" },
+        { "name": "test", "outcome": "pending" }
+      ]
+    },
+    "fix/flaky-test": {
+      "number": 147,
+      "url": "https://github.com/alxhill/superline/pull/147",
+      "state": "open",
+      "checks": "failure",
+      "diff": { "additions": 441, "deletions": 36 },
+      "review": "changes_requested",
+      "check_runs": [
+        { "name": "lint", "outcome": "success" },
+        { "name": "test", "outcome": "failure" }
+      ]
+    },
+    "feat/search": {
+      "number": 145,
+      "url": "https://github.com/alxhill/superline/pull/145",
+      "state": "open",
+      "checks": "success",
+      "diff": { "additions": 435, "deletions": 36 },
+      "review": "commented",
+      "check_runs": [
+        { "name": "lint", "outcome": "success" },
+        { "name": "test", "outcome": "success" }
+      ]
+    },
+    "feat/badges": {
+      "number": 150,
+      "url": "https://github.com/alxhill/superline/pull/150",
+      "state": "open",
+      "checks": "success",
+      "diff": { "additions": 450, "deletions": 37 },
+      "review": "approved",
+      "check_runs": [
+        { "name": "lint", "outcome": "success" },
+        { "name": "test", "outcome": "success" }
+      ]
+    },
+    "feat/nushell": {
+      "number": 139,
+      "url": "https://github.com/alxhill/superline/pull/139",
+      "state": "merged",
+      "checks": "success",
+      "diff": { "additions": 417, "deletions": 34 },
+      "review": "approved",
+      "check_runs": [
+        { "name": "lint", "outcome": "success" },
+        { "name": "test", "outcome": "success" }
+      ]
+    },
+    "*": null
+  },
+  "usage": {
+    "claude": {
+      "session": 38.0,
+      "weekly": 61.0,
+      "fable": 22.0,
+      "credits": { "used": 12.5, "limit": 50.0, "unit": "dollars" },
+      "session_resets_at": 1767268460
+    },
+    "codex": { "session": 84.0, "weekly": 47.0 }
+  }
+}

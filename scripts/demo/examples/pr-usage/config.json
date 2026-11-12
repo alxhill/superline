@@ -1,0 +1,21 @@
+{
+  "theme": "rainbow",
+  "update": { "disable": true },
+  "rows": [
+    {
+      "left": [
+        { "separator": "round" },
+        { "cwd": { "max_length": 40, "wanted_seg_num": 2 } },
+        "git",
+        { "pr": { "review": true } },
+        "pr_diff"
+      ],
+      "right": [
+        { "separator": "round" },
+        { "ai_usage": { "provider": "claude", "session_time_remaining": true, "session_time_remaining_only_at_limit": 0 } },
+        "time"
+      ]
+    },
+    { "left": ["cmd"] }
+  ]
+}

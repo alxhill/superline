@@ -30,6 +30,7 @@ text of every snapshot.
   --rows <N>           Terminal height (default 12)
   --workdir <DIR>      Run in an existing directory
   --env <KEY=VALUE>    Export a variable before the first prompt (repeatable)
+  --fixtures <FILE>    Answer backends from this SUPERLINE_FIXTURES file
   --output <DIR>       Output directory (default target/terminal-snapshots)
   --vhs <VHS_BINARY>   VHS build (or SUPERLINE_E2E_VHS, or vhs on PATH)
   --jobs <N>           Captures to run at once (default 2)
@@ -53,6 +54,7 @@ fn run() -> rig::Result<()> {
     let mut rows = None;
     let mut workdir = None;
     let mut vars = Vec::new();
+    let mut fixtures = None;
     let mut output = PathBuf::from("target/terminal-snapshots");
     let mut vhs = env::var_os("SUPERLINE_E2E_VHS").map(PathBuf::from);
     let mut jobs = 2;
@@ -71,6 +73,13 @@ fn run() -> rig::Result<()> {
                 let pair = utf8(&mut values, &flag)?;
                 let (key, value) = pair.split_once('=').ok_or("--env takes KEY=VALUE")?;
                 vars.push((key.to_string(), value.to_string()));
+            }
+            "--fixtures" => {
+                let path = PathBuf::from(value(&mut values, &flag)?);
+                fixtures = Some(
+                    std::fs::read(&path)
+                        .map_err(|error| format!("could not read {}: {error}", path.display()))?,
+                );
             }
             "--output" => output = PathBuf::from(value(&mut values, &flag)?),
             "--vhs" => vhs = Some(PathBuf::from(value(&mut values, &flag)?)),
@@ -95,6 +104,7 @@ fn run() -> rig::Result<()> {
         case = case.rows(rows);
     }
     case.workdir = workdir;
+    case.fixtures = fixtures;
     for (key, value) in &vars {
         case = case.env(key, value);
     }

@@ -292,6 +292,9 @@ pub struct Case {
     /// An existing directory to run in instead of `dir`.
     pub workdir: Option<PathBuf>,
     pub env: BTreeMap<String, String>,
+    /// A `SUPERLINE_FIXTURES` file, copied beside the home and exported in
+    /// the session.
+    pub fixtures: Option<Vec<u8>>,
 }
 
 impl Case {
@@ -305,6 +308,7 @@ impl Case {
             dir: DEFAULT_DIR.to_string(),
             workdir: None,
             env: BTreeMap::new(),
+            fixtures: None,
         }
     }
 
@@ -573,11 +577,15 @@ impl Rig {
 
         let fixture = Fixture::prepare(case, shell, index, &self.superline)?;
         let result = (|| {
+            let mut env = case.env.clone();
+            if let Some(fixtures) = &fixture.fixtures {
+                env.insert("SUPERLINE_FIXTURES".to_string(), forward_slashes(fixtures));
+            }
             let setup = shell.setup_command(
                 &forward_slashes(&fixture.home),
                 &forward_slashes(&fixture.startup),
                 &forward_slashes(&fixture.dir),
-                &case.env,
+                &env,
             );
             let (body, screenshots) = rewrite_tape(&case.tape, &case_dir, &stem)?;
             let tape = TAPE_TEMPLATE
@@ -693,6 +701,7 @@ struct Fixture {
     dir: PathBuf,
     /// The file the setup command sources.
     startup: PathBuf,
+    fixtures: Option<PathBuf>,
     /// Put ahead of the rest of `PATH`: a shim that makes `bash` resolve to
     /// `/bin/bash` for `bash-3.2`.
     bin_dirs: Vec<PathBuf>,
@@ -720,6 +729,14 @@ impl Fixture {
         for (name, contents) in &case.config_files {
             fs::write(config_dir.join(name), contents)?;
         }
+        let fixtures = match &case.fixtures {
+            Some(contents) => {
+                let path = root.join("fixtures.json");
+                fs::write(&path, contents)?;
+                Some(path)
+            }
+            None => None,
+        };
 
         let startup = match shell.install_file() {
             Some(file) => install(shell, superline, &home, file)?,
@@ -739,6 +756,7 @@ impl Fixture {
             home,
             dir,
             startup,
+            fixtures,
             bin_dirs,
         })
     }

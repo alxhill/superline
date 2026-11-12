@@ -57,7 +57,7 @@ fn render(root: &Path, segments: Value) -> String {
     )
     .expect("write config");
 
-    let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/site-screenshots/bin");
+    let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/bin");
     let path = std::env::join_paths(
         std::iter::once(stub).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
     )
