@@ -18,10 +18,8 @@ impl Scratch {
     /// An empty home, and a "repository" that is nothing but `.git/HEAD` on
     /// `branch`, so no `git` binary is involved.
     fn new(label: &str, branch: &str) -> Scratch {
-        let root = std::env::temp_dir().join(format!(
-            "superline-fixtures-{}-{label}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("superline-fixtures-{}-{label}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("home/.config/superline")).unwrap();
         fs::create_dir_all(root.join("repo/.git")).unwrap();
@@ -40,7 +38,11 @@ impl Scratch {
     fn render(&self, segments: Value, fixtures: &Value) -> Output {
         let home = self.root.join("home");
         let config = json!({ "theme": "rainbow", "rows": [{ "left": segments }] });
-        fs::write(home.join(".config/superline/config.json"), config.to_string()).unwrap();
+        fs::write(
+            home.join(".config/superline/config.json"),
+            config.to_string(),
+        )
+        .unwrap();
         let fixtures_path = self.root.join("fixtures.json");
         fs::write(&fixtures_path, fixtures.to_string()).unwrap();
 
@@ -118,7 +120,8 @@ fn assert_no_cache(scratch: &Scratch) {
     assert!(
         !scratch.cache().exists(),
         "fixtured widgets wrote to the cache: {:?}",
-        fs::read_dir(scratch.cache()).map(|dir| dir.flatten().map(|e| e.file_name()).collect::<Vec<_>>())
+        fs::read_dir(scratch.cache())
+            .map(|dir| dir.flatten().map(|e| e.file_name()).collect::<Vec<_>>())
     );
 }
 
@@ -150,7 +153,14 @@ fn machine_probes_come_from_fixtures() {
     );
     assert_contains(
         &prompt,
-        &["demo", "devbox", "10.1.2.3", "7%", "80% | swap 50%", "09:41"],
+        &[
+            "demo",
+            "devbox",
+            "10.1.2.3",
+            "7%",
+            "80% | swap 50%",
+            "09:41",
+        ],
     );
     assert_no_cache(&scratch);
 }
@@ -195,7 +205,14 @@ fn repository_lookups_come_from_fixtures() {
     let prompt = scratch.prompt(segments.clone(), &fixtures);
     assert_contains(
         &prompt,
-        &["feat/login", "+42 -7", "#148", "+444 -37", "3.12.4", "prod (web)"],
+        &[
+            "feat/login",
+            "+42 -7",
+            "#148",
+            "+444 -37",
+            "3.12.4",
+            "prod (web)",
+        ],
     );
     assert_no_cache(&scratch);
 
@@ -229,8 +246,14 @@ fn usage_is_keyed_by_provider_and_pinned_to_the_clock() {
 fn a_lookup_can_be_held_loading() {
     let scratch = Scratch::new("loading", "main");
     let segments = json!([{ "ai_usage": { "provider": "claude" } }]);
-    let loading = scratch.prompt(segments.clone(), &json!({ "usage": { "claude": { "$lookup": "loading" } } }));
-    let unavailable = scratch.prompt(segments, &json!({ "usage": { "claude": { "$lookup": "unavailable" } } }));
+    let loading = scratch.prompt(
+        segments.clone(),
+        &json!({ "usage": { "claude": { "$lookup": "loading" } } }),
+    );
+    let unavailable = scratch.prompt(
+        segments,
+        &json!({ "usage": { "claude": { "$lookup": "unavailable" } } }),
+    );
     assert_ne!(loading, unavailable);
     assert!(!loading.contains('%'), "{loading:?}");
     assert_no_cache(&scratch);
@@ -241,14 +264,18 @@ fn update_checks_never_run_under_fixtures() {
     let scratch = Scratch::new("update", "main");
     let prompt = scratch.prompt(json!(["os"]), &json!({ "os": "linux" }));
     assert!(!prompt.contains("superline"), "{prompt:?}");
-    assert!(!scratch.cache().join("superline").exists() || {
-        let names: Vec<_> = fs::read_dir(scratch.cache().join("superline"))
-            .unwrap()
-            .flatten()
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .collect();
-        !names.iter().any(|name| name.starts_with("update") || name.starts_with("auto-upgrade"))
-    });
+    assert!(
+        !scratch.cache().join("superline").exists() || {
+            let names: Vec<_> = fs::read_dir(scratch.cache().join("superline"))
+                .unwrap()
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect();
+            !names
+                .iter()
+                .any(|name| name.starts_with("update") || name.starts_with("auto-upgrade"))
+        }
+    );
 }
 
 #[test]

@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;

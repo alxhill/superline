@@ -10,8 +10,7 @@ use super::{DefaultPadding, Module};
 
 /// The operating-system families that the prompt can identify without
 /// consulting the filesystem or spawning a process.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OsKind {
     Android,

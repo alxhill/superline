@@ -80,9 +80,7 @@ pub fn probe<P: Probe>(probe: P) -> Option<P::Value> {
 /// What a fixture says a [`Source`] should load as, or `None` to load it as
 /// usual.
 pub(crate) fn source_lookup<S: Source>(source: &S) -> Option<Lookup<S::Value>> {
-    let Some(fixtures) = fixtures() else {
-        return None;
-    };
+    let fixtures = fixtures()?;
     let Some(entry) = fixtures.get(S::KIND) else {
         return (!S::LIVE_WITH_FIXTURES).then_some(Lookup::Unavailable);
     };
@@ -216,8 +214,13 @@ fn parse<V: DeserializeOwned>(key: &str, value: &Value) -> Option<V> {
 /// exist to make a prompt look a particular way.
 fn warn(key: &str, message: &str) {
     static WARNED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
-    let mut warned = WARNED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if warned.get_or_insert_with(HashSet::new).insert(key.to_string()) {
+    let mut warned = WARNED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if warned
+        .get_or_insert_with(HashSet::new)
+        .insert(key.to_string())
+    {
         eprintln!("superline: fixture `{key}`: {message}");
     }
 }
@@ -239,7 +242,10 @@ mod tests {
 
     #[test]
     fn inline_and_file_fixtures_load() {
-        assert_eq!(load(r#"{"hostname":"devbox"}"#).unwrap()["hostname"], "devbox");
+        assert_eq!(
+            load(r#"{"hostname":"devbox"}"#).unwrap()["hostname"],
+            "devbox"
+        );
         let dir = std::env::temp_dir().join(format!("superline-fixtures-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("fixtures.json");

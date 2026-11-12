@@ -114,9 +114,9 @@ struct BatteryStatus {
 /// `unknown`, `charging`, `discharging`, `empty` or `full`.
 fn state_from_str<'de, D: Deserializer<'de>>(deserializer: D) -> Result<State, D::Error> {
     let state = String::deserialize(deserializer)?;
-    state.parse().map_err(|_| {
-        serde::de::Error::custom(format!("`{state}` is not a battery state"))
-    })
+    state
+        .parse()
+        .map_err(|_| serde::de::Error::custom(format!("`{state}` is not a battery state")))
 }
 
 #[derive(Debug, Clone, Copy)]
