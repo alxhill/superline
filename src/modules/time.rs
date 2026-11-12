@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-use chrono::Local;
 
 use crate::colors::Color;
 use crate::config::SegmentPadding;
@@ -51,7 +50,7 @@ impl<S: TimeScheme> Module for Time<S> {
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        let now = Local::now().format(&self.time_format).to_string();
+        let now = crate::backend::now().format(&self.time_format).to_string();
         powerline.add_segment(now, Style::simple(S::time_fg(), S::time_bg()));
     }
 }

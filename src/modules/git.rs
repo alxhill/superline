@@ -215,7 +215,10 @@ impl<S: GitScheme> GitRemote<S> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+/// Missing fields read as zero or empty, so a fixture only needs the ones it
+/// shows.
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GitStats {
     pub untracked: u32,
     pub conflicted: u32,

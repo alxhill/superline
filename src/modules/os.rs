@@ -11,6 +11,8 @@ use super::{DefaultPadding, Module};
 /// The operating-system families that the prompt can identify without
 /// consulting the filesystem or spawning a process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OsKind {
     Android,
     Linux,
@@ -93,6 +95,18 @@ impl OsKind {
     }
 }
 
+/// The OS superline was built for, `"linux"` or `"macos"` in fixtures.
+struct CurrentOs;
+
+impl crate::backend::Probe for CurrentOs {
+    type Value = OsKind;
+    const KEY: &'static str = "os";
+
+    fn probe(&self) -> Option<OsKind> {
+        Some(OsKind::current())
+    }
+}
+
 /// A neutral, widely supported Nerd Font marker for OS families without a
 /// dedicated symbol.
 const GENERIC_UNIX_SYMBOL: &str = "\u{f0ac}";
@@ -125,7 +139,7 @@ impl<S: OsScheme> Default for Os<S> {
 
 impl<S: OsScheme> Os<S> {
     pub fn new() -> Self {
-        Self::from_kind(OsKind::current())
+        Self::from_kind(crate::backend::probe(CurrentOs).unwrap_or(OsKind::Unknown))
     }
 
     pub fn from_kind(kind: OsKind) -> Self {
