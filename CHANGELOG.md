@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0](https://github.com/alxhill/superline/compare/v0.33.2...v0.34.0) - 2026-11-13
+
+### Added
+
+- SUPERLINE_FIXTURES stands in for every widget backend, for reproducible demos ([#231](https://github.com/alxhill/superline/pull/231))
+
 ## [0.33.2](https://github.com/alxhill/superline/compare/v0.33.1...v0.33.2) - 2026-10-30
 
 ### Added
