@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 use std::str::Chars;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, LocalResult, TimeZone};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
@@ -401,6 +401,10 @@ impl Source for UsageLookup {
     fn failed(&self) -> Option<UsageReading> {
         Some(UsageReading::logged_out())
     }
+
+    fn fixture_key(&self) -> Option<String> {
+        Some(self.provider.as_str().to_string())
+    }
 }
 
 impl<S: UsageScheme> Module for Usage<S> {
@@ -666,10 +670,7 @@ fn exceeds_threshold(percent: Option<f64>, threshold: Option<f64>) -> bool {
 }
 
 fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
+    crate::backend::now_secs()
 }
 
 /// What a provider refresh produced: a reading, or the discovery that the
@@ -1127,7 +1128,7 @@ fn parse_claude_usage(text: &str) -> ParsedUsage {
 /// Claude reports the session reset as a local clock time (for example,
 /// `Resets 2:50pm`). A clock-only value is the next matching local time.
 fn parse_claude_session_reset(text: &str) -> Option<u64> {
-    parse_claude_session_reset_at(text, Local::now())
+    parse_claude_session_reset_at(text, crate::backend::now())
 }
 
 fn parse_claude_session_reset_at(text: &str, now: DateTime<Local>) -> Option<u64> {

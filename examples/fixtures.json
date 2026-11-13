@@ -1,0 +1,61 @@
+{
+  "clock": "2026-01-01T09:41:00Z",
+  "username": "demo",
+  "root": false,
+  "ssh": false,
+  "hostname": "devbox",
+  "os": "macos",
+  "local_ip": "192.168.1.20",
+  "battery": { "percentage": 8.0, "state": "discharging" },
+  "memory": {
+    "total": 34359738368,
+    "available": 8589934592,
+    "swap_total": 2147483648,
+    "swap_available": 1073741824
+  },
+  "read_only": false,
+  "sudo": true,
+  "git": {
+    "branch_name": "feat/login",
+    "ahead": 2,
+    "behind": 1,
+    "staged": 1,
+    "non_staged": 3,
+    "untracked": 2,
+    "conflicted": 0,
+    "remote": true,
+    "remote_url": "https://github.com/alxhill/superline",
+    "worktrees": 0,
+    "worktree_index": null
+  },
+  "diff": { "added": 42, "removed": 7 },
+  "pr": {
+    "feat/login": {
+      "number": 148,
+      "url": "https://github.com/alxhill/superline/pull/148",
+      "state": "open",
+      "checks": "pending",
+      "review": "pending",
+      "diff": { "additions": 444, "deletions": 37 },
+      "check_runs": [
+        { "name": "lint", "outcome": "success" },
+        { "name": "test", "outcome": "pending" }
+      ]
+    },
+    "*": null
+  },
+  "python": "3.12.4",
+  "kubernetes": { "name": "prod", "namespace": "web" },
+  "usage": {
+    "claude": {
+      "session": 38.0,
+      "weekly": 61.0,
+      "fable": 22.0,
+      "credits": { "used": 12.5, "limit": 50.0, "unit": "dollars" },
+      "session_resets_at": 1767268460
+    },
+    "codex": { "session": 84.0, "weekly": 47.0 }
+  },
+  "update": { "$lookup": "unavailable" },
+  "auto-upgrade": { "$lookup": "unavailable" }
+}

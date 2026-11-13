@@ -1,9 +1,25 @@
 use std::env;
 
+use crate::backend::{self, Probe};
+
+/// Whether the shell came in over SSH. `true` or `false` in fixtures.
 pub fn is_remote_shell() -> bool {
-    env::var_os("SSH_CLIENT").is_some()
-        || env::var_os("SSH_TTY").is_some()
-        || env::var_os("SSH_CONNECTION").is_some()
+    backend::probe(RemoteShell).unwrap_or(false)
+}
+
+struct RemoteShell;
+
+impl Probe for RemoteShell {
+    type Value = bool;
+    const KEY: &'static str = "ssh";
+
+    fn probe(&self) -> Option<bool> {
+        Some(
+            env::var_os("SSH_CLIENT").is_some()
+                || env::var_os("SSH_TTY").is_some()
+                || env::var_os("SSH_CONNECTION").is_some(),
+        )
+    }
 }
 
 /// Joins the non-empty `parts` with single spaces, so an icon a theme sets to

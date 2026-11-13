@@ -322,6 +322,10 @@ impl Source for PrLookup {
     fn fetch(&self) -> Option<Option<PrInfo>> {
         Some(fetch_pr(&self.branch, &self.repo_root))
     }
+
+    fn fixture_key(&self) -> Option<String> {
+        Some(self.branch.clone())
+    }
 }
 
 impl<S: PrScheme> Module for Pr<S> {

@@ -2,7 +2,9 @@ use std::marker::PhantomData;
 
 use battery::units::{energy::watt_hour, ratio::percent};
 use battery::{Manager, State};
+use serde::{Deserialize, Deserializer};
 
+use crate::backend::{self, Probe};
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
@@ -68,7 +70,7 @@ impl<S: BatteryScheme> Default for Battery<S> {
 impl<S: BatteryScheme> Battery<S> {
     pub fn new() -> Self {
         Self {
-            status: battery_status().filter(should_display),
+            status: backend::probe(Batteries).filter(should_display),
             scheme: PhantomData,
         }
     }
@@ -89,10 +91,32 @@ impl<S: BatteryScheme> Module for Battery<S> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Every battery the machine reports, combined. Fixtures give the combined
+/// reading: `{"percentage": 8.0, "state": "discharging"}`.
+struct Batteries;
+
+impl Probe for Batteries {
+    type Value = BatteryStatus;
+    const KEY: &'static str = "battery";
+
+    fn probe(&self) -> Option<BatteryStatus> {
+        battery_status()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 struct BatteryStatus {
     percentage: f32,
+    #[serde(deserialize_with = "state_from_str")]
     state: State,
+}
+
+/// `unknown`, `charging`, `discharging`, `empty` or `full`.
+fn state_from_str<'de, D: Deserializer<'de>>(deserializer: D) -> Result<State, D::Error> {
+    let state = String::deserialize(deserializer)?;
+    state
+        .parse()
+        .map_err(|_| serde::de::Error::custom(format!("`{state}` is not a battery state")))
 }
 
 #[derive(Debug, Clone, Copy)]

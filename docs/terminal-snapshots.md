@@ -108,8 +108,8 @@ uses a test case's config and tape instead. `--rows`, `--env KEY=VALUE`,
 `--output`, and `--jobs` work as their test equivalents do; see `--help`. A
 theme file the config names relative to itself is copied along with it.
 Widgets with background lookups (for example `ai_usage`) start cold in the
-isolated home; remove them from a copy of the config if their probes are
-unwanted.
+isolated home; pass `--fixtures <file>` to answer them (and any other backend
+the file names) from [fixtures](fixtures.md) instead.
 
 ## Writing a case
 
@@ -218,11 +218,15 @@ need a focused manual run in that terminal.
 The screenshots on the [website](https://alxhill.github.io/superline/) come
 from the same VHS build, driven by `scripts/site-screenshots/generate.sh`
 rather than the test rig. Each scene in `scripts/site-screenshots/scenes.sh`
-builds a fixture (git repos with an upstream, language projects, a seeded AI
-usage cache) in an isolated home, runs a short fish session with its config
-from `scripts/site-screenshots/configs/`, and writes a trimmed PNG to
-`site/img/`. A `gh` stub in `scripts/site-screenshots/bin/` answers PR lookups,
-so no network access or GitHub login is needed.
+builds its files (git repos with an upstream, language projects) in an
+isolated home, runs a short fish session with its config from
+`scripts/site-screenshots/configs/`, and writes a trimmed PNG to `site/img/`.
+PR lookups, AI usage and the clock come from
+`scripts/site-screenshots/fixtures.json` through `SUPERLINE_FIXTURES` (see
+[fixtures](fixtures.md)), so no network access, GitHub login or provider CLI
+is needed, and a PR scene that uses a new branch needs an entry there. The
+session setup is shared with `scripts/demo/record.sh` through
+`scripts/lib/vhs-scene.sh`.
 
 ```bash
 scripts/site-screenshots/generate.sh          # every scene

@@ -869,8 +869,21 @@ fn claude_code(args: ClaudeCodeArgs) {
         prepend_error_module(&mut conf, message.to_string());
     }
 
-    for row in &conf.rows {
-        let mut powerline = Powerline::from_conf::<CustomTheme>(row, &runtime);
+    let mut powerlines: Vec<Powerline> = conf
+        .rows
+        .iter()
+        .map(|row| Powerline::from_conf::<CustomTheme>(row, &runtime))
+        .collect();
+    if let Some(message) = fixture_error() {
+        let mut conf = error_only_config();
+        prepend_error_module(&mut conf, message);
+        powerlines = conf
+            .rows
+            .iter()
+            .map(|row| Powerline::from_conf::<CustomTheme>(row, &runtime))
+            .collect();
+    }
+    for mut powerline in powerlines {
         // A row whose widgets have nothing to show would be a blank line.
         if !powerline.has_segments() {
             continue;
@@ -1077,19 +1090,20 @@ fn render_right(args: &ShowArgs, conf: Config) {
         let span = debug::span(format!("row {}", conf.rows.len()));
         let powerline = powerline_from_conf(prompt, args);
         span.finish();
+        if fixture_error().is_some() {
+            std::process::exit(1);
+        }
         powerline.print_right();
     }
 }
 
 fn render_normal(args: &ShowArgs, conf: Config) {
-    if !conf.update.disable {
+    let notice = (!conf.update.disable).then(|| {
         let span = debug::span("update notice");
         let notice = update::notice::<CustomTheme>(conf.update.auto);
         span.finish();
-        if let Some(notice) = notice {
-            println!("{notice}");
-        }
-    }
+        notice
+    });
 
     let mut powerlines = conf
         .rows
@@ -1102,6 +1116,19 @@ fn render_normal(args: &ShowArgs, conf: Config) {
             powerline
         })
         .collect::<Vec<Powerline>>();
+
+    if let Some(message) = fixture_error() {
+        let mut conf = error_only_config();
+        prepend_error_module(&mut conf, message);
+        if let Some(row) = conf.rows.first() {
+            powerline_from_conf(row, args).print_left();
+            println!();
+        }
+        std::process::exit(1);
+    }
+    if let Some(notice) = notice.flatten() {
+        println!("{notice}");
+    }
 
     let span = debug::span("print");
     if let Some((last, all_bar_last)) = powerlines.split_last_mut() {
@@ -1137,6 +1164,32 @@ fn show_fallback(args: &ShowArgs, error: &PowerlineError, right_only: bool) {
 fn fallback_config(error: &PowerlineError) -> Config {
     let mut conf = Config::default();
     prepend_error_module(&mut conf, fallback_message(error));
+    conf
+}
+
+/// What to say when the fixtures have mistakes in them, after printing every
+/// one to stderr. A prompt drawn from broken fixtures would quietly be missing
+/// widgets, so it is replaced by this error.
+fn fixture_error() -> Option<String> {
+    let errors = superline::backend::fixture_errors();
+    for error in &errors {
+        eprintln!("superline: {error}");
+    }
+    match errors.as_slice() {
+        [] => None,
+        [error] => Some(error.clone()),
+        [first, rest @ ..] => Some(format!("{first} (and {} more)", rest.len())),
+    }
+}
+
+/// A config with one empty row, for drawing nothing but an error.
+fn error_only_config() -> Config {
+    let mut conf = Config::default();
+    conf.rows.truncate(1);
+    if let Some(row) = conf.rows.first_mut() {
+        row.left.clear();
+        row.right = None;
+    }
     conf
 }
 

@@ -13,7 +13,7 @@ default_config() {
   local scratch="$work/default-config"
   mkdir -p "$scratch"
   HOME="$scratch" XDG_CONFIG_HOME="$scratch/.config" XDG_CACHE_HOME="$scratch/.cache" \
-    "$repo/target/release/superline" show fish -s 0 -c 100 >/dev/null 2>&1 || true
+    SUPERLINE_FIXTURES="$FIXTURES" "$repo/target/release/superline" show fish -s 0 -c 100 >/dev/null 2>&1 || true
   jq '.update = {"disable": true}' "$scratch/.config/superline/config.json" >"$work/default.json"
   echo "$work/default.json"
 }
@@ -27,7 +27,7 @@ rust_project() {
 }
 
 scene_hero() {
-  local home="$work/hero/home" dir="$work/hero/home/code/superline"
+  local dir="$work/hero/home/code/superline"
   git_repo_with_upstream "$dir" 0 0 main
   rust_project "$dir"
   git -C "$dir" add -A && git -C "$dir" commit --quiet -m "cargo project"
@@ -39,9 +39,7 @@ scene_hero() {
   echo "## Usage" >>"$dir/README.md"
   git -C "$dir" add README.md
   touch "$dir/src/sparkline.rs"
-  seed_usage "$home"
-  PRE="superline show fish -s 0 -c 100 >/dev/null; sleep 1" \
-    capture hero 132 8 "$(default_config)" code/superline <<'EOF'
+  capture hero 132 8 "$(default_config)" code/superline <<'EOF'
 Type "git status --short"
 Enter
 Sleep 1s
@@ -72,10 +70,7 @@ scene_pr() {
     git -C "$dir" branch "$branch"
   done
   git -C "$dir" switch --quiet feat/draft-themes
-  # PR lookups land in the cache in the background, so render each branch once
-  # up front and let the refreshes finish before recording.
-  local warm="for b in ${branches[*]}; git switch -q \$b; superline show fish -s 0 -c 90 >/dev/null; end; sleep 2; git switch -q feat/draft-themes"
-  PRE="$warm" capture pr 90 17 "$configs/pr.json" code/superline <<'TAPE'
+  capture pr 90 17 "$configs/pr.json" code/superline <<'TAPE'
 Type "git switch -q feat/login"
 Enter
 Sleep 1s
@@ -136,9 +131,7 @@ TAPE
 }
 
 scene_usage() {
-  local home="$work/usage/home"
-  mkdir -p "$home/code"
-  seed_usage "$home"
+  mkdir -p "$work/usage/home/code"
   capture usage 90 12 "$configs/usage.json" code <<'TAPE'
 TAPE
 }
@@ -187,13 +180,12 @@ Sleep 1.5s
 TAPE
 }
 
-# A dirty Rust project with seeded AI usage for the editor recordings.
+# A dirty Rust project for the editor recordings.
 editor_fixture() {
-  local home="$work/$1/home" dir="$work/$1/home/code/superline"
+  local dir="$work/$1/home/code/superline"
   git_repo_with_upstream "$dir" 1 0 main
   rust_project "$dir"
   echo "changed" >>"$dir/README.md"
-  seed_usage "$home"
 }
 
 # GIFs of `superline config`: adding and moving widgets, changing a widget's
@@ -349,13 +341,11 @@ component_fixture() {
       FIXTURE_DIR=code/superline
       git_repo "$home/$FIXTURE_DIR"
       git -C "$home/$FIXTURE_DIR" switch --quiet -c feat/usage-sparklines
-      FIXTURE_PRE="superline show fish -s 0 -c 90 >/dev/null; sleep 2"
       ;;
     pr-approved)
       FIXTURE_DIR=code/superline
       git_repo "$home/$FIXTURE_DIR"
       git -C "$home/$FIXTURE_DIR" switch --quiet -c feat/badges
-      FIXTURE_PRE="superline show fish -s 0 -c 90 >/dev/null; sleep 2"
       ;;
     python)
       FIXTURE_DIR=code/api
@@ -408,7 +398,6 @@ scene_components() {
       name="config/$id-$variant"
       home="$work/$name/home"
       mkdir -p "$home"
-      seed_usage "$home"
       component_fixture "$home" "$fixture"
       query='.[$id].variants[] | select(.name == $variant)'
       jq --arg id "$id" --arg variant "$variant" \

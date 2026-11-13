@@ -42,6 +42,8 @@
 //!
 //! Every [`Source`] has to be registered in [`crate::modules::run_refresh`] so
 //! the child process can find it by [`Source::KIND`].
+//!
+//! [Fixtures](crate::backend) can answer any source in place of its cache.
 
 use std::any::Any;
 use std::collections::hash_map::DefaultHasher;
@@ -127,6 +129,18 @@ pub trait Source: Serialize + DeserializeOwned + Clone + Send + 'static {
     fn failed(&self) -> Option<Self::Value> {
         None
     }
+
+    /// Picks this lookup's value out of its [fixtures](crate::backend) when
+    /// lookups of this kind differ by something a fixture author can name,
+    /// such as a branch or a provider. `None` uses the fixture as is.
+    fn fixture_key(&self) -> Option<String> {
+        None
+    }
+
+    /// Whether the lookup still runs for real when fixtures are in use but
+    /// do not name it. Lookups that phone home or change the installation
+    /// set this to `false`, so a demo never does either.
+    const LIVE_WITH_FIXTURES: bool = true;
 }
 
 /// Hashes anything into a fixed-width identifier suitable for
@@ -225,6 +239,9 @@ impl<S: Source> Cached<S> {
     /// missing or older than [`Source::TTL`]. Never blocks on the fetch.
     pub fn load(&self) -> Lookup<S::Value> {
         let started = Instant::now();
+        if let Some(lookup) = self.fixture(started) {
+            return lookup;
+        }
         match self.read() {
             Some(entry) => {
                 let age = entry.age();
@@ -258,6 +275,9 @@ impl<S: Source> Cached<S> {
     /// prompt.
     pub fn load_with_timeout(&self, timeout: Duration) -> Lookup<S::Value> {
         let started = Instant::now();
+        if let Some(lookup) = self.fixture(started) {
+            return lookup;
+        }
         let cached = match self.read() {
             Some(entry) if !entry.is_stale(S::TTL) => {
                 debug::cache(S::KIND, CacheStatus::Fresh(entry.age()), started.elapsed());
@@ -319,6 +339,14 @@ impl<S: Source> Cached<S> {
                 self.cached_or(Lookup::Loading, cached)
             }
         }
+    }
+
+    /// What the [fixtures](crate::backend) say this lookup is, if they name
+    /// it.
+    fn fixture(&self, started: Instant) -> Option<Lookup<S::Value>> {
+        let lookup = crate::backend::source_lookup(&self.source)?;
+        debug::cache(S::KIND, CacheStatus::Fixture, started.elapsed());
+        Some(lookup)
     }
 
     /// Runs the fetch on a detached worker thread, which writes the cache and

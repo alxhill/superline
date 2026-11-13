@@ -132,6 +132,8 @@ pub enum CacheStatus {
     /// An earlier widget in this prompt made the same lookup, and its result
     /// was reused.
     Shared,
+    /// Answered by a fixture instead of the cache.
+    Fixture,
 }
 
 impl Display for CacheStatus {
@@ -155,6 +157,7 @@ impl Display for CacheStatus {
             CacheStatus::TimedOut { age: None } => write!(f, "wait timed out, nothing cached"),
             CacheStatus::Unavailable => write!(f, "unavailable"),
             CacheStatus::Shared => write!(f, "shared with an earlier widget"),
+            CacheStatus::Fixture => write!(f, "fixture"),
         }
     }
 }

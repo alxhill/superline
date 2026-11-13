@@ -1,6 +1,6 @@
 #!/bin/sh
 # Stand-in for the GitHub CLI: `gh pr view <branch> --json ...` answers with a
-# canned PR per branch, so PR segments render the same on every run.
+# canned PR per branch, for tests of how gh's output is parsed.
 [ "$1 $2" = "pr view" ] || exit 1
 url=https://github.com/alxhill/superline/pull
 check() { printf '[{"name":"lint","status":"COMPLETED","conclusion":"SUCCESS"},{"name":"test","status":"%s","conclusion":%s}]' "$1" "$2"; }

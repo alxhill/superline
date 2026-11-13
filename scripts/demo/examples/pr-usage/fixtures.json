@@ -1,0 +1,22 @@
+{
+  "clock": "2026-01-01T09:41:00Z",
+  "pr": {
+    "feat/login": {
+      "number": 148,
+      "url": "https://github.com/alxhill/superline/pull/148",
+      "state": "open",
+      "checks": "pending",
+      "review": "pending",
+      "diff": { "additions": 444, "deletions": 37 },
+      "check_runs": [
+        { "name": "lint", "outcome": "success" },
+        { "name": "test", "outcome": "pending" }
+      ]
+    },
+    "*": null
+  },
+  "usage": {
+    "claude": { "session": 38.0, "weekly": 61.0, "session_resets_at": 1767268460 },
+    "codex": { "session": 84.0, "weekly": 47.0 }
+  }
+}

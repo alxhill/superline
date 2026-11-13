@@ -405,6 +405,7 @@ impl Source for AutoUpgrade {
     /// A transient failure, or an install that never finished, is retried
     /// after an hour.
     const REFRESH_INTERVAL: Duration = Duration::from_secs(60 * 60);
+    const LIVE_WITH_FIXTURES: bool = false;
 
     fn cache_id(&self) -> String {
         self.tag.clone()

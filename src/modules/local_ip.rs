@@ -3,6 +3,7 @@ use std::net::Ipv4Addr;
 
 use if_addrs::{get_if_addrs, IfAddr, Interface};
 
+use crate::backend::{self, Probe};
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
@@ -46,9 +47,21 @@ impl<S: LocalIpScheme> Module for LocalIp<S> {
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        if let Some(ip) = current_local_ipv4() {
+        if let Some(ip) = backend::probe(PrimaryIpv4) {
             powerline.add_segment(ip, Style::simple(S::local_ip_fg(), S::local_ip_bg()));
         }
+    }
+}
+
+/// The machine's primary IPv4 address, `"192.168.1.20"` in fixtures.
+struct PrimaryIpv4;
+
+impl Probe for PrimaryIpv4 {
+    type Value = Ipv4Addr;
+    const KEY: &'static str = "local_ip";
+
+    fn probe(&self) -> Option<Ipv4Addr> {
+        current_local_ipv4()
     }
 }
 

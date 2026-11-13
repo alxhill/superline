@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use crate::backend::{self, Probe};
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
@@ -57,10 +58,22 @@ impl<S: HostScheme> Module for Hostname<S> {
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
         if self.show_on_local || utils::is_remote_shell() {
-            if let Some(host) = current_hostname() {
+            if let Some(host) = backend::probe(CurrentHostname) {
                 powerline.add_segment(host, Style::simple(S::hostname_fg(), S::hostname_bg()));
             }
         }
+    }
+}
+
+/// The name the machine goes by, `"devbox"` in fixtures.
+struct CurrentHostname;
+
+impl Probe for CurrentHostname {
+    type Value = String;
+    const KEY: &'static str = "hostname";
+
+    fn probe(&self) -> Option<String> {
+        current_hostname()
     }
 }
 

@@ -11,6 +11,8 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use crate::backend::{self, Probe};
+
 /// A function that looks up an environment variable, mirroring
 /// [`std::env::var_os`]. Taken as a parameter so tests can inject a fake
 /// environment.
@@ -99,24 +101,24 @@ pub fn resolve_binary(name: &str) -> Option<PathBuf> {
 /// "Run as administrator" session would require Win32 token APIs and is left as
 /// a future enhancement.
 #[cfg(unix)]
-pub fn is_root() -> bool {
+fn os_is_root() -> bool {
     users::get_current_uid() == 0
 }
 
 #[cfg(not(unix))]
-pub fn is_root() -> bool {
+fn os_is_root() -> bool {
     false
 }
 
 /// The current user's login name.
 #[cfg(unix)]
-pub fn current_username() -> Option<String> {
+fn os_username() -> Option<String> {
     users::get_user_by_uid(users::get_current_uid())
         .map(|user| user.name().to_string_lossy().into_owned())
 }
 
 #[cfg(not(unix))]
-pub fn current_username() -> Option<String> {
+fn os_username() -> Option<String> {
     std::env::var("USERNAME")
         .ok()
         .or_else(|| std::env::var("USER").ok())
@@ -124,7 +126,7 @@ pub fn current_username() -> Option<String> {
 
 /// Whether the current working directory is not writable by this process.
 #[cfg(unix)]
-pub fn cwd_is_readonly() -> bool {
+fn os_cwd_is_readonly() -> bool {
     use std::ffi::CString;
     // `access(W_OK)` answers the real question - can we write here - taking the
     // effective uid and directory permissions into account.
@@ -133,7 +135,7 @@ pub fn cwd_is_readonly() -> bool {
 }
 
 #[cfg(windows)]
-pub fn cwd_is_readonly() -> bool {
+fn os_cwd_is_readonly() -> bool {
     // Best effort on Windows: the directory's read-only attribute. Real write
     // access is governed by ACLs that this doesn't fully capture, but it matches
     // the common case and never blocks the prompt.
@@ -143,8 +145,57 @@ pub fn cwd_is_readonly() -> bool {
 }
 
 #[cfg(not(any(unix, windows)))]
-pub fn cwd_is_readonly() -> bool {
+fn os_cwd_is_readonly() -> bool {
     false
+}
+
+/// Whether the prompt runs as root. `true` or `false` in fixtures.
+pub fn is_root() -> bool {
+    backend::probe(Root).unwrap_or(false)
+}
+
+/// The current user's login name. A string in fixtures.
+pub fn current_username() -> Option<String> {
+    backend::probe(Username)
+}
+
+/// Whether the current directory cannot be written to. `true` or `false` in
+/// fixtures.
+pub fn cwd_is_readonly() -> bool {
+    backend::probe(ReadOnlyCwd).unwrap_or(false)
+}
+
+struct Root;
+
+impl Probe for Root {
+    type Value = bool;
+    const KEY: &'static str = "root";
+
+    fn probe(&self) -> Option<bool> {
+        Some(os_is_root())
+    }
+}
+
+struct Username;
+
+impl Probe for Username {
+    type Value = String;
+    const KEY: &'static str = "username";
+
+    fn probe(&self) -> Option<String> {
+        os_username()
+    }
+}
+
+struct ReadOnlyCwd;
+
+impl Probe for ReadOnlyCwd {
+    type Value = bool;
+    const KEY: &'static str = "read_only";
+
+    fn probe(&self) -> Option<bool> {
+        Some(os_cwd_is_readonly())
+    }
 }
 
 #[cfg(test)]

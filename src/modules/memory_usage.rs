@@ -7,6 +7,9 @@
 
 use std::marker::PhantomData;
 
+use serde::Deserialize;
+
+use crate::backend::{self, Probe};
 use crate::colors::Color;
 use crate::config::SegmentPadding;
 use crate::themes::DefaultColors;
@@ -20,8 +23,20 @@ use super::{DefaultPadding, Module};
 /// swap lane.
 const SWAP_DISPLAY_THRESHOLD_PERCENT: u8 = 1;
 
+/// Physical and swap memory as the OS reports it.
+struct SystemMemory;
+
+impl Probe for SystemMemory {
+    type Value = MemoryStats;
+    const KEY: &'static str = "memory";
+
+    fn probe(&self) -> Option<MemoryStats> {
+        system_memory()
+    }
+}
+
 /// A snapshot of physical and swap memory, in bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 struct MemoryStats {
     total: u64,
     available: u64,
@@ -83,7 +98,7 @@ impl<S: MemoryUsageScheme> Module for MemoryUsage<S> {
     }
 
     fn append_segments(&mut self, powerline: &mut Powerline) {
-        let Some(stats) = system_memory() else {
+        let Some(stats) = backend::probe(SystemMemory) else {
             return;
         };
 
