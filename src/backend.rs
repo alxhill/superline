@@ -34,12 +34,16 @@
 //! as usual, except those that phone home or change the installation (see
 //! [`Source::LIVE_WITH_FIXTURES`]), which stay unavailable.
 //!
+//! Fixtures only exist to make a prompt look a particular way, so a mistake in
+//! them is an error rather than a missing widget: an unknown key, a value
+//! that does not parse, or a file that cannot be read is collected in
+//! [`fixture_errors`], which `superline show` checks before it prints.
+//!
 //! A fixtured source never reads or writes the cache and never starts a
 //! refresh, so its value is on the very first prompt.
 
-use std::collections::HashSet;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 use serde::de::DeserializeOwned;
@@ -49,6 +53,30 @@ use crate::cache::{Lookup, Source};
 
 /// The environment variable naming the fixtures file, or holding the JSON.
 pub const FIXTURES_VAR: &str = "SUPERLINE_FIXTURES";
+
+/// Every [`Probe::KEY`] and fixturable [`Source::KIND`]. Any other key in the
+/// fixtures is an error, so a typo cannot silently leave a backend live.
+pub const KEYS: &[&str] = &[
+    "clock",
+    "username",
+    "root",
+    "ssh",
+    "hostname",
+    "os",
+    "local_ip",
+    "battery",
+    "memory",
+    "read_only",
+    "git",
+    "diff",
+    "pr",
+    "usage",
+    "python",
+    "kubernetes",
+    "sudo",
+    "update",
+    "auto-upgrade",
+];
 
 /// A quick, synchronous question about the machine the prompt runs on.
 ///
@@ -70,7 +98,13 @@ pub trait Probe {
 /// Answers `probe` from the fixtures when they name it, else from the
 /// machine.
 pub fn probe<P: Probe>(probe: P) -> Option<P::Value> {
-    match fixtures().and_then(|fixtures| fixtures.get(P::KEY)) {
+    let fixtures = fixtures();
+    debug_assert!(
+        fixtures.is_none() || KEYS.contains(&P::KEY),
+        "{} is missing from KEYS",
+        P::KEY
+    );
+    match fixtures.and_then(|fixtures| fixtures.get(P::KEY)) {
         Some(Value::Null) => None,
         Some(value) => parse(P::KEY, value),
         None => probe.probe(),
@@ -81,6 +115,7 @@ pub fn probe<P: Probe>(probe: P) -> Option<P::Value> {
 /// usual.
 pub(crate) fn source_lookup<S: Source>(source: &S) -> Option<Lookup<S::Value>> {
     let fixtures = fixtures()?;
+    debug_assert!(KEYS.contains(&S::KIND), "{} is missing from KEYS", S::KIND);
     let Some(entry) = fixtures.get(S::KIND) else {
         return (!S::LIVE_WITH_FIXTURES).then_some(Lookup::Unavailable);
     };
@@ -91,7 +126,7 @@ pub(crate) fn source_lookup<S: Source>(source: &S) -> Option<Lookup<S::Value>> {
                 None => return Some(Lookup::Unavailable),
             },
             None => {
-                warn(S::KIND, "expected an object keyed by fixture key");
+                fail(S::KIND, "expected an object keyed by fixture key");
                 return Some(Lookup::Unavailable);
             }
         },
@@ -102,7 +137,7 @@ pub(crate) fn source_lookup<S: Source>(source: &S) -> Option<Lookup<S::Value>> {
             Some("loading") => Lookup::Loading,
             Some("unavailable") => Lookup::Unavailable,
             _ => {
-                warn(S::KIND, "`$lookup` must be \"loading\" or \"unavailable\"");
+                fail(S::KIND, "`$lookup` must be \"loading\" or \"unavailable\"");
                 Lookup::Unavailable
             }
         });
@@ -111,6 +146,14 @@ pub(crate) fn source_lookup<S: Source>(source: &S) -> Option<Lookup<S::Value>> {
         Some(value) => Lookup::Ready(value),
         None => Lookup::Unavailable,
     })
+}
+
+/// Every mistake found in the fixtures so far: while loading them, and in the
+/// values of the backends this process has asked. Call it after the widgets
+/// have drawn, since a value is only parsed once a widget asks for it.
+pub fn fixture_errors() -> Vec<String> {
+    fixtures();
+    lock_errors().clone()
 }
 
 /// Whether fixtures are in use.
@@ -182,19 +225,24 @@ fn load(setting: &str) -> Option<Map<String, Value>> {
         match std::fs::read_to_string(Path::new(setting)) {
             Ok(text) => text,
             Err(err) => {
-                warn(FIXTURES_VAR, &format!("cannot read {setting}: {err}"));
+                fail(FIXTURES_VAR, &format!("cannot read {setting}: {err}"));
                 return None;
             }
         }
     };
     match serde_json::from_str::<Value>(&text) {
-        Ok(Value::Object(map)) => Some(map),
+        Ok(Value::Object(map)) => {
+            for key in map.keys().filter(|key| !KEYS.contains(&key.as_str())) {
+                fail(key, "not a fixture key; see docs/fixtures.md");
+            }
+            Some(map)
+        }
         Ok(_) => {
-            warn(FIXTURES_VAR, "fixtures must be a JSON object");
+            fail(FIXTURES_VAR, "fixtures must be a JSON object");
             None
         }
         Err(err) => {
-            warn(FIXTURES_VAR, &format!("not valid JSON: {err}"));
+            fail(FIXTURES_VAR, &format!("not valid JSON: {err}"));
             None
         }
     }
@@ -204,25 +252,25 @@ fn parse<V: DeserializeOwned>(key: &str, value: &Value) -> Option<V> {
     match V::deserialize(value) {
         Ok(value) => Some(value),
         Err(err) => {
-            warn(key, &err.to_string());
+            fail(key, &err.to_string());
             None
         }
     }
 }
 
-/// A fixture that cannot be used is worth saying out loud: fixtures only
-/// exist to make a prompt look a particular way.
-fn warn(key: &str, message: &str) {
-    static WARNED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
-    let mut warned = WARNED
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if warned
-        .get_or_insert_with(HashSet::new)
-        .insert(key.to_string())
-    {
-        eprintln!("superline: fixture `{key}`: {message}");
+fn fail(key: &str, message: &str) {
+    let error = format!("fixture `{key}`: {message}");
+    let mut errors = lock_errors();
+    if !errors.contains(&error) {
+        errors.push(error);
     }
+}
+
+fn lock_errors() -> MutexGuard<'static, Vec<String>> {
+    static ERRORS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    ERRORS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]

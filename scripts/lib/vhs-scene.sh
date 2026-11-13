@@ -89,6 +89,12 @@ scene_home() {
     cp "$FIXTURES" "$scratch/fixtures.json"
     # UTC, so a pinned clock reads the same on every machine.
     fixtures="set -gx SUPERLINE_FIXTURES '$scratch/fixtures.json'; set -gx TZ UTC; "
+    # Fail before recording when the fixtures have mistakes in them, rather
+    # than recording the error prompt.
+    (cd "$home/$dir" && HOME="$home" XDG_CONFIG_HOME="$home/.config" \
+      XDG_CACHE_HOME="$scratch/preflight-cache" TZ=UTC \
+      SUPERLINE_FIXTURES="$scratch/fixtures.json" \
+      "$repo/target/release/superline" show fish -s 0 -c 200 >/dev/null) || return 1
   fi
   printf '%s' "set -gx HOME '$home'; set -gx XDG_CONFIG_HOME '$home/.config'; set -gx XDG_CACHE_HOME '$home/.cache'; ${fixtures}${extra}; set -gx PATH '$repo/target/release' \$PATH; source '$home/superline-init.fish'; cd '$home/$dir'; ${PRE:-true}"
 }

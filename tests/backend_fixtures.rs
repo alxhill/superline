@@ -279,12 +279,40 @@ fn update_checks_never_run_under_fixtures() {
 }
 
 #[test]
-fn a_bad_fixture_is_reported() {
+fn a_fixture_that_does_not_parse_fails_the_prompt() {
     let scratch = Scratch::new("bad", "main");
     let output = scratch.render(json!(["hostname"]), &json!({ "hostname": 42 }));
-    assert!(output.status.success());
+    assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("fixture `hostname`"), "{stderr}");
+    let prompt = plain(&String::from_utf8_lossy(&output.stdout));
+    assert!(prompt.contains("fixture `hostname`"), "{prompt:?}");
+}
+
+#[test]
+fn an_unknown_fixture_key_fails_the_prompt() {
+    let scratch = Scratch::new("unknown", "main");
+    let output = scratch.render(json!(["os"]), &json!({ "hostnme": "devbox" }));
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("fixture `hostnme`: not a fixture key"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn unreadable_fixtures_fail_the_prompt() {
+    let scratch = Scratch::new("unreadable", "main");
+    let output = Command::new(BIN)
+        .args(["show", "fish", "-s", "0", "-c", "100"])
+        .current_dir(scratch.root.join("repo"))
+        .env("HOME", scratch.root.join("home"))
+        .env("XDG_CACHE_HOME", scratch.cache())
+        .env("SUPERLINE_FIXTURES", scratch.root.join("missing.json"))
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
 }
 
 /// `examples/fixtures.json` names every backend, so it doubles as the
@@ -304,8 +332,18 @@ fn the_example_fixtures_parse() {
         ]),
         &fixtures,
     );
-    assert!(output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!stderr.contains("fixture"), "{stderr}");
+    assert!(output.status.success(), "{stderr}");
     assert_no_cache(&scratch);
+
+    let mut keys: Vec<&str> = fixtures
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let mut known = superline::backend::KEYS.to_vec();
+    keys.sort_unstable();
+    known.sort_unstable();
+    assert_eq!(keys, known, "examples/fixtures.json should name every key");
 }

@@ -34,8 +34,12 @@ is checked by the tests, so start from a copy of it.
 - A backend that the fixtures do not name runs as usual. The two exceptions
   are the update check and auto-upgrade, which stay off unless named, so a
   demo never phones home or replaces the binary.
-- A value that does not parse is reported on stderr, naming the key, and the
-  widget draws as if the backend had nothing to report.
+- A mistake in the fixtures is an error, not a missing widget: a key that is
+  not listed below, a value that does not parse, or a file that cannot be
+  read makes `superline show` print the error as the prompt and on stderr,
+  and exit 1. The demo and screenshot scripts check this before they record.
+  A value is only parsed when a widget asks for it, so a mistake in a key
+  that no widget in the config reads goes unnoticed.
 
 ### Machine probes
 
@@ -110,5 +114,6 @@ through `src/backend.rs`, so it can be fixtured from day one:
   author can name, such as a branch or a provider. One that phones home or
   changes the installation sets `Source::LIVE_WITH_FIXTURES` to `false`.
 
-Then add the key to `examples/fixtures.json` and to the tables above, and
-cover the widget in `tests/backend_fixtures.rs`.
+Then add the key to `backend::KEYS`, `examples/fixtures.json` and the tables
+above, and cover the widget in `tests/backend_fixtures.rs`. Debug builds
+assert that every key a backend asks for is in `backend::KEYS`.

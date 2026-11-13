@@ -17,7 +17,7 @@
 - Widgets get anything outside the shell integration through `src/backend.rs`
   (a `backend::Probe`, or a `cache::Source` for slow lookups), never by
   calling the OS, a CLI or the network directly, so `SUPERLINE_FIXTURES` can
-  stand in for it. Add the new key to `examples/fixtures.json`,
+  stand in for it. Add the new key to `backend::KEYS`, `examples/fixtures.json`,
   `docs/fixtures.md` and `tests/backend_fixtures.rs`.
 - A PR that changes what a widget shows includes a screenshot or recording
   made with fixtures (`scripts/demo/record.sh`, see `docs/fixtures.md`), so
