@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.2](https://github.com/alxhill/superline/compare/v0.34.1...v0.34.2) - 2026-11-17
+
+### Fixed
+
+- *(usage)* let the Claude probe refresh /usage, and show a failed read apart from logged out ([#235](https://github.com/alxhill/superline/pull/235))
+
 ## [0.34.1](https://github.com/alxhill/superline/compare/v0.34.0...v0.34.1) - 2026-11-17
 
 ### Fixed
