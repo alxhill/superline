@@ -38,6 +38,21 @@ const CODEX_APP_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 // A stable, disposable Claude CLI probe session prevents creating a new local
 // conversation on every refresh; its transcript is removed after each probe.
 const CLAUDE_PROBE_SESSION_ID: &str = "b450f1cc-67ae-4f33-89fb-867a0d0fb522";
+// The probe only needs `/usage`, so it skips the user's, project and local
+// settings and overrides anything that would act on its behalf: a Remote
+// Control session per refresh, hooks, and the Chrome extension.
+const CLAUDE_PROBE_ARGS: [&str; 10] = [
+    "--allowed-tools",
+    "",
+    "--strict-mcp-config",
+    "--no-chrome",
+    "--setting-sources",
+    "",
+    "--settings",
+    r#"{"remoteControlAtStartup":false,"disableAllHooks":true}"#,
+    "--session-id",
+    CLAUDE_PROBE_SESSION_ID,
+];
 // A terminal that speaks VT answers a Device Status Report by reporting the
 // cursor position. Windows' ConPTY asks as soon as the child starts and holds
 // back every byte of the child's output until it gets an answer, so the reply
@@ -949,18 +964,13 @@ fn capture_claude_cli() -> Option<String> {
     let mut command = CommandBuilder::new(binary);
     command.env("TERM", "xterm-256color");
     command.env("DISABLE_AUTOUPDATER", "1");
+    command.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("ANTHROPIC_") {
             command.env_remove(key);
         }
     }
-    command.args([
-        "--allowed-tools",
-        "",
-        "--strict-mcp-config",
-        "--session-id",
-        CLAUDE_PROBE_SESSION_ID,
-    ]);
+    command.args(CLAUDE_PROBE_ARGS);
     let probe_directory = probe_directory(provider)?;
     cleanup_claude_probe_sessions(&probe_directory);
     command.cwd(&probe_directory);
@@ -1378,6 +1388,21 @@ impl Screen {
 mod tests {
     use super::*;
     use crate::colors::{black, white};
+
+    #[test]
+    fn the_claude_probe_ignores_user_settings_and_stays_off_remote_control() {
+        let value_of = |flag: &str| {
+            let index = CLAUDE_PROBE_ARGS
+                .iter()
+                .position(|arg| *arg == flag)
+                .unwrap_or_else(|| panic!("{flag} missing"));
+            CLAUDE_PROBE_ARGS[index + 1]
+        };
+        assert_eq!(value_of("--setting-sources"), "");
+        let settings: serde_json::Value = serde_json::from_str(value_of("--settings")).unwrap();
+        assert_eq!(settings["remoteControlAtStartup"], false);
+        assert_eq!(settings["disableAllHooks"], true);
+    }
 
     struct TestTheme;
 
