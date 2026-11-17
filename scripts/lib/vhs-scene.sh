@@ -17,8 +17,7 @@
 #
 # Needs the patched VHS from tests/terminal/build-vhs.sh (pass it with
 # SUPERLINE_E2E_VHS, or it is built into target/vhs-bin on first use), plus
-# fish, git, uv, ttyd, ffmpeg, the MesloLGS Nerd Font and Symbols Nerd Font
-# Mono 3.4 or newer.
+# fish, git, uv, ttyd and ffmpeg. The fonts come from scripts/fonts.
 # shellcheck shell=bash
 
 repo=${repo:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
@@ -33,12 +32,36 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 # Scenes read the kubeconfig from their fake home.
 unset KUBECONFIG
 
-# Builds VHS if needed and the release build of superline.
+# Builds VHS if needed and the release build of superline, and installs the
+# recording fonts.
 scene_prepare() {
   if [[ ! -x "$vhs" ]]; then
     "$repo/tests/terminal/build-vhs.sh" "$repo/target/vhs-bin"
   fi
   cargo build --quiet --release --bin superline --manifest-path "$repo/Cargo.toml"
+  scene_install_fonts
+}
+
+# VHS renders in Chromium, which only finds fonts installed for the user. An
+# existing file of the same name is left alone; Symbols Nerd Font Mono covers
+# any glyph an older Meslo lacks.
+scene_install_fonts() {
+  local fonts installed=0 font
+  case $(uname -s) in
+    Darwin) fonts=$HOME/Library/Fonts ;;
+    *) fonts=${XDG_DATA_HOME:-$HOME/.local/share}/fonts ;;
+  esac
+  mkdir -p "$fonts"
+  for font in "$repo"/scripts/fonts/*.ttf; do
+    if [[ ! -e "$fonts/$(basename "$font")" ]]; then
+      cp "$font" "$fonts/"
+      echo "installed $(basename "$font") into $fonts"
+      installed=1
+    fi
+  done
+  if ((installed)) && command -v fc-cache >/dev/null; then
+    fc-cache -f "$fonts" >/dev/null
+  fi
 }
 
 git_repo() {
