@@ -532,7 +532,7 @@ older name for it, and themes' `claude_lines` colors still apply. `diff.icon` (a
 
 Claude or Codex subscription usage, read via the provider's CLI on `PATH`. superline refreshes it in the background
 and caches the result, so rendering never waits on a provider request. For Claude, it runs `/usage` in a private
-directory without loading your Claude Code settings, so your hooks, plugins' settings and Remote Control at startup
+directory without loading your Claude Code settings, so your hooks and Remote Control at startup
 don't apply to the probe. Add the module more than once to show both
 providers, or the same provider with different windows and styles. Provider labels use the Nerd Font
 [`cod-openai`](https://www.nerdfonts.com/cheat-sheet?q=cod-openai) (`U+EC81`) and
