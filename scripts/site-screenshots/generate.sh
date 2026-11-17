@@ -11,8 +11,7 @@
 #
 # Needs the patched VHS from tests/terminal/build-vhs.sh (pass it
 # with SUPERLINE_E2E_VHS, or it is built into target/vhs-bin on first run),
-# plus fish, git, jq, uv, ttyd, ffmpeg, the MesloLGS Nerd Font and Symbols
-# Nerd Font Mono 3.4 or newer (for the Claude and Codex glyphs).
+# plus fish, git, jq, uv, ttyd and ffmpeg. The fonts come from scripts/fonts.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)

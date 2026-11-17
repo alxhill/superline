@@ -15,8 +15,6 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: ""
   GO_VERSION: 1.27.1
-  NERD_FONT_URL: https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.1/patched-fonts/Meslo/S/MesloLGSNerdFont-Regular.ttf
-  NERD_FONT_SHA256: f3148b1e05c1dcf86785020d1d144524b9458deaab17505b88ecfe1694543214
   TTYD_URL: https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe
   TTYD_SHA256: e33a27501b10b96981335bcba938b1145c7f52551a343e72160f00ab71832b37
   FFMPEG_URL: https://github.com/GyanD/codexffmpeg/releases/download/8.1/ffmpeg-8.1-essentials_build.zip
@@ -61,12 +59,10 @@ jobs:
         if: steps.vhs-cache.outputs.cache-hit != 'true'
         run: tests/terminal/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
 
-      - name: Install pinned Nerd Font
+      - name: Install Nerd Font
         run: |
-          curl --fail --location "$NERD_FONT_URL" --output "$RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf"
-          echo "$NERD_FONT_SHA256  $RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf" | shasum --algorithm 256 --check
           mkdir -p "$HOME/Library/Fonts"
-          cp "$RUNNER_TEMP/MesloLGSNerdFont-Regular.ttf" "$HOME/Library/Fonts/"
+          cp scripts/fonts/MesloLGSNerdFont-Regular.ttf "$HOME/Library/Fonts/"
 
       - name: Capture prompts
         env:
@@ -140,13 +136,10 @@ jobs:
 
           Add-Content -Path $env:GITHUB_PATH -Value $tools
 
-      - name: Install pinned Nerd Font
+      - name: Install Nerd Font
         shell: pwsh
         run: |
-          $font = Join-Path $env:RUNNER_TEMP 'MesloLGSNerdFont-Regular.ttf'
-          Invoke-WebRequest -Uri $env:NERD_FONT_URL -OutFile $font
-          $actual = (Get-FileHash -Algorithm SHA256 $font).Hash.ToLowerInvariant()
-          if ($actual -ne $env:NERD_FONT_SHA256) { throw "Nerd Font checksum mismatch: $actual" }
+          $font = 'scripts\fonts\MesloLGSNerdFont-Regular.ttf'
           Copy-Item $font (Join-Path $env:windir 'Fonts\MesloLGSNerdFont-Regular.ttf') -Force
           New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' `
             -Name 'MesloLGS Nerd Font (TrueType)' -Value 'MesloLGSNerdFont-Regular.ttf' `
