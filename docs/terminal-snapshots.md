@@ -32,9 +32,9 @@ These are test-only dependencies; nothing here is needed to use superline.
   Windows the CI workflow downloads pinned builds).
 - Chrome or Chromium. VHS downloads a Chromium into its cache if none is found.
 - The `MesloLGS Nerd Font` family installed for the OS, so Chromium can
-  resolve it by name. Download `MesloLGSNerdFont-Regular.ttf` from the
-  [Nerd Fonts release](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1)
-  and install it like any other font.
+  resolve it by name. Install
+  [`scripts/fonts/MesloLGSNerdFont-Regular.ttf`](../scripts/fonts) like any
+  other font.
 - Go, to build the pinned VHS:
 
   ```bash
@@ -189,7 +189,8 @@ Windows runner, is retried up to twice.
 
 The `Terminal snapshots` workflow captures every supported shell on macOS,
 including both bash 5 and the system bash 3.2, and PowerShell and Git Bash through ConPTY on Windows. It builds the pinned VHS, installs
-pinned, checksum-verified ttyd, ffmpeg (Windows), and Nerd Font builds, and
+pinned, checksum-verified ttyd and ffmpeg (Windows) builds and the Nerd Font
+from `scripts/fonts`, and
 uploads `terminal-snapshots-macos` and `terminal-snapshots-windows` artifacts
 on success or failure. They are retained for 1 day on every pull request,
 `main` push, and manual run.
