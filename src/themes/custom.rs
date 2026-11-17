@@ -776,6 +776,12 @@ impl UsageScheme for CustomTheme {
         logged_out_icon,
         USAGE_LOGGED_OUT_ICON
     );
+    icon_from_json!(
+        usage_unreadable_icon,
+        ai_usage,
+        unreadable_icon,
+        USAGE_UNREADABLE_ICON
+    );
     icon_from_json!(usage_reset_icon, ai_usage, reset_icon, USAGE_RESET_ICON);
 }
 

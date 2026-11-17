@@ -66,7 +66,7 @@ address), which hides the widget.
 | `git` | `git`, `git_remote` | counts (`ahead`, `behind`, `staged`, `non_staged`, `untracked`, `conflicted`), `branch_name`, `remote`, `remote_url`, `worktrees`, `worktree_index`; missing fields are zero |
 | `diff` | `diff` | `{"added": 42, "removed": 7}` |
 | `pr` | `pr`, `pr_checks`, `pr_diff` | by branch: `number`, `url`, `state`, and optionally `checks`, `review`, `diff`, `check_runs`; `null` for no PR |
-| `usage` | `ai_usage` | by provider (`claude`, `codex`): `session`, `weekly`, `fable`, `credits`, `session_resets_at` (Unix seconds), `no_session_limit`, `logged_out` |
+| `usage` | `ai_usage` | by provider (`claude`, `codex`): `session`, `weekly`, `fable`, `credits`, `session_resets_at` (Unix seconds), `no_session_limit`, `logged_out`, `unreadable` |
 | `python` | `python` | the version, `"3.12.4"` |
 | `kubernetes` | `kubernetes` | `{"name": "prod", "namespace": "web"}`, or `null` for no current context |
 | `sudo` | `sudo` | `true` when credentials are cached |

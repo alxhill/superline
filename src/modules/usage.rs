@@ -178,11 +178,13 @@ pub trait UsageScheme: DefaultColors {
     const CLAUDE_USAGE_ICON: &'static str = "\u{ec82}";
     const CODEX_USAGE_ICON: &'static str = "\u{ec81}";
     // Shown in place of a reading: the first refresh has yet to land, the
-    // provider CLI the reading comes from is not on `PATH` at all, or it has no
-    // signed-in account to report on (nf-fa-user_xmark).
+    // provider CLI the reading comes from is not on `PATH` at all, it has no
+    // signed-in account to report on (nf-fa-user_xmark), or it failed to report
+    // usage (nf-md-account_question).
     const USAGE_LOADING_ICON: &'static str = "\u{2026}";
     const USAGE_NOT_INSTALLED_ICON: &'static str = "?";
     const USAGE_LOGGED_OUT_ICON: &'static str = "\u{f235}";
+    const USAGE_UNREADABLE_ICON: &'static str = "\u{f0b59}";
     const USAGE_RESET_ICON: &'static str = "↻";
 
     fn claude_usage_fg() -> Color {
@@ -214,6 +216,9 @@ pub trait UsageScheme: DefaultColors {
     }
     fn usage_logged_out_icon() -> &'static str {
         Self::USAGE_LOGGED_OUT_ICON
+    }
+    fn usage_unreadable_icon() -> &'static str {
+        Self::USAGE_UNREADABLE_ICON
     }
     /// Before the time left until the session window resets.
     fn usage_reset_icon() -> &'static str {
@@ -301,6 +306,10 @@ pub struct UsageReading {
     // no reading to show until the user logs in.
     #[serde(default)]
     logged_out: bool,
+    // The provider CLI failed to report usage and there is no recent reading
+    // to fall back on.
+    #[serde(default)]
+    unreadable: bool,
 }
 
 impl UsageReading {
@@ -316,11 +325,26 @@ impl UsageReading {
             session_resets_at: limits.five_hour.as_ref().and_then(|w| w.resets_at),
             no_session_limit: false,
             logged_out: false,
+            unreadable: false,
         };
         (reading.session.is_some() || reading.weekly.is_some()).then_some(reading)
     }
 
     fn logged_out() -> Self {
+        Self {
+            logged_out: true,
+            ..Self::empty()
+        }
+    }
+
+    fn unreadable() -> Self {
+        Self {
+            unreadable: true,
+            ..Self::empty()
+        }
+    }
+
+    fn empty() -> Self {
         Self {
             session: None,
             weekly: None,
@@ -328,8 +352,14 @@ impl UsageReading {
             credits: None,
             session_resets_at: None,
             no_session_limit: false,
-            logged_out: true,
+            logged_out: false,
+            unreadable: false,
         }
+    }
+
+    /// Stands in for a reading: there are no figures to draw.
+    fn is_placeholder(&self) -> bool {
+        self.logged_out || self.unreadable
     }
 
     /// Providers bill against credits once any rate-limit window is exhausted.
@@ -412,9 +442,9 @@ impl Source for UsageLookup {
     }
 
     /// Without a recent reading, a provider CLI that cannot be read is shown
-    /// like one with no signed-in account.
+    /// as unreadable rather than loading forever.
     fn failed(&self) -> Option<UsageReading> {
-        Some(UsageReading::logged_out())
+        Some(UsageReading::unreadable())
     }
 
     fn fixture_key(&self) -> Option<String> {
@@ -440,6 +470,9 @@ impl<S: UsageScheme> Module for Usage<S> {
             Lookup::Ready(reading) if reading.logged_out => {
                 join_non_empty([icon, S::usage_logged_out_icon()])
             }
+            Lookup::Ready(reading) if reading.unreadable => {
+                join_non_empty([icon, S::usage_unreadable_icon()])
+            }
             Lookup::Ready(reading) => format_usage::<S>(
                 self.provider,
                 reading,
@@ -455,7 +488,7 @@ impl<S: UsageScheme> Module for Usage<S> {
         if label.is_empty() {
             return;
         }
-        let reading = lookup.ready().filter(|reading| !reading.logged_out);
+        let reading = lookup.ready().filter(|reading| !reading.is_placeholder());
         let bg = reading
             .as_ref()
             .filter(|reading| threshold_reached(reading, &self.windows, self.threshold))
@@ -718,6 +751,7 @@ fn fetch_usage(provider: UsageProvider) -> Option<UsageReading> {
         session_resets_at: parsed.session_resets_at,
         no_session_limit: parsed.no_session_limit,
         logged_out: false,
+        unreadable: false,
     })
 }
 
@@ -964,7 +998,8 @@ fn capture_claude_cli() -> Option<String> {
     let mut command = CommandBuilder::new(binary);
     command.env("TERM", "xterm-256color");
     command.env("DISABLE_AUTOUPDATER", "1");
-    command.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+    // `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` must stay unset: it stops
+    // `/usage` fetching, leaving only what another session last cached.
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("ANTHROPIC_") {
             command.env_remove(key);
@@ -1792,6 +1827,7 @@ mod tests {
             session_resets_at: None,
             no_session_limit: false,
             logged_out: false,
+            unreadable: false,
         }
     }
 
@@ -1903,6 +1939,7 @@ mod tests {
             session_resets_at: None,
             no_session_limit: true,
             logged_out: false,
+            unreadable: false,
         };
         let format = |windows: &UsageWindows| {
             format_usage::<TestTheme>(
@@ -1965,6 +2002,7 @@ mod tests {
             session_resets_at: Some(now_secs().saturating_add(3600)),
             no_session_limit: false,
             logged_out: false,
+            unreadable: false,
         };
         let windows = windows(UsageProvider::Codex, true, false, false, None);
         let format = |cache: &UsageReading| {
@@ -1997,6 +2035,7 @@ mod tests {
             session_resets_at: Some(now_secs().saturating_add(2 * 3600 + 90)),
             no_session_limit: false,
             logged_out: false,
+            unreadable: false,
         };
         assert_eq!(
             format_usage::<NoIconTheme>(
@@ -2073,6 +2112,7 @@ mod tests {
             session_resets_at: None,
             no_session_limit: false,
             logged_out: false,
+            unreadable: false,
         };
         assert_eq!(
             format_usage::<TestTheme>(
@@ -2298,6 +2338,7 @@ mod tests {
             session_resets_at: None,
             no_session_limit: false,
             logged_out: false,
+            unreadable: false,
         };
         for display in [
             UsageDisplay::Bar,
@@ -2339,6 +2380,7 @@ mod tests {
             session_resets_at: None,
             no_session_limit: false,
             logged_out: false,
+            unreadable: false,
         };
         assert_eq!(hover_note(&empty, UsageDisplay::Sparkline), None);
     }
@@ -2353,6 +2395,7 @@ mod tests {
             session_resets_at: None,
             no_session_limit: false,
             logged_out: false,
+            unreadable: false,
         };
 
         let claude = UsageProvider::Claude;

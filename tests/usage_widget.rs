@@ -217,6 +217,53 @@ fn usage_widget_shows_a_logged_out_provider_instead_of_loading() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn usage_widget_shows_an_unreadable_provider_apart_from_a_logged_out_one() {
+    let root =
+        std::env::temp_dir().join(format!("superline-usage-unreadable-{}", std::process::id()));
+    let cache_dir = root.join("cache/superline");
+    fs::create_dir_all(&cache_dir).expect("create cache directory");
+    let fetched_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("current time")
+        .as_secs();
+    // What a refresh writes when the CLI fails to report usage and nothing is cached.
+    fs::write(
+        cache_dir.join("usage-claude.json"),
+        format!(
+            r#"{{"fetched_at":{fetched_at},"value":{{"session":null,"weekly":null,"unreadable":true}}}}"#
+        ),
+    )
+    .expect("write Claude cache");
+
+    let config = root.join("config.json");
+    fs::write(
+        &config,
+        r#"{"theme":"rainbow","rows": [{"left": [{"ai_usage":{"provider":"claude","threshold":0}}]}]}"#,
+    )
+    .expect("write config");
+
+    let output = Command::new(BIN)
+        .args(["show", "fish", "-s", "0", "-c", "120", "--config"])
+        .arg(&config)
+        .env("HOME", &root)
+        .env("USERPROFILE", &root)
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .env("LOCALAPPDATA", root.join("cache"))
+        .output()
+        .expect("render prompt");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\u{ec82} \u{f0b59}"), "stdout:\n{stdout}");
+    assert!(!stdout.contains('\u{f235}'), "stdout:\n{stdout}");
+    assert!(!stdout.contains('\u{2026}'), "stdout:\n{stdout}");
+    // An unreadable reading has nothing to measure against the threshold.
+    assert!(!stdout.contains("\x1b[48;5;160m"), "stdout:\n{stdout}");
+
+    let _ = fs::remove_dir_all(root);
+}
+
 /// Renders `config` for `shell` against a temporary cache holding `claude`
 /// as the Claude reading, with `theme` as the theme file.
 fn render_usage(name: &str, shell: &str, claude: &str, theme: &str, config: &str) -> String {
