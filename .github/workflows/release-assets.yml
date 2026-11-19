@@ -33,7 +33,9 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            os: macos-latest
+            # Namespace's macOS runner, or GitHub's for pull requests from forks
+            # (see terminal-snapshots.yml).
+            os: ${{ github.event.pull_request.head.repo.fork && 'macos-latest' || 'namespace-profile-macos' }}
             # Every Apple silicon Mac is an M1 or later, so this baseline costs
             # no compatibility.
             rustflags: -Ctarget-cpu=apple-m1
