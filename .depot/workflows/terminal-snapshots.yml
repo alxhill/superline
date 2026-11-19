@@ -1,0 +1,172 @@
+# Depot CI Migration
+# Source: .github/workflows/terminal-snapshots.yml
+#
+# Changes made:
+# - Changed runs-on from "macos-latest" to "depot-ubuntu-latest" in job "macos"
+# - Changed runs-on from "windows-latest" to "depot-ubuntu-latest" in job "windows"
+
+name: Terminal snapshots
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Screenshots from an older commit are not useful once a newer revision exists.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: ""
+  GO_VERSION: 1.27.1
+  TTYD_URL: https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe
+  TTYD_SHA256: e33a27501b10b96981335bcba938b1145c7f52551a343e72160f00ab71832b37
+  FFMPEG_URL: https://github.com/GyanD/codexffmpeg/releases/download/8.1/ffmpeg-8.1-essentials_build.zip
+  FFMPEG_SHA256: 8748283d821613d930b0e7be685aaa9df4ca6f0ad4d0c42fd02622b3623463c6
+
+jobs:
+  macos:
+    name: macOS (all shells)
+    runs-on: depot-ubuntu-latest # was: macos-latest. Nonstandard GitHub runner label detected, changed to default Depot runner.
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v2-terminal-snapshots
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Install shells and VHS runtime dependencies
+        run: |
+          brew install bash fish ttyd ffmpeg
+          command -v pwsh >/dev/null || brew install --cask powershell
+          # `bash` must be Homebrew's bash 5; the `bash-3.2` capture covers /bin/bash.
+          bash -c '[ "${BASH_VERSINFO[0]}" -ge 5 ]' || { echo "bash on PATH is $(bash -c 'echo $BASH_VERSION')"; exit 1; }
+
+      - name: Cache pinned VHS build
+        id: vhs-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vhs-bin
+          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('tests/terminal/build-vhs.sh', 'tests/terminal/vhs-fixes.patch') }}
+
+      - name: Build pinned VHS
+        if: steps.vhs-cache.outputs.cache-hit != 'true'
+        run: tests/terminal/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
+
+      - name: Install Nerd Font
+        run: |
+          mkdir -p "$HOME/Library/Fonts"
+          cp scripts/fonts/MesloLGSNerdFont-Regular.ttf "$HOME/Library/Fonts/"
+
+      - name: Capture prompts
+        env:
+          SUPERLINE_E2E_VHS: ${{ runner.temp }}/vhs-bin/vhs
+          SUPERLINE_E2E_REQUIRE_ALL: "1"
+        run: cargo test --locked --test terminal_snapshots
+
+      - name: Upload screenshots, tapes, and VHS logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-snapshots-macos
+          path: target/terminal-snapshots/
+          if-no-files-found: warn
+          retention-days: 1
+
+  windows:
+    name: Windows (PowerShell, Git Bash)
+    runs-on: depot-ubuntu-latest # was: windows-latest. Nonstandard GitHub runner label detected, changed to default Depot runner.
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v2-terminal-snapshots
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Cache pinned VHS build
+        id: vhs-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vhs-bin
+          key: vhs-${{ runner.os }}-${{ runner.arch }}-go${{ env.GO_VERSION }}-${{ hashFiles('tests/terminal/build-vhs.sh', 'tests/terminal/vhs-fixes.patch') }}
+
+      - name: Build pinned VHS
+        if: steps.vhs-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: tests/terminal/build-vhs.sh "$RUNNER_TEMP/vhs-bin"
+
+      - name: Put Git Bash ahead of the WSL bash stub
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:ProgramFiles 'Git\bin')
+
+      - name: Install pinned ttyd and ffmpeg
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'vhs-tools'
+          New-Item -ItemType Directory -Force $tools | Out-Null
+
+          $ttyd = Join-Path $tools 'ttyd.exe'
+          Invoke-WebRequest -Uri $env:TTYD_URL -OutFile $ttyd
+          $actual = (Get-FileHash -Algorithm SHA256 $ttyd).Hash.ToLowerInvariant()
+          if ($actual -ne $env:TTYD_SHA256) { throw "ttyd checksum mismatch: $actual" }
+
+          $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
+          Invoke-WebRequest -Uri $env:FFMPEG_URL -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $env:FFMPEG_SHA256) { throw "ffmpeg checksum mismatch: $actual" }
+          Expand-Archive -Path $archive -DestinationPath (Join-Path $env:RUNNER_TEMP 'ffmpeg') -Force
+          Copy-Item (Get-ChildItem -Recurse -Filter ffmpeg.exe (Join-Path $env:RUNNER_TEMP 'ffmpeg') | Select-Object -First 1).FullName $tools
+
+          Add-Content -Path $env:GITHUB_PATH -Value $tools
+
+      - name: Install Nerd Font
+        shell: pwsh
+        run: |
+          $font = 'scripts\fonts\MesloLGSNerdFont-Regular.ttf'
+          Copy-Item $font (Join-Path $env:windir 'Fonts\MesloLGSNerdFont-Regular.ttf') -Force
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' `
+            -Name 'MesloLGS Nerd Font (TrueType)' -Value 'MesloLGSNerdFont-Regular.ttf' `
+            -PropertyType String -Force | Out-Null
+
+      - name: Capture PowerShell and Git Bash prompts
+        shell: pwsh
+        env:
+          SUPERLINE_E2E_VHS: ${{ runner.temp }}\vhs-bin\vhs.exe
+          SUPERLINE_E2E_SHELLS: pwsh,bash
+          SUPERLINE_E2E_REQUIRE_ALL: "1"
+        run: |
+          Write-Host "bash resolves to $((Get-Command bash).Source)"
+          cargo test --locked --test terminal_snapshots
+
+      - name: Upload screenshots, tapes, and VHS logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-snapshots-windows
+          path: target/terminal-snapshots/
+          if-no-files-found: warn
+          retention-days: 1
