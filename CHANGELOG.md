@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.3](https://github.com/alxhill/superline/compare/v0.34.2...v0.34.3) - 2026-11-19
+
+### Other
+
+- run macOS jobs on Namespace runners ([#237](https://github.com/alxhill/superline/pull/237))
+
 ## [0.34.2](https://github.com/alxhill/superline/compare/v0.34.1...v0.34.2) - 2026-11-17
 
 ### Fixed
