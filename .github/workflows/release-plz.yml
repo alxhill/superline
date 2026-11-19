@@ -18,7 +18,7 @@ jobs:
   # manually; trusted publishing only works once the crate exists on crates.io.
   release-plz-release:
     name: Release-plz release
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release-plz.outputs.releases_created }}
       version: ${{ steps.release-metadata.outputs.version }}
@@ -73,7 +73,7 @@ jobs:
   homebrew-formula:
     name: Update Homebrew formula
     needs: [release-plz-release, release-assets]
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Dispatch tap update
         env:
@@ -99,7 +99,7 @@ jobs:
   # going back to a release PR that nobody notices has no CI.
   release-plz-pr:
     name: Release-plz PR
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write

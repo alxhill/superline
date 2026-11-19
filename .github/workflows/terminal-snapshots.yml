@@ -23,7 +23,11 @@ env:
 jobs:
   macos:
     name: macOS (all shells)
-    runs-on: depot-macos-latest
+    # Namespace's macOS runners, paid per minute. Pull requests from forks use
+    # GitHub's free runner so outside contributions do not spend credit.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'macos-latest' || 'namespace-profile-macos' }}
+    # Caps the cost of a hung capture; a normal run takes a few minutes.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
@@ -81,7 +85,7 @@ jobs:
 
   windows:
     name: Windows (PowerShell, Git Bash)
-    runs-on: depot-windows-2025-4
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
 
