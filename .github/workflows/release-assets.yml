@@ -33,7 +33,7 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            os: macos-latest
+            os: depot-macos-latest
             # Every Apple silicon Mac is an M1 or later, so this baseline costs
             # no compatibility.
             rustflags: -Ctarget-cpu=apple-m1
@@ -43,7 +43,7 @@ jobs:
           # builds link against glibc 2.17, the oldest Rust supports, rather
           # than whatever the runner image ships.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: depot-ubuntu-24.04-4
             zig: true
             glibc: "2.17"
             rustflags: -Ctarget-cpu=x86-64-v3
@@ -51,32 +51,32 @@ jobs:
           # run on: musl distros, and CPUs without AVX2 such as the Atoms and
           # Celerons in most NASes.
           - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
+            os: depot-ubuntu-24.04-4
             zig: true
             rustflags: -Ctarget-cpu=x86-64
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: depot-ubuntu-24.04-4
             zig: true
             glibc: "2.17"
             rustflags: ""
           # Static ARM builds for the Raspberry Pi and musl distros.
           # 64-bit OS on a Pi 3, 4, 5 or Zero 2 W.
           - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
+            os: depot-ubuntu-24.04-4
             zig: true
             rustflags: ""
           # 32-bit OS on a Pi 2, 3, 4, 5 or Zero 2 W.
           - target: armv7-unknown-linux-musleabihf
-            os: ubuntu-latest
+            os: depot-ubuntu-24.04-4
             zig: true
             rustflags: ""
           # ARMv6 with hard float: the Pi 1, Zero and Zero W.
           - target: arm-unknown-linux-musleabihf
-            os: ubuntu-latest
+            os: depot-ubuntu-24.04-4
             zig: true
             rustflags: ""
           - target: x86_64-pc-windows-msvc
-            os: windows-latest
+            os: depot-windows-2025-4
             rustflags: -Ctarget-cpu=x86-64-v3
     env:
       # `.cargo/config.toml` compiles for the host CPU, which is wrong for a

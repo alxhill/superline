@@ -20,7 +20,7 @@ env:
 jobs:
   build-and-test:
     name: Build & test
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-4
     steps:
       - uses: actions/checkout@v5
 
@@ -55,7 +55,7 @@ jobs:
 
   windows:
     name: Build & test (Windows)
-    runs-on: windows-latest
+    runs-on: depot-windows-2025-4
     steps:
       - uses: actions/checkout@v5
 
@@ -78,6 +78,6 @@ jobs:
         run: cargo build --verbose
 
       # Runs the unit tests plus the real-`pwsh` end-to-end prompt test
-      # (PowerShell 7 is preinstalled on windows-latest).
+      # (PowerShell 7 is preinstalled on the Windows image).
       - name: Test
         run: cargo test --verbose
